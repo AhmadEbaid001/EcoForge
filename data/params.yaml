@@ -1,0 +1,147 @@
+# =====================================================================
+# GEMP physics and scoring parameters
+#
+# OWNER: Nada Wagdy (Environmental Engineering).
+# Ahmed does not edit values in this file; Nada does not edit code.
+# Every value below is a PLACEHOLDER (v0) until it carries a citation.
+# CI validates structure on every push (see src/gemp/domain/catalog.py).
+#
+# Cross-references are to the technical review (RoboDam2026_TechnicalReview.pdf).
+# =====================================================================
+
+# --- F2: life-cycle scoring basis -----------------------------------
+# All interventions are compared over a COMMON horizon. Crediting each
+# intervention over its own service life is what produced the spurious
+# ranking reversal in the proposal's Table 1.
+horizon_yr: 30
+
+# Grid emission factor, kgCO2e per kWh delivered.
+# TODO(Nada): cite. Egyptian grid, gas-dominated. Proposal used 0.45.
+# Open question: is a CONSTANT factor over 30 years defensible given
+# Egypt's renewable build-out? A declining trajectory would reduce the
+# credited benefit of every long-life measure.
+grid_emission_factor: 0.45
+
+# Discount rate applied to both carbon and money. 0.0 reproduces the
+# undiscounted figures in the proposal; raise it to test sensitivity.
+discount_rate: 0.0
+
+# Electricity tariff, EGP per kWh. Only used for the `egp_saved` objective and for
+# reporting payback alongside carbon. A budget holder optimises this; a climate
+# target optimises carbon. They do not always agree, which is why the platform
+# exposes both rather than picking one silently.
+# TODO(Nada): cite. Egyptian public-sector / government tariff band.
+electricity_tariff_egp_per_kwh: 1.85
+
+# --- F9: anomaly detection ------------------------------------------
+# Threshold is |r - median(r)| > k * 1.4826 * MAD(r).
+# 1.4826 rescales MAD to be sigma-consistent under normality, so k keeps
+# its usual "number of sigmas" reading. Median/MAD replaces mean/sigma
+# because anomalies inflate sigma and mask each other.
+anomaly_k: 3.0
+anomaly_window_days: 30          # evaluated in DATA time, never wall time
+
+# --- F3: end-use disaggregation -------------------------------------
+# Fraction of a building's total annual consumption attributable to each
+# end use. This is the bridge from a whole-building meter reading to a
+# per-intervention saving estimate. Must sum to 1.0 per occupancy type
+# (enforced in validation).
+# TODO(Nada): cite. Candidate sources: ASHRAE handbook, local audit
+# studies of Egyptian public buildings, EEHC sector breakdowns.
+end_use_share:
+  office:
+    hvac: 0.55
+    lighting: 0.15
+    plug: 0.25
+    other: 0.05
+  school:
+    hvac: 0.45
+    lighting: 0.22
+    plug: 0.28
+    other: 0.05
+  clinic:
+    hvac: 0.50
+    lighting: 0.18
+    plug: 0.27
+    other: 0.05
+  admin_24x7:
+    hvac: 0.60
+    lighting: 0.20
+    plug: 0.17
+    other: 0.03
+
+# --- F3: building-condition multipliers -----------------------------
+# Applied to an intervention's saving_frac based on the building's
+# current state. A poorly insulated building has more to gain from
+# insulation than a well insulated one. Keyed by the catalog's adj_key
+# column; interventions with a blank adj_key get a multiplier of 1.0.
+# TODO(Nada): cite or justify each multiplier.
+adj:
+  insulation:
+    insulation_quality:
+      poor: 1.40
+      fair: 1.00
+      good: 0.40
+  glazing:
+    insulation_quality:
+      poor: 1.25
+      fair: 1.00
+      good: 0.60
+  hvac_replacement:
+    hvac_age_yr:
+      "<5": 0.50
+      "5-14": 1.00
+      ">=15": 1.30
+  hvac_controls:
+    hvac_age_yr:
+      "<5": 0.80
+      "5-14": 1.00
+      ">=15": 1.10
+
+# --- F2/F3: rooftop generation --------------------------------------
+# Generation is NOT an end-use reduction, so it takes a separate path.
+# Two details here are what make the per-building ranking genuinely flip,
+# and both were missing from the proposal:
+#   1. solar_fixed_egp does not scale with system size, so small
+#      installations are markedly worse per unit benefit. Without a fixed
+#      term the benefit density is scale-invariant and can never flip.
+#   2. self_consumption_cap: with no export tariff, generation beyond the
+#      building's own demand delivers no saving.
+solar:
+  usable_roof_frac: 0.55         # setbacks, shading, plant, walkways
+  m2_per_kwp: 7.0
+  yield_kwh_per_kwp: 1650        # Cairo, optimally tilted. TODO(Nada): cite PVGIS/NREL
+  orientation_factor:
+    S: 1.00
+    SE: 0.96
+    SW: 0.96
+    E: 0.88
+    W: 0.88
+    NE: 0.78
+    NW: 0.78
+    N: 0.72
+    FLAT: 0.95         # flat roofs take tilted mounting, so orientation barely matters
+  soiling_loss: 0.06             # dust. Higher in Egypt than European defaults
+  self_consumption_cap: 0.90     # no export tariff assumed
+  solar_fixed_egp: 120000        # inverter, mounting, connection, permits
+  solar_egp_per_kwp: 22000       # TODO(Nada): cite a dated supplier quotation
+
+# --- F4: bundling ----------------------------------------------------
+# Interventions acting on the same end use compose MULTIPLICATIVELY, not
+# additively: insulation cuts cooling load, an HVAC swap raises COP, and
+# both act on E_hvac = Load / COP. Naive addition overstates by 20-40%.
+bundling:
+  max_bundle_size: 3
+  cap_total_saving_frac: 0.95    # sanity ceiling on whole-building saving
+
+# --- F8: policy-style side constraints -------------------------------
+# The greedy heuristic cannot express these at all. This is the honest
+# argument for exact optimization, since the raw ILP-vs-greedy gap on an
+# unconstrained knapsack is only 1-3%.
+constraints:
+  max_funded_per_district: null  # null = unconstrained; set to 4 for the demo instance
+
+# --- plausibility guard rails ----------------------------------------
+# Hard assertions in the candidate recompute job, not just in tests.
+guards:
+  max_building_saving_frac: 1.0  # modelled savings may never exceed consumption

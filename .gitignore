@@ -1,0 +1,35 @@
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- secrets: never commit ---
+.env
+*.key
+secrets/
+
+# --- generated data (regenerate with scripts/, do not version) ---
+data/ground_truth.csv
+data/buildings.geojson
+data/*.parquet
+artifacts/
+models/
+out/
+
+# --- infrastructure state ---
+pgdata/
+mosquitto/data/
+mosquitto/log/
+grafana/data/
+integrity_anchor.log
+
+# --- OneDrive / Windows noise ---
+Thumbs.db
+desktop.ini
+~$*
