@@ -13,6 +13,7 @@ from gemp.domain.models import Allocation, Building, Candidate
 from gemp.optimize.baselines import solve_equal_split, solve_greedy
 from gemp.optimize.ilp import solve_ilp
 from gemp.optimize.objective import OBJECTIVES
+from gemp.optimize.prune import prune_dominated
 
 SOLVERS = {
     "cpsat": solve_ilp,
@@ -29,6 +30,7 @@ def solve(
     solver: str = "cpsat",
     objective: str = "lca_carbon",
     max_funded_per_district: int | None = None,
+    prune: bool = True,
 ) -> Allocation:
     if solver not in SOLVERS:
         raise ValueError(f"unknown solver {solver!r}; choose from {sorted(SOLVERS)}")
@@ -36,6 +38,9 @@ def solve(
         raise ValueError(f"unknown objective {objective!r}; choose from {sorted(OBJECTIVES)}")
     if budget_egp < 0:
         raise ValueError("budget must not be negative")
+
+    if prune:
+        candidates = prune_dominated(candidates, objective)
 
     return SOLVERS[solver](
         candidates,
@@ -53,6 +58,7 @@ def compare(
     *,
     objective: str = "lca_carbon",
     max_funded_per_district: int | None = None,
+    prune: bool = True,
 ) -> dict[str, Allocation]:
     """Run every solver on the same portfolio, budget and catalog."""
     return {
@@ -63,6 +69,7 @@ def compare(
             solver=name,
             objective=objective,
             max_funded_per_district=max_funded_per_district,
+            prune=prune,
         )
         for name in SOLVERS
     }

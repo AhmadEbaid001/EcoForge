@@ -17,7 +17,7 @@ python -m venv .venv && ./.venv/Scripts/python.exe -m pip install -e ".[dev]"
 ```
 
 ```bash
-python scripts/gen_buildings.py
+python scripts/fetch_osm_buildings.py
 ```
 
 ```bash
@@ -31,26 +31,43 @@ No database, no broker, no containers required for any of the above.
 | Command | What it does |
 |---|---|
 | `python -m gemp.domain.catalog --validate` | Check the data contract. Add `--strict` to fail on uncited catalog rows. |
-| `python scripts/gen_buildings.py` | Regenerate the 50-building portfolio fixture (seeded, deterministic). |
+| `python scripts/fetch_osm_buildings.py` | Build the portfolio from **real** OpenStreetMap footprints (New Cairo). Needs network. |
+| `python scripts/gen_buildings.py` | Offline fallback: synthetic square footprints, same schema. |
 | `python -m gemp.optimize.cli --budget 10000000` | Solve and print an allocation. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare` | CP-SAT vs greedy vs equal-split on the same instance. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats greedy. |
-| `python -m pytest` | 58 tests. |
+| `python -m pytest` | 92 tests. |
 
 ### Current headline numbers
 
-Fixture portfolio, 50 buildings, 47.4 GWh/yr, budget 10,000,000 EGP:
+50 real OSM footprints, New Cairo, 32.7 GWh/yr, budget 10,000,000 EGP:
 
 | Solver | Funded | Spent | Life-cycle kgCO₂e | vs equal split |
 |---|---|---|---|---|
-| equal_split | 15 | 2,393,951 | 6,006,512 | baseline |
-| greedy | 21 | 9,980,764 | 38,501,400 | +541 % |
-| cpsat | 12 | 9,990,172 | 40,719,581 | **+578 %** |
+| equal_split | 30 | 5,117,794 | 12,526,901 | baseline |
+| greedy | 34 | 9,966,764 | 29,923,997 | +139 % |
+| cpsat | 24 | 9,999,207 | 32,916,590 | **+163 %** |
 
-With a two-per-district cap, CP-SAT beats greedy by **+52 %** — greedy commits its
-district slots to cheap high-density options and strands 3.6 M EGP it can no longer
-spend. That constraint is the honest argument for exact optimization; without it the
-gap is only about 6 %.
+With a two-per-district cap the picture changes sharply — greedy spends only
+3.55 M of the 10 M because it commits its district slots to cheap high-density
+options and then cannot use the rest:
+
+| Solver | Funded | Spent | Life-cycle kgCO₂e | vs equal split |
+|---|---|---|---|---|
+| equal_split | 9 | 1,644,764 | 5,261,983 | baseline |
+| greedy | 10 | 3,553,479 | 13,411,548 | +155 % |
+| cpsat | 10 | 9,986,292 | 31,368,000 | **+496 %** |
+
+**CP-SAT over greedy: +10 % unconstrained, +134 % under the cap.** The unconstrained
+gap is small because a density-ordered heuristic is near-optimal on a plain knapsack —
+that is reported rather than hidden. The cap is where exact optimization earns its
+place, and it is also the realistic case: no ministry funds nine buildings in one
+district and none in the next.
+
+Dominance pruning removes 60 % of the candidate set (1367 → 540) before solving.
+Provably safe — any solution using a dominated option can be rewritten to use its
+dominator — and `test_pruning_does_not_change_any_solver_result` checks that across
+every solver × objective × budget combination.
 
 ---
 
@@ -72,6 +89,7 @@ src/gemp/
   optimize/    the core deliverable
     ilp.py         CP-SAT, absolute objective, district caps
     baselines.py   greedy and equal-split
+    prune.py       dominance pruning, objective-specific, provably result-preserving
     runner.py      one interface, three solvers, one return type
   ingest/      Phase 1: MQTT -> hash-chained storage
   ml/          Phase 2: forecasting and anomaly detection
