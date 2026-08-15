@@ -6,7 +6,7 @@ corresponds to something demonstrable live in psql.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -64,6 +64,32 @@ def test_canonical_is_order_independent_for_dict_keys():
     a = {"building_id": "b1", "ts": T0, "kw": 1.0, "source": "sim", "seq": 1}
     b = {"seq": 1, "source": "sim", "kw": 1.0, "ts": T0, "building_id": "b1"}
     assert canonical(a) == canonical(b)
+
+
+def test_canonical_is_stable_across_timezone_representations():
+    """Regression: the same instant must sign identically however a driver returns it.
+
+    Found by integration-testing the write path against SQLite, which drops the
+    offset entirely and returns naive datetimes. A PostgreSQL session in a non-UTC
+    timezone hits the same bug from the other direction - same instant, different
+    offset, different ISO string, broken signature. Signing whole UTC seconds instead
+    of a rendered string removes the representation from the equation.
+    """
+    aware_utc = {"building_id": "b1", "ts": T0, "kw": 1.0, "source": "sim", "seq": 1}
+    naive = {**aware_utc, "ts": T0.replace(tzinfo=None)}
+    other_offset = {**aware_utc, "ts": T0.astimezone(timezone(timedelta(hours=2)))}
+    as_string = {**aware_utc, "ts": T0.isoformat()}
+
+    reference = canonical(aware_utc)
+    assert canonical(naive) == reference
+    assert canonical(other_offset) == reference
+    assert canonical(as_string) == reference
+
+
+def test_canonical_still_distinguishes_different_instants():
+    a = {"building_id": "b1", "ts": T0, "kw": 1.0, "source": "sim", "seq": 1}
+    b = {**a, "ts": T0 + timedelta(seconds=1)}
+    assert canonical(a) != canonical(b)
 
 
 # --- happy path -------------------------------------------------------------

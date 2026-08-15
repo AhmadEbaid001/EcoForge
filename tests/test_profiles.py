@@ -18,20 +18,41 @@ def month():
     return START, START + timedelta(days=30)
 
 
-def test_series_conserves_annual_energy(month):
-    """The integral must match the portfolio's annual_kwh, pro-rated.
+def test_full_year_conserves_annual_energy():
+    """A full year must integrate to the portfolio's annual_kwh.
 
     If it drifts, the forecast-derived annual estimate stops matching the profile the
     optimizer was costed against and every savings figure quietly loses meaning.
     """
-    start, end = month
     building = make_building(annual_kwh=1_200_000.0)
-    series = generate_series(building, start, end, seed=1, dropout_rate=0.0,
-                             anomalies_per_month=0.0)
+    series = generate_series(building, datetime(2026, 1, 1, tzinfo=UTC),
+                             datetime(2027, 1, 1, tzinfo=UTC),
+                             seed=1, dropout_rate=0.0, anomalies_per_month=0.0,
+                             noise_cv=0.0)
 
-    span_hours = (end - start).total_seconds() / 3600.0
-    expected = building.annual_kwh * span_hours / 8760.0
-    assert series.total_kwh(15) == pytest.approx(expected, rel=1e-9)
+    assert series.total_kwh(15) == pytest.approx(building.annual_kwh, rel=1e-9)
+
+
+def test_a_month_is_not_forced_to_one_twelfth_of_the_year():
+    """Scaling is global, not per-window, and that distinction matters.
+
+    Normalising each generated span to its own pro-rata share would force January and
+    July to the same energy, erasing the cooling peak - the strongest seasonal signal
+    in Egyptian building load and the main thing a forecaster should learn.
+    """
+    building = make_building(annual_kwh=1_200_000.0)
+
+    def month_kwh(month: int) -> float:
+        start = datetime(2026, month, 1, tzinfo=UTC)
+        end = datetime(2026, month + 1, 1, tzinfo=UTC)
+        return generate_series(building, start, end, seed=2, dropout_rate=0.0,
+                               anomalies_per_month=0.0, noise_cv=0.0).total_kwh(15)
+
+    january = month_kwh(1)
+    july = month_kwh(7)
+    even_share = building.annual_kwh / 12
+
+    assert january < even_share < july
 
 
 def test_generation_is_deterministic_for_a_seed(month):

@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -32,13 +33,35 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.sql import Insert
+from sqlalchemy.sql import insert as generic_insert
 
 from gemp.config import get_settings
+
+# JSONB in PostgreSQL, plain JSON everywhere else. The fallback exists so the
+# ingestion path can be integration-tested against SQLite with no server running -
+# which matters more than usual here, because the container stack needs hardware
+# virtualisation that not every development machine has enabled.
+JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):
     pass
+
+
+def insert_ignore(table, dialect_name: str) -> Insert:
+    """Dialect-appropriate "insert, skipping rows that already exist".
+
+    Readings are deduplicated on (building_id, ts) because MQTT QoS 1 is
+    at-least-once and redelivery is normal rather than exceptional.
+    """
+    if dialect_name == "postgresql":
+        return pg_insert(table).on_conflict_do_nothing()
+    if dialect_name == "sqlite":
+        return generic_insert(table).prefix_with("OR IGNORE")
+    return generic_insert(table)
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +79,7 @@ class BuildingRow(Base):
 
     lat: Mapped[float] = mapped_column(Float)
     lon: Mapped[float] = mapped_column(Float)
-    footprint: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    footprint: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
     floor_area_m2: Mapped[float] = mapped_column(Float)
     roof_area_m2: Mapped[float] = mapped_column(Float)
@@ -159,7 +182,7 @@ class CandidateRow(Base):
         String(32), ForeignKey("building.id", ondelete="CASCADE"), index=True
     )
     district: Mapped[str] = mapped_column(String(64), index=True)
-    intervention_ids: Mapped[list] = mapped_column(JSONB)
+    intervention_ids: Mapped[list] = mapped_column(JSONType)
     label: Mapped[str] = mapped_column(Text)
 
     cost_egp: Mapped[float] = mapped_column(Float)
@@ -239,7 +262,7 @@ class AllocationRow(Base):
     building_code: Mapped[str] = mapped_column(String(64))
     district: Mapped[str] = mapped_column(String(64))
     candidate_key: Mapped[str] = mapped_column(String(255))
-    intervention_ids: Mapped[list] = mapped_column(JSONB)
+    intervention_ids: Mapped[list] = mapped_column(JSONType)
     label: Mapped[str] = mapped_column(Text)
     cost_egp: Mapped[float] = mapped_column(Float)
     annual_kwh_saving: Mapped[float] = mapped_column(Float)

@@ -23,12 +23,17 @@ import random
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 
 import numpy as np
 
 from gemp.domain.models import Building
 
 HOURS_PER_YEAR = 8760.0
+
+# Egyptian public holidays, (month, day). Approximate and fixed-date only; the
+# moveable Islamic holidays shift each year and are not modelled.
+HOLIDAYS = {(1, 7), (1, 25), (4, 25), (5, 1), (6, 30), (7, 23), (10, 6)}
 
 # Egypt: the weekend is Friday and Saturday. datetime.weekday() is Mon=0 .. Sun=6.
 WEEKEND_DAYS = {4, 5}
@@ -101,41 +106,71 @@ def _timestamps(start: datetime, end: datetime, step_minutes: int) -> list[datet
     return out
 
 
-def _base_shape(building: Building, timestamps: Sequence[datetime]) -> np.ndarray:
-    """Deterministic load shape, before noise, anomalies and normalisation."""
-    diurnal = np.array(DIURNAL[building.occupancy_pattern])
-    weekend = WEEKEND_FACTOR[building.occupancy_pattern]
+def shape_at(building: Building, ts: datetime) -> float:
+    """Deterministic load shape at one instant, before noise and anomalies."""
+    value = DIURNAL[building.occupancy_pattern][ts.hour]
+    if ts.weekday() in WEEKEND_DAYS:
+        value *= WEEKEND_FACTOR[building.occupancy_pattern]
+    value *= SEASONAL[ts.month - 1]
 
-    shape = np.empty(len(timestamps))
-    for i, ts in enumerate(timestamps):
+    if (ts.month, ts.day) in HOLIDAYS:
+        value *= 0.30
+    elif building.occupancy_pattern != "admin_24x7" and (
+        (ts.month == 2 and ts.day >= 18) or (ts.month == 3 and ts.day <= 19)
+    ):
+        value *= 0.80 if ts.hour >= 15 else 0.95
+
+    return value
+
+
+@lru_cache(maxsize=512)
+def _mean_annual_shape(occupancy: str, weekend_factor: float) -> float:
+    """Mean of the deterministic shape over a representative year.
+
+    Cached per occupancy pattern - the shape depends only on the pattern, so fifty
+    buildings share four computations.
+    """
+    diurnal = DIURNAL[occupancy]
+    total, count = 0.0, 0
+    ts = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2027, 1, 1, tzinfo=UTC)
+    while ts < end:
         value = diurnal[ts.hour]
         if ts.weekday() in WEEKEND_DAYS:
-            value *= weekend
+            value *= weekend_factor
         value *= SEASONAL[ts.month - 1]
-        shape[i] = value
-    return shape
-
-
-def _apply_holidays(
-    shape: np.ndarray, timestamps: Sequence[datetime], building: Building, rng: random.Random
-) -> None:
-    """Public holidays and a Ramadan schedule shift.
-
-    Both are real features of Egyptian building load and both are exactly the kind of
-    structure a naive seasonal baseline gets wrong, which is the point of including
-    them.
-    """
-    holiday_days = {(1, 7), (1, 25), (4, 25), (5, 1), (6, 30), (7, 23), (10, 6)}
-
-    for i, ts in enumerate(timestamps):
-        if (ts.month, ts.day) in holiday_days:
-            shape[i] *= 0.30
-        # Ramadan approximated for 2026: roughly 18 Feb - 19 Mar. Working hours shift
-        # earlier and shorten.
-        elif building.occupancy_pattern != "admin_24x7" and (
+        if (ts.month, ts.day) in HOLIDAYS:
+            value *= 0.30
+        elif occupancy != "admin_24x7" and (
             (ts.month == 2 and ts.day >= 18) or (ts.month == 3 and ts.day <= 19)
         ):
-            shape[i] *= 0.80 if ts.hour >= 15 else 0.95
+            value *= 0.80 if ts.hour >= 15 else 0.95
+        total += value
+        count += 1
+        ts += timedelta(hours=1)
+    return total / count
+
+
+def annual_scale(building: Building) -> float:
+    """kW per unit of shape, such that a full year integrates to `annual_kwh`.
+
+    Scaling is global rather than per-window on purpose. Normalising each generated
+    span to its own pro-rata share of the annual total would force a January month and
+    a July month to the same energy, erasing the seasonal cooling peak - which is one
+    of the strongest signals in Egyptian building load and the main thing a forecaster
+    should be picking up.
+    """
+    mean_shape = _mean_annual_shape(
+        building.occupancy_pattern, WEEKEND_FACTOR[building.occupancy_pattern]
+    )
+    return building.annual_kwh / (mean_shape * HOURS_PER_YEAR)
+
+
+def _base_shape(building: Building, timestamps: Sequence[datetime]) -> np.ndarray:
+    """Deterministic load shape across a series of timestamps."""
+    return np.fromiter(
+        (shape_at(building, ts) for ts in timestamps), dtype=float, count=len(timestamps)
+    )
 
 
 def _inject_anomalies(
@@ -212,9 +247,10 @@ def generate_series(
 ) -> Series:
     """A consumption series for one building over [start, end).
 
-    Scaled so the integral matches the building's annual consumption, pro-rated for
-    the span. Anomalies are applied AFTER scaling, so they represent genuine excess
-    rather than being normalised away.
+    Scaled by the building's global annual factor, so a full year integrates to
+    `annual_kwh` while a January month legitimately uses less energy than a July one.
+    Anomalies are applied AFTER scaling, so they represent genuine excess rather than
+    being normalised away.
     """
     rng = random.Random(seed if seed is not None else hash(building.id) & 0xFFFFFFFF)
     np_rng = np.random.default_rng(rng.randrange(2**32))
@@ -224,14 +260,8 @@ def generate_series(
         raise ValueError("empty time range")
 
     shape = _base_shape(building, timestamps)
-    _apply_holidays(shape, timestamps, building, rng)
     shape *= np_rng.lognormal(mean=0.0, sigma=noise_cv, size=len(shape))
-
-    # Scale so total energy over the span matches the building's annual figure.
-    span_hours = (end - start).total_seconds() / 3600.0
-    target_kwh = building.annual_kwh * (span_hours / HOURS_PER_YEAR)
-    step_hours = step_minutes / 60.0
-    kw = shape * (target_kwh / (shape.sum() * step_hours))
+    kw = shape * annual_scale(building)
 
     events = _inject_anomalies(
         kw, timestamps, building, rng, anomalies_per_month, step_minutes
@@ -249,6 +279,29 @@ def generate_series(
         anomalies=events,
         dropouts=dropped,
     )
+
+
+def point_kw(
+    building: Building,
+    ts: datetime,
+    *,
+    scale: float | None = None,
+    noise_cv: float = 0.06,
+    rng: np.random.Generator | None = None,
+) -> float:
+    """Load at a single instant, for the live simulator.
+
+    Uses the same shape and the same global scale factor as `generate_series`, so a
+    seeded backfill and the live stream that continues from it are drawn from one
+    consistent process - a discontinuity at the handover would show up as a fleet-wide
+    anomaly the moment the demonstration starts.
+    """
+    scale = annual_scale(building) if scale is None else scale
+    value = shape_at(building, ts) * scale
+    if noise_cv > 0:
+        generator = rng or np.random.default_rng()
+        value *= float(generator.lognormal(mean=0.0, sigma=noise_cv))
+    return max(value, 0.0)
 
 
 def now_utc() -> datetime:

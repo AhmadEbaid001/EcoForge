@@ -35,7 +35,7 @@ import hmac
 import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 # The chain's starting value. Any fixed constant works; a named one makes it obvious
@@ -85,7 +85,7 @@ def canonical(row: dict[str, Any]) -> bytes:
     try:
         payload = {
             "building_id": str(row["building_id"]),
-            "ts": _iso(row["ts"]),
+            "ts": epoch_seconds(row["ts"]),
             "kw": f"{float(row['kw']):.{KW_PRECISION}f}",
             "source": str(row["source"]),
             "seq": int(row["seq"]),
@@ -96,10 +96,28 @@ def canonical(row: dict[str, Any]) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def _iso(ts: datetime | str) -> str:
+def as_utc(ts: datetime | str) -> datetime:
+    """Normalise to an aware UTC datetime. Naive values are assumed to be UTC.
+
+    Everything the system stores is UTC, but not every driver returns it that way:
+    SQLite drops the offset entirely, and a PostgreSQL session in a non-UTC timezone
+    returns the same instant with a different offset.
+    """
     if isinstance(ts, str):
-        return ts
-    return ts.isoformat(timespec="seconds")
+        ts = datetime.fromisoformat(ts)
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=UTC)
+    return ts.astimezone(UTC)
+
+
+def epoch_seconds(ts: datetime | str) -> int:
+    """Timestamp as whole UTC seconds since the epoch.
+
+    Signing an ISO string would make verification depend on how the driver chose to
+    render the offset - the same failure mode as signing a float's repr, and just as
+    silent. An integer instant has exactly one representation.
+    """
+    return int(as_utc(ts).timestamp())
 
 
 def sign(key: bytes, row: dict[str, Any], prev_sig: bytes) -> bytes:
