@@ -46,6 +46,10 @@ from gemp.config import get_settings
 # virtualisation that not every development machine has enabled.
 JSONType = JSON().with_variant(JSONB(), "postgresql")
 
+# SQLite auto-increments INTEGER PRIMARY KEY only - a BIGINT primary key silently
+# fails its NOT NULL constraint on insert. BigInteger everywhere else.
+AutoPK = BigInteger().with_variant(Integer(), "sqlite")
+
 
 class Base(DeclarativeBase):
     pass
@@ -216,7 +220,7 @@ class ForecastRow(Base):
 class AnomalyRow(Base):
     __tablename__ = "anomaly"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(AutoPK, primary_key=True, autoincrement=True)
     building_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("building.id", ondelete="CASCADE"), index=True
     )
@@ -254,7 +258,7 @@ class OptimizationRunRow(Base):
 class AllocationRow(Base):
     __tablename__ = "allocation"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(AutoPK, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("optimization_run.id", ondelete="CASCADE"), index=True
     )

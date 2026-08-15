@@ -63,3 +63,9 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# B008 flags function calls in argument defaults. For FastAPI these ARE the idiom -
+# Depends() and Query() in a default is how the framework declares injection - so the
+# rule is a false positive here rather than a finding worth suppressing line by line.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body"]
