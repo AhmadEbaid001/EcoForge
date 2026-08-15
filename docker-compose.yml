@@ -1,0 +1,134 @@
+# Single-host deployment. Every component runs as a container on one machine, which
+# is the proposal's Section 3.1 decision and the right one after the team lost time
+# to managed free-tier suspensions.
+#
+# One change from the proposal: the LAPTOP is the primary demonstration host and the
+# VM is the mirror, not the other way round. Venue networking is the highest-
+# probability demo failure and it is the one thing the team cannot control. Nothing
+# here reaches the internet at runtime.
+
+name: gemp
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: always
+    environment:
+      POSTGRES_DB: ${GEMP_DB_NAME:-gemp}
+      POSTGRES_USER: ${GEMP_DB_USER:-gemp}
+      POSTGRES_PASSWORD: ${GEMP_DB_PASSWORD:?set GEMP_DB_PASSWORD in .env}
+      # Sized for the target 4 vCPU / 8 GB host.
+      TIMESCALEDB_TELEMETRY: "off"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"          # loopback only - not exposed to the network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GEMP_DB_USER:-gemp} -d ${GEMP_DB_NAME:-gemp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    restart: always
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - mosquitto_data:/mosquitto/data
+    ports:
+      - "127.0.0.1:1883:1883"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -t '$$SYS/#' -C 1 -W 3 -u ${GEMP_MQTT_USER:-gemp} -P ${GEMP_MQTT_PASSWORD:-gemp} || exit 1"]
+      interval: 10s
+      timeout: 6s
+      retries: 10
+
+  core:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      GEMP_DB_HOST: timescaledb
+      GEMP_MQTT_HOST: mosquitto
+    volumes:
+      - ./data:/app/data:ro
+      # Integrity anchor lives OUTSIDE the postgres volume on purpose (F5): an
+      # adversary who truncates the reading table must also reach this file.
+      - ./anchor:/app/anchor
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  sim:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    restart: always
+    command: ["python", "-m", "gemp.sim.node"]
+    env_file: .env
+    environment:
+      GEMP_MQTT_HOST: mosquitto
+      GEMP_DB_HOST: timescaledb
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      core:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    restart: always
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GEMP_GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # No outbound calls: the demo must work with the network cable unplugged.
+      GF_INSTALL_PLUGINS: ""
+      GEMP_DB_HOST: timescaledb
+      GEMP_DB_NAME: ${GEMP_DB_NAME:-gemp}
+      GEMP_DB_RO_USER: ${GEMP_DB_RO_USER:-gemp_ro}
+      GEMP_DB_RO_PASSWORD: ${GEMP_DB_RO_PASSWORD:-gemp_ro}
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  mosquitto_data:
+  grafana_data:

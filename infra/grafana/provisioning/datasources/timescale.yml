@@ -1,0 +1,23 @@
+# Provisioned as code so the dashboards survive a volume wipe. Clicking this in
+# through the UI before a demonstration is exactly the kind of manual step that gets
+# forgotten at the wrong moment.
+
+apiVersion: 1
+
+datasources:
+  - name: GEMP
+    type: postgres
+    access: proxy
+    url: ${GEMP_DB_HOST}:5432
+    database: ${GEMP_DB_NAME}
+    user: ${GEMP_DB_RO_USER}
+    isDefault: true
+    editable: false
+    secureJsonData:
+      password: ${GEMP_DB_RO_PASSWORD}
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: true
+      maxOpenConns: 5
+      maxIdleConns: 2

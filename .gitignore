@@ -33,3 +33,8 @@ integrity_anchor.log
 Thumbs.db
 desktop.ini
 ~$*
+
+# --- Phase 1 generated infrastructure secrets ---
+infra/mosquitto/passwd
+anchor/*
+!anchor/.gitkeep
