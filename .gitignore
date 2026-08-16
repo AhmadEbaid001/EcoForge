@@ -38,3 +38,6 @@ desktop.ini
 infra/mosquitto/passwd
 anchor/*
 !anchor/.gitkeep
+
+# UCI dataset: 133 MB, downloadable, not versioned
+data/household_power_consumption.txt
