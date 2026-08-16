@@ -26,7 +26,12 @@ from gemp.db import get_sessionmaker
 from gemp.domain.models import Allocation
 from gemp.optimize.objective import OBJECTIVES
 from gemp.optimize.runner import SOLVERS, improvement_pct
-from gemp.repository import latest_reading_ts, load_building_rows, read_series
+from gemp.repository import (
+    latest_reading_ts,
+    load_building_rows,
+    materialize_candidates,
+    read_series,
+)
 from gemp.services import OptimizerContext, get_run, run_optimization, verify_building_chain
 
 log = logging.getLogger("gemp.api")
@@ -273,6 +278,30 @@ def map_geojson(session: Session = Depends(get_session),
         })
 
     return {"type": "FeatureCollection", "features": features}
+
+
+@app.post("/api/v1/candidates/recompute")
+def recompute_candidates(session: Session = Depends(get_session)) -> dict:
+    """Rebuild the candidate set from the current portfolio, catalog and parameters.
+
+    Call this after Nada edits `data/`. It drops the cached context so the next
+    `/optimize` reflects the change, and writes the new set to the database so a
+    stored run remains explainable after the fact.
+    """
+    reset_context()
+    context = OptimizerContext.from_db(session)
+
+    global _context
+    _context = context
+
+    written = materialize_candidates(session, context.candidates, context.inputs_hash)
+    return {
+        "buildings": len(context.buildings),
+        "interventions": len(context.catalog),
+        "candidates": written,
+        "inputs_hash": context.inputs_hash[:16],
+        "uncited_catalog_rows": [iv.id for iv in context.catalog if iv.needs_citation],
+    }
 
 
 @app.get("/api/v1/buildings/{building_id}/series")

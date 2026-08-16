@@ -23,7 +23,7 @@ os.environ["GEMP_INGEST_ENABLED"] = "0"
 from gemp.api import main as api_main  # noqa: E402
 from gemp.db import Base, ReadingRow  # noqa: E402
 from gemp.ingest.integrity import GENESIS, sign  # noqa: E402
-from gemp.repository import import_portfolio  # noqa: E402
+from gemp.repository import import_portfolio, stored_candidate_count  # noqa: E402
 
 T0 = datetime(2026, 8, 14, 12, 0, 0, tzinfo=UTC)
 
@@ -195,6 +195,31 @@ def test_a_stored_run_can_be_read_back_and_annotates_the_map(client):
 
 def test_unknown_run_is_404(client):
     assert client.get("/api/v1/runs/does-not-exist").status_code == 404
+
+
+def test_recompute_materialises_the_candidate_set(client):
+    """Called after Nada edits data/. Writes the set a run was solved against, so a
+    stored recommendation stays explainable once the catalog moves on."""
+    body = client.post("/api/v1/candidates/recompute").json()
+
+    assert body["buildings"] == 50
+    assert body["candidates"] > 50
+    assert len(body["inputs_hash"]) == 16
+    assert body["uncited_catalog_rows"]
+
+    with client.session_scope() as session:
+        assert stored_candidate_count(session) == body["candidates"]
+
+
+def test_recompute_is_idempotent_for_unchanged_inputs(client):
+    """Re-running must not accumulate generations - "the current candidate set" would
+    stop being a well-defined thing."""
+    first = client.post("/api/v1/candidates/recompute").json()
+    second = client.post("/api/v1/candidates/recompute").json()
+
+    assert first["inputs_hash"] == second["inputs_hash"]
+    with client.session_scope() as session:
+        assert stored_candidate_count(session) == second["candidates"]
 
 
 # --- time series and integrity ----------------------------------------------

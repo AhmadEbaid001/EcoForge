@@ -7,13 +7,20 @@ know about both sides.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from gemp.db import BuildingRow, InterventionRow, ReadingRow, insert_ignore
-from gemp.domain.models import Building, Intervention
+from gemp.db import (
+    BuildingRow,
+    CandidateRow,
+    InterventionRow,
+    ReadingRow,
+    insert_ignore,
+)
+from gemp.domain.models import Building, Candidate, Intervention
 from gemp.domain.portfolio import load_geojson
 
 
@@ -87,6 +94,51 @@ def import_catalog(session: Session, catalog: list[Intervention]) -> int:
     ]
     session.execute(insert_ignore(InterventionRow, session.bind.dialect.name), records)
     return len(records)
+
+
+def materialize_candidates(
+    session: Session, candidates: Sequence[Candidate], inputs_hash: str
+) -> int:
+    """Persist the candidate set that a run was solved against.
+
+    The optimizer works from an in-memory set for speed, so this table is not on the
+    request path. It exists so a stored run can be explained months later - "why was
+    this building funded" is answerable only if the options it was compared against
+    were written down - and so a stale set is detectable via `inputs_hash` rather than
+    silently reused after the catalog is corrected.
+
+    Rows for other input hashes are cleared: keeping several generations would make
+    "the current candidate set" ambiguous, which is the opposite of the point.
+    """
+    session.execute(delete(CandidateRow).where(CandidateRow.inputs_hash != inputs_hash))
+
+    computed_at = datetime.now(UTC)
+    records = [
+        {
+            "key": c.key,
+            "building_id": c.building_id,
+            "district": c.district,
+            "intervention_ids": list(c.intervention_ids),
+            "label": c.label,
+            "cost_egp": c.cost_egp,
+            "annual_kwh_saving": c.annual_kwh_saving,
+            "lifetime_benefit_kgco2e": c.lifetime_benefit_kgco2e,
+            "annual_egp_saving": c.annual_egp_saving,
+            "computed_at": computed_at,
+            "inputs_hash": inputs_hash,
+        }
+        for c in candidates
+    ]
+    if records:
+        session.execute(insert_ignore(CandidateRow, session.bind.dialect.name), records)
+    return len(records)
+
+
+def stored_candidate_count(session: Session, inputs_hash: str | None = None) -> int:
+    stmt = select(func.count()).select_from(CandidateRow)
+    if inputs_hash:
+        stmt = stmt.where(CandidateRow.inputs_hash == inputs_hash)
+    return session.execute(stmt).scalar_one()
 
 
 def latest_reading_ts(session: Session, building_id: str | None = None) -> datetime | None:
