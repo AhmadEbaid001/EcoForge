@@ -9,6 +9,8 @@ command line with no web server involved.
 from __future__ import annotations
 
 import logging
+import os
+import threading
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -57,11 +59,41 @@ def reset_context() -> None:
     _context = None
 
 
+def _start_ingester() -> tuple[object, threading.Thread] | tuple[None, None]:
+    """Run the MQTT ingester as a thread inside the API process.
+
+    This is the modular-monolith decision made concrete: the ingester is a module
+    boundary, not a deployment boundary. Splitting it into its own container would
+    add a Dockerfile, a healthcheck and a failure mode for a workload that is a
+    batched INSERT every two seconds.
+
+    Set GEMP_INGEST_ENABLED=0 to run the API without it - useful when driving the
+    ingester manually from a test or a script.
+    """
+    if os.environ.get("GEMP_INGEST_ENABLED", "1") not in ("1", "true", "yes"):
+        log.info("ingester disabled by GEMP_INGEST_ENABLED")
+        return None, None
+
+    from gemp.ingest.consumer import Ingester
+
+    ingester = Ingester(get_settings())
+    thread = threading.Thread(target=ingester.run, name="gemp-ingest", daemon=True)
+    thread.start()
+    log.info("ingester thread started")
+    return ingester, thread
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("gemp api starting")
-    yield
-    log.info("gemp api stopping")
+    ingester, thread = _start_ingester()
+    try:
+        yield
+    finally:
+        if ingester is not None:
+            ingester.stop()
+            thread.join(timeout=10)
+        log.info("gemp api stopping")
 
 
 app = FastAPI(

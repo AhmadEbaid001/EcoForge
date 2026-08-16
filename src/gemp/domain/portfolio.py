@@ -11,14 +11,16 @@ import json
 from pathlib import Path
 
 from gemp.domain.models import Building
+from gemp.paths import data_dir
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data"
-BUILDINGS_PATH = DATA_DIR / "buildings.geojson"
+
+def buildings_path() -> Path:
+    return data_dir() / "buildings.geojson"
 
 
 def load_buildings(path: Path | None = None) -> list[Building]:
     """Read the portfolio fixture into domain objects."""
-    path = path or BUILDINGS_PATH
+    path = path or buildings_path()
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found. The portfolio fixture is generated, not versioned - "
@@ -31,5 +33,5 @@ def load_buildings(path: Path | None = None) -> list[Building]:
 
 def load_geojson(path: Path | None = None) -> dict:
     """Raw GeoJSON, for the map layer which needs the footprint geometry."""
-    path = path or BUILDINGS_PATH
+    path = path or buildings_path()
     return json.loads(path.read_text(encoding="utf-8"))

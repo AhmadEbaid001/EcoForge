@@ -23,10 +23,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import random
 import signal
 import sys
 import time
+import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -194,6 +196,33 @@ class SimulatorNode:
         self.published += 1
 
 
+def resume_point() -> datetime:
+    """Where the data clock should start: just after the newest stored reading.
+
+    Starting at wall-clock `now` instead leaves a hole between the seeded history and
+    the live stream, because the seed ends at the moment seeding finished while the
+    simulator would begin whenever its container happened to start - and under 720x
+    replay those drift apart fast. A gap looks like a fleet-wide outage on the
+    dashboard and poisons the forecaster's lag features.
+
+    Asks the API rather than the database so the simulator keeps no database
+    credentials and stays a pure publisher, exactly as a physical node would be.
+    """
+    url = os.environ.get("GEMP_API_URL", "http://core:8000") + "/health"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            latest = json.load(response).get("readings")
+        if latest:
+            resume = datetime.fromisoformat(latest) + timedelta(minutes=STEP_MINUTES)
+            log.info("resuming the data clock from stored history at %s", resume.isoformat())
+            return resume
+        log.info("no stored readings; starting the data clock at now")
+    except (OSError, ValueError) as exc:
+        log.warning("could not read %s (%s); starting the data clock at now", url, exc)
+
+    return datetime.now(UTC).replace(second=0, microsecond=0)
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)-5s %(name)s  %(message)s"
@@ -201,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--from", dest="data_start", default=None,
-                        help="ISO timestamp to start the data clock (default: now)")
+                        help="ISO timestamp to start the data clock (default: resume from stored history)")
     parser.add_argument("--max-readings", type=int, default=None,
                         help="stop after publishing this many (for smoke tests)")
     args = parser.parse_args(argv)
@@ -211,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     start = (
         datetime.fromisoformat(args.data_start)
         if args.data_start
-        else datetime.now(UTC).replace(second=0, microsecond=0)
+        else resume_point()
     )
 
     node = SimulatorNode(buildings, settings)

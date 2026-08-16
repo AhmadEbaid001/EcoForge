@@ -17,6 +17,8 @@ from sqlalchemy.orm import sessionmaker
 
 KEY_HEX = "cd" * 32
 os.environ.setdefault("GEMP_HMAC_KEY", KEY_HEX)
+# The API starts the MQTT ingester in its lifespan; these tests have no broker.
+os.environ["GEMP_INGEST_ENABLED"] = "0"
 
 from gemp.api import main as api_main  # noqa: E402
 from gemp.db import Base, ReadingRow  # noqa: E402

@@ -26,6 +26,8 @@ GEMP_HMAC_KEY={hmac_key}
 
 GEMP_DB_HOST=timescaledb
 GEMP_DB_PORT=5432
+# Host-side port for the container. 5432 is usually taken by a native install.
+GEMP_DB_HOST_PORT=5433
 GEMP_DB_NAME=gemp
 GEMP_DB_USER=gemp
 GEMP_DB_PASSWORD={db_password}

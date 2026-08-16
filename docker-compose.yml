@@ -23,7 +23,11 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./infra/initdb:/docker-entrypoint-initdb.d:ro
     ports:
-      - "127.0.0.1:5432:5432"          # loopback only - not exposed to the network
+      # Loopback only - never exposed to the network. Host port defaults to 5433
+      # because a native PostgreSQL install commonly already holds 5432, and taking
+      # it would break the developer's existing database rather than ours. Inside the
+      # compose network everything still talks to `timescaledb:5432`.
+      - "127.0.0.1:${GEMP_DB_HOST_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${GEMP_DB_USER:-gemp} -d ${GEMP_DB_NAME:-gemp}"]
       interval: 5s
@@ -58,6 +62,7 @@ services:
     environment:
       GEMP_DB_HOST: timescaledb
       GEMP_MQTT_HOST: mosquitto
+      GEMP_DATA_DIR: /app/data
     volumes:
       - ./data:/app/data:ro
       # Integrity anchor lives OUTSIDE the postgres volume on purpose (F5): an
@@ -85,6 +90,7 @@ services:
     environment:
       GEMP_MQTT_HOST: mosquitto
       GEMP_DB_HOST: timescaledb
+      GEMP_DATA_DIR: /app/data
     volumes:
       - ./data:/app/data:ro
     depends_on:

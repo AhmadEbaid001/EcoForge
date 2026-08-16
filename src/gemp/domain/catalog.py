@@ -22,10 +22,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gemp.domain.models import Building, Intervention
-
-DATA_DIR = Path(__file__).resolve().parents[3] / "data"
-CATALOG_PATH = DATA_DIR / "catalog.csv"
-PARAMS_PATH = DATA_DIR / "params.yaml"
+from gemp.paths import data_dir
 
 SHARE_TOLERANCE = 1e-6
 
@@ -242,14 +239,14 @@ def _building_field(building: Building, field: str, iv_id: str) -> Any:
 
 
 def load_params(path: Path | None = None) -> Params:
-    path = path or PARAMS_PATH
+    path = path or data_dir() / "params.yaml"
     with path.open(encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
     return Params.model_validate(raw)
 
 
 def load_catalog(path: Path | None = None) -> list[Intervention]:
-    path = path or CATALOG_PATH
+    path = path or data_dir() / "catalog.csv"
     with path.open(encoding="utf-8-sig", newline="") as fh:
         rows = list(csv.DictReader(fh))
 
