@@ -79,8 +79,27 @@ class Settings(BaseSettings):
         password = self.db_password.get_secret_value()
         return (
             f"postgresql+psycopg://{self.db_user}:{password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            f"@{self.resolved_db_host}:{self.db_port}/{self.db_name}"
         )
+
+    @property
+    def resolved_db_host(self) -> str:
+        """`localhost` is rewritten to `127.0.0.1`, deliberately.
+
+        Docker publishes the database as `127.0.0.1:5433`, which binds IPv4 only.
+        Windows resolves `localhost` to `::1` first, so an IPv6 connection is
+        attempted, hangs until the OS timeout, and only then falls back to IPv4.
+
+        Measured on this stack: connecting via `localhost` took 130.3 seconds;
+        via `127.0.0.1`, 0.2 seconds. The same query, a 650x difference, entirely
+        in name resolution. It presents as "the database is unusably slow" rather
+        than as a connection error, which is why it is worth removing here instead
+        of leaving it for whoever next runs a script from the host.
+
+        Containers are unaffected - they reach the database by service name on the
+        compose network - so this only ever helps host-side tooling.
+        """
+        return "127.0.0.1" if self.db_host == "localhost" else self.db_host
 
 
 @lru_cache

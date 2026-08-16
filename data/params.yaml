@@ -38,7 +38,20 @@ electricity_tariff_egp_per_kwh: 1.85
 # 1.4826 rescales MAD to be sigma-consistent under normality, so k keeps
 # its usual "number of sigmas" reading. Median/MAD replaces mean/sigma
 # because anomalies inflate sigma and mask each other.
-anomaly_k: 3.0
+# MEASURED, not assumed. `python -m gemp.ml.evaluate` sweeps k against the anomalies
+# the simulator injected and reports precision/recall at each value. On the seeded
+# portfolio (450 injected events, 342k hourly points):
+#
+#     k=4  flag rate 1.74%  precision 0.148  recall 0.664
+#     k=6  flag rate 0.95%  precision 0.149  recall 0.529
+#     k=8  flag rate 0.57%  precision 0.148  recall 0.407
+#
+# k=4 is set because recall matters more than precision for an operator triaging a
+# portfolio: a missed fault costs energy every hour it runs, while a false flag costs
+# one look at a chart. Precision is POOR at every threshold and does not yet meet the
+# 0.6 target - see the notes in src/gemp/ml/evaluate.py. Re-run the sweep after any
+# change to the forecaster.
+anomaly_k: 4.0
 anomaly_window_days: 30          # evaluated in DATA time, never wall time
 
 # --- F3: end-use disaggregation -------------------------------------
