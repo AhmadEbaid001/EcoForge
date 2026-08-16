@@ -7,7 +7,8 @@ Three families, in descending order of how much they actually explain building l
    an occupancy schedule that repeats weekly.
 2. **Calendar.** Hour of day and day of week, encoded cyclically so that hour 23 sits
    next to hour 0 rather than 23 units away. Plus the Egyptian Friday-Saturday
-   weekend, which a model assuming a Western week gets wrong two days in seven.
+   weekend, which a model assuming a Western week gets wrong two days in seven, and
+   the public-holiday and Ramadan flags from `gemp.calendar_eg`.
 3. **Rolling statistics.** Recent mean and spread, which carry season and weather
    without needing a weather feed the project does not have.
 
@@ -20,6 +21,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+from gemp.calendar_eg import holiday_flags
 
 # Egypt: the weekend is Friday and Saturday. pandas dayofweek is Mon=0 .. Sun=6.
 WEEKEND_DAYS = {4, 5}
@@ -35,6 +38,13 @@ FEATURE_COLUMNS: tuple[str, ...] = (
     "dow_sin", "dow_cos",
     "is_weekend",
     "month_sin", "month_cos",
+    # Day-of-year resolves the seasonal curve inside a month; month indicators alone
+    # force a 30-day plateau onto a signal that moves continuously.
+    "doy_sin", "doy_cos",
+    # Without these the model mispredicts holiday load by ~70%, and the anomaly
+    # detector faithfully reports every hour of it. Measured: the five worst days in
+    # the evaluation were all public holidays.
+    "is_holiday", "is_ramadan", "is_day_after_holiday", "is_week_after_holiday",
 )
 
 # Longest lookback any feature needs. A row earlier than this has no complete
@@ -81,6 +91,7 @@ def build_features(hourly: pd.DataFrame) -> pd.DataFrame:
     hour = index.hour.to_numpy()
     dow = index.dayofweek.to_numpy()
     month = index.month.to_numpy()
+    doy = index.dayofyear.to_numpy()
 
     # Cyclical encoding: hour 23 and hour 0 are adjacent, and a tree model given a
     # raw 0-23 integer has to spend splits rediscovering that.
@@ -90,7 +101,12 @@ def build_features(hourly: pd.DataFrame) -> pd.DataFrame:
     out["dow_cos"] = np.cos(2 * np.pi * dow / 7)
     out["month_sin"] = np.sin(2 * np.pi * (month - 1) / 12)
     out["month_cos"] = np.cos(2 * np.pi * (month - 1) / 12)
+    out["doy_sin"] = np.sin(2 * np.pi * doy / 365.25)
+    out["doy_cos"] = np.cos(2 * np.pi * doy / 365.25)
     out["is_weekend"] = np.isin(dow, list(WEEKEND_DAYS)).astype(float)
+
+    for name, values in holiday_flags(index).items():
+        out[name] = values
 
     return out
 

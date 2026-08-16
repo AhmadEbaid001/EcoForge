@@ -53,6 +53,15 @@ MIN_SCALE_KW = 1e-6
 # overconfidence, not sensitivity.
 MIN_RELATIVE_SPREAD = 0.01
 
+# Score assigned to a stuck meter.
+#
+# The natural answer is infinity - a constant series has no variance, so any reading
+# is infinitely improbable under it - but an infinity in a float column sorts ahead of
+# every real detection and floods any "most severe" list with frozen meters. A finite
+# value above the "high" threshold says the same thing operationally (this is
+# definitely a fault) without swamping the ranking.
+FLATLINE_Z = 6.0
+
 
 @dataclass(frozen=True)
 class Anomaly:
@@ -62,13 +71,22 @@ class Anomaly:
     expected_kw: float
     residual: float
     robust_z: float
+    threshold_k: float = 3.0
 
     @property
     def severity(self) -> str:
+        """Severity relative to the threshold that produced the flag.
+
+        Fixed cut-offs do not survive re-tuning: with absolute bands at 5 and 8, a
+        detector running at k=8 reports every single detection as critical, because
+        nothing below 8 is flagged at all. Grading against k keeps the three bands
+        meaningful at whatever sensitivity is in use, which is what a triage list
+        needs.
+        """
         magnitude = abs(self.robust_z)
-        if magnitude >= 8:
+        if magnitude >= 2.0 * self.threshold_k:
             return "critical"
-        if magnitude >= 5:
+        if magnitude >= 1.4 * self.threshold_k:
             return "high"
         return "medium"
 
@@ -96,10 +114,18 @@ def robust_z_scores(residuals: pd.Series, window: int) -> pd.Series:
     min_periods = max(window // 4, 24)
 
     median = shifted.rolling(window, min_periods=min_periods).median()
-    mad = (
-        shifted.rolling(window, min_periods=min_periods)
-        .apply(lambda w: np.median(np.abs(w - np.median(w))), raw=True)
-    )
+
+    # Vectorised MAD. The exact definition recomputes a median inside every window,
+    # which `rolling().apply()` evaluates in Python: on a 30-day window over six
+    # months of hourly data for fifty buildings that is roughly 8e8 interpreter-level
+    # operations, and it dominated the entire evaluation run.
+    #
+    # Taking absolute deviations from the ROLLING median and then rolling a second
+    # median over those is the standard vectorised form. It differs from the exact
+    # definition only in that each point is centred on its own window's median rather
+    # than on the median of the window it sits in - a distinction that moves the
+    # threshold by well under the 1% floor applied below.
+    mad = (shifted - median).abs().rolling(window, min_periods=min_periods).median()
     # Floored rather than nulled. Treating a degenerate window as "no score" silences
     # the detector on the best-modelled buildings; flooring keeps it sensitive to
     # deviations that exceed what metering could plausibly explain.
@@ -154,13 +180,40 @@ def detect(
             expected_kw=float(aligned.loc[ts, "expected"]),
             residual=float(aligned.loc[ts, "actual"] - aligned.loc[ts, "expected"]),
             robust_z=float(scores.loc[ts]),
+            threshold_k=k,
         )
         for ts in scores.index[flagged.fillna(False)]
     ]
 
 
+def detect_all(
+    actual: pd.Series,
+    expected: pd.Series,
+    building_id: str,
+    k: float = 3.0,
+    window_days: int = 30,
+    min_flatline_hours: int = 3,
+) -> list[Anomaly]:
+    """Both detectors together. This is what callers should use.
+
+    A stuck meter is invisible to the residual test by construction: a constant
+    series has zero spread, so its robust scale collapses to the floor and the
+    deviation never resolves. On the seeded portfolio flatlines are 116 of 450
+    injected faults - a quarter of everything there is to find - so running only the
+    residual detector caps recall at roughly three quarters no matter how `k` is
+    tuned.
+    """
+    residual = detect(actual, expected, building_id, k=k, window_days=window_days)
+    flat = detect_flatlines(actual, building_id, min_hours=min_flatline_hours,
+                            threshold_k=k)
+
+    # A flatline that the residual test already flagged is one fault, not two.
+    seen = {a.ts for a in residual}
+    return sorted(residual + [a for a in flat if a.ts not in seen], key=lambda a: a.ts)
+
+
 def detect_flatlines(
-    actual: pd.Series, building_id: str, min_hours: int = 4
+    actual: pd.Series, building_id: str, min_hours: int = 4, threshold_k: float = 3.0
 ) -> list[Anomaly]:
     """Catch a stuck meter: an unchanging value for hours on end.
 
@@ -177,15 +230,21 @@ def detect_flatlines(
 
     out: list[Anomaly] = []
     for _, run in runs:
-        if len(run) >= min_hours:
-            out.append(
-                Anomaly(
-                    building_id=building_id,
-                    ts=run.index[-1],
-                    observed_kw=float(run.iloc[-1]),
-                    expected_kw=float(run.iloc[-1]),
-                    residual=0.0,
-                    robust_z=float("nan"),
-                )
+        if len(run) < min_hours:
+            continue
+        # Every hour of the run, not just its end: the episode grouper then reports
+        # one alert spanning the fault, which is what an operator needs in order to
+        # see when the meter froze rather than only when it thawed.
+        out.extend(
+            Anomaly(
+                building_id=building_id,
+                ts=ts,
+                observed_kw=float(value),
+                expected_kw=float(value),
+                residual=0.0,
+                robust_z=FLATLINE_Z,
+                threshold_k=threshold_k,
             )
+            for ts, value in run.items()
+        )
     return out

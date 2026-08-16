@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from gemp.config import get_settings
 from gemp.db import get_sessionmaker
+from gemp.domain.catalog import load_params
 from gemp.domain.models import Allocation
 from gemp.optimize.objective import OBJECTIVES
 from gemp.optimize.runner import SOLVERS, improvement_pct
@@ -278,6 +279,66 @@ def map_geojson(session: Session = Depends(get_session),
         })
 
     return {"type": "FeatureCollection", "features": features}
+
+
+@app.get("/api/v1/metrics/forecast")
+def forecast_metrics(session: Session = Depends(get_session)) -> dict:
+    """Which forecaster is in use per building, and how much history it has.
+
+    Surfaces the fallback rule rather than hiding it: a portfolio where the learned
+    model wins on only a handful of buildings is telling you the load is close to
+    perfectly weekly, which is information, not a failure.
+    """
+    rows = session.execute(text("""
+        SELECT model_version, count(DISTINCT building_id) AS buildings, count(*) AS points
+        FROM forecast GROUP BY model_version
+    """)).all()
+
+    sources = session.execute(text("""
+        SELECT annual_kwh_source, count(*) FROM building GROUP BY annual_kwh_source
+    """)).all()
+
+    return {
+        "by_model": [
+            {"model_version": r[0], "buildings": r[1], "points": r[2]} for r in rows
+        ],
+        # F3: how many buildings are costed against measured consumption rather than
+        # the figure the portfolio fixture shipped with.
+        "annual_kwh_source": {row[0]: row[1] for row in sources},
+    }
+
+
+@app.get("/api/v1/metrics/anomaly")
+def anomaly_metrics(session: Session = Depends(get_session),
+                    limit: int = Query(default=20, le=200)) -> dict:
+    """Current anomaly load, and the most severe open items."""
+    by_severity = session.execute(text("""
+        SELECT severity, count(*) FROM anomaly GROUP BY severity
+    """)).all()
+
+    worst = session.execute(text("""
+        SELECT a.building_id, b.code, a.ts, a.observed_kw, a.expected_kw,
+               a.robust_z, a.severity
+        FROM anomaly a JOIN building b ON b.id = a.building_id
+        WHERE NOT a.acknowledged
+        ORDER BY abs(a.robust_z) DESC NULLS LAST
+        LIMIT :limit
+    """), {"limit": limit}).all()
+
+    params = load_params()
+    return {
+        "threshold_k": params.anomaly_k,
+        "window_days": params.anomaly_window_days,
+        "by_severity": {row[0]: row[1] for row in by_severity},
+        "worst": [
+            {
+                "building_id": r[0], "building_code": r[1], "ts": r[2].isoformat(),
+                "observed_kw": r[3], "expected_kw": r[4],
+                "robust_z": None if r[5] != r[5] else r[5], "severity": r[6],
+            }
+            for r in worst
+        ],
+    }
 
 
 @app.post("/api/v1/candidates/recompute")

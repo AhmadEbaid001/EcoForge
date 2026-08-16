@@ -6,16 +6,29 @@ measurable because the simulator records the anomalies it injects. This module i
 that measurement. Without it `k = 3` is a guess, and a guess is not something to put
 in front of judges next to the word "tuned".
 
-Matching is at EVENT level, not sample level, and the asymmetry is deliberate:
+Both sides are measured in EPISODES, and getting that right mattered more than any
+change to the detector itself.
 
-* **Recall** counts a ground-truth event as found if at least one hour inside it was
-  flagged. An operator who is told "this building has a fault, starting Tuesday" does
-  not need every hour of that fault flagged separately.
-* **Precision** counts a flagged hour as correct if it falls inside any event for
-  that building. Flagging the same real fault for ten consecutive hours is one
-  correct detection repeated, not ten separate false alarms.
+An earlier version counted recall over events but precision over individual flagged
+hours. Mixing units makes the F1 meaningless: a single real ten-hour fault that the
+detector flags for six hours scores as six predictions rather than one correct alert,
+so precision is divided by a number that has nothing to do with how many times anyone
+was actually told something. Measured on the seeded portfolio, that mis-specification
+alone reported precision around 0.19 for a detector whose episode precision is far
+higher.
 
-    python -m gemp.ml.evaluate --sweep
+The unit that matters is the alert. Consecutive flagged hours are grouped into one
+detection episode, and then:
+
+* **Recall** - a ground-truth event is found if any episode overlaps it.
+* **Precision** - an episode is correct if it overlaps any event for that building.
+
+Episodes separated by less than `MERGE_GAP_HOURS` are merged, because a fault whose
+signal dips below threshold for an hour in the middle is still one fault. Overlap is
+tested with a small tolerance for the same reason a fault's boundary is not sharp:
+lag features carry a disturbance for hours after the event itself ends.
+
+    python -m gemp.ml.evaluate
 """
 
 from __future__ import annotations
@@ -25,13 +38,13 @@ import csv
 import logging
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 
 from gemp.db import get_engine
 from gemp.domain.catalog import load_params
-from gemp.ml.anomaly import detect
+from gemp.ml.anomaly import detect_all
 from gemp.ml.dataset import load_hourly_all
 from gemp.ml.forecast import fit_building
 from gemp.paths import data_dir
@@ -39,10 +52,31 @@ from gemp.paths import data_dir
 log = logging.getLogger("gemp.ml.evaluate")
 
 
+# A fault whose signal dips below threshold for an hour or two is still one fault,
+# not three. Merging avoids counting the gaps as separate false alarms.
+MERGE_GAP_HOURS = 3
+
+# Lag features carry a disturbance forward after the event itself ends, so a flag
+# shortly after a real fault is a late alert rather than a false one.
+OVERLAP_TOLERANCE_HOURS = 3
+
+
+@dataclass
+class Episode:
+    """A run of consecutive flagged hours - one alert an operator would receive."""
+
+    building_id: str
+    start: datetime
+    end: datetime
+    peak_z: float
+    hours: int
+
+
 @dataclass
 class Scores:
     k: float
     flagged: int
+    episodes: int
     events: int
     events_found: int
     true_positives: int
@@ -54,7 +88,8 @@ class Scores:
 
     @property
     def precision(self) -> float:
-        return self.true_positives / self.flagged if self.flagged else 0.0
+        """Fraction of ALERTS that were real - episodes, not hours."""
+        return self.true_positives / self.episodes if self.episodes else 0.0
 
     @property
     def f1(self) -> float:
@@ -63,10 +98,40 @@ class Scores:
 
     def row(self) -> str:
         return (
-            f"  {self.k:>4.1f}  {self.flagged:>8,}  {self.flag_rate:>7.2%}  "
-            f"{self.precision:>9.3f}  {self.recall:>7.3f}  {self.f1:>6.3f}  "
-            f"{self.events_found:>4}/{self.events}"
+            f"  {self.k:>4.1f}  {self.flagged:>8,}  {self.episodes:>8,}  "
+            f"{self.flag_rate:>7.2%}  {self.precision:>9.3f}  {self.recall:>7.3f}  "
+            f"{self.f1:>6.3f}  {self.events_found:>4}/{self.events}"
         )
+
+
+def to_episodes(building_id: str, anomalies: list) -> list[Episode]:
+    """Group consecutive flagged hours into the alerts an operator would receive."""
+    if not anomalies:
+        return []
+
+    ordered = sorted(anomalies, key=lambda a: a.ts)
+    episodes: list[Episode] = []
+    start = prev = ordered[0].ts
+    peak = abs(ordered[0].robust_z)
+    hours = 1
+
+    for anomaly in ordered[1:]:
+        gap = (anomaly.ts - prev).total_seconds() / 3600
+        if gap <= MERGE_GAP_HOURS:
+            prev = anomaly.ts
+            peak = max(peak, abs(anomaly.robust_z))
+            hours += 1
+            continue
+
+        episodes.append(Episode(building_id, start.to_pydatetime(),
+                                prev.to_pydatetime(), peak, hours))
+        start = prev = anomaly.ts
+        peak = abs(anomaly.robust_z)
+        hours = 1
+
+    episodes.append(Episode(building_id, start.to_pydatetime(),
+                            prev.to_pydatetime(), peak, hours))
+    return episodes
 
 
 def load_ground_truth(path=None) -> pd.DataFrame:
@@ -93,28 +158,35 @@ def load_ground_truth(path=None) -> pd.DataFrame:
 
 
 def score(detections: dict[str, list], truth: pd.DataFrame) -> Scores:
-    """Precision, recall and F1 at event level."""
+    """Episode-level precision, recall and F1 - consistent units on both sides."""
+    tolerance = timedelta(hours=OVERLAP_TOLERANCE_HOURS)
+
     by_building: dict[str, list[tuple[datetime, datetime]]] = {}
     for row in truth.itertuples():
         by_building.setdefault(row.building_id, []).append((row.start, row.end))
 
     flagged = sum(len(v) for v in detections.values())
+    episodes: list[Episode] = []
+    for building_id, anomalies in detections.items():
+        episodes.extend(to_episodes(building_id, anomalies))
+
     true_positives = 0
     found: set[tuple[str, datetime]] = set()
 
-    for building_id, anomalies in detections.items():
-        windows = by_building.get(building_id, [])
-        for anomaly in anomalies:
-            ts = anomaly.ts.to_pydatetime()
-            for start, end in windows:
-                if start <= ts <= end:
-                    true_positives += 1
-                    found.add((building_id, start))
-                    break
+    for episode in episodes:
+        matched = False
+        for start, end in by_building.get(episode.building_id, []):
+            # Interval overlap, widened by the tolerance on both sides.
+            if episode.start <= end + tolerance and episode.end >= start - tolerance:
+                matched = True
+                found.add((episode.building_id, start))
+        if matched:
+            true_positives += 1
 
     return Scores(
         k=0.0,
         flagged=flagged,
+        episodes=len(episodes),
         events=len(truth),
         events_found=len(found),
         true_positives=true_positives,
@@ -149,7 +221,7 @@ def sweep(k_values: list[float], test_hours: int = 24 * 14) -> list[Scores]:
     out: list[Scores] = []
     for k in k_values:
         detections = {
-            building_id: detect(
+            building_id: detect_all(
                 actual, expected, building_id,
                 k=k, window_days=params.anomaly_window_days,
             )
@@ -181,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print("\n     k   flagged  flag-rate  precision   recall      F1  events found")
-    print(f"  {'-' * 64}")
+    print(f"  {'-' * 76}")
     for scores in results:
         print(scores.row())
 

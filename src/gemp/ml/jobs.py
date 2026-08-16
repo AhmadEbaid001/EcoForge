@@ -31,7 +31,7 @@ from sqlalchemy import delete, update
 
 from gemp.db import AnomalyRow, BuildingRow, ForecastRow, get_engine, insert_ignore, session_scope
 from gemp.domain.catalog import load_params
-from gemp.ml.anomaly import detect
+from gemp.ml.anomaly import detect_all
 from gemp.ml.dataset import load_hourly_all
 from gemp.ml.forecast import ForecastResult, fit_building
 
@@ -69,14 +69,14 @@ def run_nightly(
         if store_forecasts:
             _store_forecast(result)
 
-        anomalies = detect(
+        anomalies = detect_all(
             actual=frame.set_index("ts")["kw"],
             expected=_expected_series(frame, result),
             building_id=building_id,
             k=params.anomaly_k,
             window_days=params.anomaly_window_days,
         )
-        anomaly_count += _store_anomalies(anomalies)
+        anomaly_count += _store_anomalies(anomalies, building_id)
 
     if update_annual:
         _update_annual_kwh(results)
@@ -141,7 +141,16 @@ def _store_forecast(result: ForecastResult) -> None:
         session.execute(insert_ignore(ForecastRow, session.bind.dialect.name), records)
 
 
-def _store_anomalies(anomalies) -> int:
+def _store_anomalies(anomalies, building_id: str) -> int:
+    """Replace this building's anomalies rather than adding to them.
+
+    Accumulating across runs mixes detections made at different thresholds: after
+    tuning k from 4 to 8, the table still held every k=4 flag, so the dashboard
+    showed a sensitivity nobody had chosen.
+    """
+    with session_scope() as session:
+        session.execute(delete(AnomalyRow).where(AnomalyRow.building_id == building_id))
+
     if not anomalies:
         return 0
 

@@ -27,13 +27,15 @@ from functools import lru_cache
 
 import numpy as np
 
+from gemp.calendar_eg import PUBLIC_HOLIDAYS
 from gemp.domain.models import Building
 
 HOURS_PER_YEAR = 8760.0
 
-# Egyptian public holidays, (month, day). Approximate and fixed-date only; the
-# moveable Islamic holidays shift each year and are not modelled.
-HOLIDAYS = {(1, 7), (1, 25), (4, 25), (5, 1), (6, 30), (7, 23), (10, 6)}
+# Shared with the forecaster's feature builder. When these two disagreed, the model
+# had no way to know the building was shut and the detector reported the whole
+# holiday as an anomaly.
+HOLIDAYS = PUBLIC_HOLIDAYS
 
 # Egypt: the weekend is Friday and Saturday. datetime.weekday() is Mon=0 .. Sun=6.
 WEEKEND_DAYS = {4, 5}
@@ -63,7 +65,32 @@ DIURNAL: dict[str, list[float]] = {
 WEEKEND_FACTOR = {"office": 0.35, "school": 0.20, "clinic": 0.75, "admin_24x7": 0.90}
 
 # Monthly cooling multiplier, January..December. Cairo: hot summers drive HVAC.
+# Anchored at mid-month and interpolated - see `seasonal_factor`.
 SEASONAL = [0.72, 0.74, 0.82, 0.92, 1.08, 1.24, 1.35, 1.34, 1.18, 1.00, 0.84, 0.74]
+
+# Day-of-year midpoints of each month, for interpolation.
+_MONTH_MID_DOY = np.array([15, 45, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349])
+# Wrapped on both ends so December interpolates smoothly into January.
+_SEASONAL_X = np.concatenate(([_MONTH_MID_DOY[-1] - 365], _MONTH_MID_DOY,
+                              [_MONTH_MID_DOY[0] + 365]))
+_SEASONAL_Y = np.concatenate(([SEASONAL[-1]], SEASONAL, [SEASONAL[0]]))
+
+
+def seasonal_factor(ts: datetime) -> float:
+    """Cooling multiplier, interpolated smoothly across the year.
+
+    Applying the monthly value as a step made load jump discontinuously at midnight
+    on the first of each month - 17 per cent between April and May. Nothing in the
+    data predicts that jump, because nothing causes it: real seasonal load follows
+    temperature, which does not step on the calendar. The forecaster mispredicted
+    every month boundary and the anomaly detector duly reported each one, so a
+    modelling shortcut in the generator was manufacturing false positives in the
+    detector.
+
+    Interpolating between mid-month anchors keeps the same seasonal shape while
+    making it continuous, and therefore learnable.
+    """
+    return float(np.interp(ts.timetuple().tm_yday, _SEASONAL_X, _SEASONAL_Y))
 
 ANOMALY_KINDS = ("stuck_on", "spike", "drift", "flatline")
 
@@ -111,7 +138,7 @@ def shape_at(building: Building, ts: datetime) -> float:
     value = DIURNAL[building.occupancy_pattern][ts.hour]
     if ts.weekday() in WEEKEND_DAYS:
         value *= WEEKEND_FACTOR[building.occupancy_pattern]
-    value *= SEASONAL[ts.month - 1]
+    value *= seasonal_factor(ts)
 
     if (ts.month, ts.day) in HOLIDAYS:
         value *= 0.30
@@ -138,7 +165,7 @@ def _mean_annual_shape(occupancy: str, weekend_factor: float) -> float:
         value = diurnal[ts.hour]
         if ts.weekday() in WEEKEND_DAYS:
             value *= weekend_factor
-        value *= SEASONAL[ts.month - 1]
+        value *= seasonal_factor(ts)
         if (ts.month, ts.day) in HOLIDAYS:
             value *= 0.30
         elif occupancy != "admin_24x7" and (

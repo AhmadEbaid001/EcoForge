@@ -39,19 +39,25 @@ electricity_tariff_egp_per_kwh: 1.85
 # its usual "number of sigmas" reading. Median/MAD replaces mean/sigma
 # because anomalies inflate sigma and mask each other.
 # MEASURED, not assumed. `python -m gemp.ml.evaluate` sweeps k against the anomalies
-# the simulator injected and reports precision/recall at each value. On the seeded
-# portfolio (450 injected events, 342k hourly points):
+# the simulator injected and reports EPISODE-level precision and recall - one alert
+# per incident, which is the unit an operator actually receives.
 #
-#     k=4  flag rate 1.74%  precision 0.148  recall 0.664
-#     k=6  flag rate 0.95%  precision 0.149  recall 0.529
-#     k=8  flag rate 0.57%  precision 0.148  recall 0.407
+# On the seeded portfolio (450 injected faults, 50 buildings, 6 months):
 #
-# k=4 is set because recall matters more than precision for an operator triaging a
-# portfolio: a missed fault costs energy every hour it runs, while a false flag costs
-# one look at a chart. Precision is POOR at every threshold and does not yet meet the
-# 0.6 target - see the notes in src/gemp/ml/evaluate.py. Re-run the sweep after any
-# change to the forecaster.
-anomaly_k: 4.0
+#     k      episodes   precision   recall     F1
+#     4        1,917       0.375     0.913    0.532
+#     6        1,189       0.474     0.853    0.610
+#     8          878       0.502     0.818    0.622   <- set
+#    10          702       0.533     0.762    0.627
+#    12          590       0.541     0.700    0.610
+#
+# k=8 is chosen over the marginally higher F1 at k=10 because recall matters more
+# than precision here: a missed fault burns energy every hour it runs, while a false
+# alert costs one look at a chart. At k=8 the false-alert rate is about 1.5 per
+# building per six months, which is a manageable inbox.
+#
+# Precision of 0.50 does NOT meet the 0.6 target set in the review. Recall does.
+anomaly_k: 8.0
 anomaly_window_days: 30          # evaluated in DATA time, never wall time
 
 # --- F3: end-use disaggregation -------------------------------------
