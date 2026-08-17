@@ -22,8 +22,18 @@ decision or display it.
 | 4 — evaluation harness, hardening, CI | done |
 | 5 — rehearsal, documentation | **next** |
 
-271 tests (12 of them PostgreSQL integration tests that skip without the stack), lint
-clean. Six containers healthy.
+278 tests plus 15 integration tests that skip themselves without the stack, 83%
+coverage, lint clean. Six containers healthy.
+
+Integration tests need the stack and their own environment:
+
+```bash
+GEMP_DB_HOST=127.0.0.1 GEMP_DB_PORT=5433 GEMP_MQTT_HOST=127.0.0.1 pytest -m integration
+```
+
+They never write to the demonstration database. The PostgreSQL ones roll back; the
+MQTT ones use a throwaway SQLite file and a test-only topic prefix the running
+ingester does not subscribe to.
 
 ## Run it
 
@@ -81,6 +91,22 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   false alarm. Coverage is tracked **per source** (`seed`, `live`) and episodes outside
   a covered window are excluded rather than judged — a single min-to-max span would
   swallow the gap where nothing was being recorded and reintroduce the same error.
+- **Code that is written but never called looks exactly like code that works.**
+  `verify_against_checkpoint` was implemented and unit-tested in Phase 1 and called by
+  nothing until Phase 4: the endpoint took checkpoint arguments and no caller passed
+  them, so `checkpoint_ok` was `null` on every response the demonstration ever served.
+  Tamper detection for *modified* rows was real; for *deleted* ones it was absent, and
+  deletion is the easier attack. Unit tests do not notice an unwired capability —
+  only a claim measured against the running system does.
+- **`INTERVAL '31 days'` in `warm_from_db` meant the ingester could not run against
+  SQLite at all**, despite `Ingester` taking an injectable session factory precisely
+  so it could. The contradiction sat unnoticed because nothing ran the real consumer
+  end to end until Phase 4. Same rule as everywhere else: compute cutoffs in Python,
+  pass them as parameters.
+- **MQTT client ids are exclusive.** A second client connecting as `gemp-ingest`
+  disconnects the production ingester and stops ingestion for as long as it runs.
+  Anything that consumes from a live broker needs its own id and `clean_session=True`,
+  or it also leaves a durable subscription queueing messages after it exits.
 - **`pytest` imports every test module before running any of them**, so
   `tests/test_api.py` setting `GEMP_HMAC_KEY` in the process environment applies to the
   whole session. Environment beats `.env` in pydantic-settings, so host-side code that
@@ -108,6 +134,13 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   at the display layer.
 - `domain/` imports no database, broker or web framework. That is what lets the
   optimizer run from CSV fixtures with nothing else up.
+- **The API is unauthenticated except for `/candidates/recompute`**, which is gated
+  only when `GEMP_ADMIN_TOKEN` is set. The demonstration network is air-gapped and a
+  token that must be set correctly on the day is a way to lose the demonstration.
+  Anything exposed beyond loopback must set that variable, and the API logs a warning
+  on every call while it is unset.
+- **Concurrent solves are capped and excess requests get 429, not a queue.** During a
+  demonstration the request that matters is the slider drag happening now.
 
 ## Findings that change the paper
 
@@ -159,15 +192,20 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   `python -m gemp.domain.catalog --validate --strict` fails until they are sourced.
   This is the one thing code cannot close, and every number the platform reports
   derives from it.
-- **Anomaly precision is 0.52 at recall 0.80** (k=8, episode-level), and **the 0.6
+- **Anomaly precision is 0.55 at recall 0.81** (k=8, episode-level), and **the 0.6
   target is not reachable by tuning.** k only slides a point along one curve. Phase 4
   swept 64 combinations of k, minimum episode duration and minimum peak z: duration
   buys precision at the same exchange rate as k, and a peak-z floor makes precision
   *worse* (0.607 → 0.535 at k=8), because a frozen meter barely deviates while the
-  largest residuals are legitimate load the forecaster missed. Best precision at
-  recall ≥ 0.8 is 0.519, with no suppression at all. Closing this needs a better
-  expected-load model — the fixed features in `ml/features.py` are the place to look,
-  not `anomaly_k`.
+  largest residuals are legitimate load the forecaster missed. Precision reaches 0.601
+  at k=10 but only by dropping recall to 0.756, which is the wrong trade for a fault
+  detector. Closing this needs a better expected-load model — the fixed features in
+  `ml/features.py` are the place to look, not `anomaly_k`.
+- **Those two numbers are still drifting upward** as the live ground-truth file
+  accumulates, because a correct detection of a fault with no record is excluded
+  rather than credited. Precision at k=8 read 0.515 at 454 recorded events and 0.550
+  at 618. Recall sits close to its gate (0.79–0.81 across runs), so a single run
+  reporting 0.79 is drift, not a regression — re-run before treating it as one.
 - The claims harness reports two known-open findings (`DATA`, `F9-b`). They print
   `FAIL*` and do not fail the run.
 

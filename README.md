@@ -43,8 +43,9 @@ docker compose up -d && python -m gemp.seed --months 6
 | `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats every heuristic. |
 | `python -m gemp.evaluate` | Re-measure every claim below. Exits 1 if one has stopped holding. |
 | `python -m gemp.evaluate --with-db` | Adds the forecasting and anomaly claims. Needs the stack. |
-| `python scripts/check.py` | Every CI gate, locally. |
-| `python -m pytest` | 271 tests; the 12 PostgreSQL ones skip themselves without the stack. |
+| `python scripts/check.py` | Every CI gate, locally: lint, tests with coverage, data contract, claims. |
+| `python -m pytest` | 278 tests; 15 integration tests skip themselves without the stack. |
+| `curl localhost:8080/api/v1/integrity/verify/b001` | Walk one building's chain and check it against the external anchor. |
 
 ### Current headline numbers
 
@@ -170,6 +171,15 @@ multiplier, both of which live in `params.yaml`. → `domain/savings.py`
 **All money is EGP integers everywhere.** The division by 1000 that produces "per
 thousand EGP" happens only at the display layer, and a property test pins it.
 
+**Tamper evidence needs an anchor outside the database, and the anchor has to be
+read.** Each reading is HMAC-signed and chained to its predecessor, so a modified row
+breaks the walk at exactly that row. A *deleted tail* breaks nothing — there is
+nothing after it left to check — so chain heads are also written to a file on a
+separate mount, and verification compares the two. The database's own checkpoint table
+is read as well, not as evidence but for comparison: anyone who can truncate `reading`
+can truncate that table too, and a disagreement between file and table is itself a
+signal. → `ingest/anchor.py`, `services.verify_building_chain`
+
 ---
 
 ## Open finding: the LCA layer currently changes no decisions
@@ -195,7 +205,7 @@ allocation would deliver, across 20 budgets.
 
 ## Open finding: the anomaly precision target is not reachable by tuning
 
-Episode-level detection reads **precision 0.52 at recall 0.80** (k = 8). Recall meets
+Episode-level detection reads **precision 0.55 at recall 0.81** (k = 8). Recall meets
 the 0.8 gate in the technical review; precision does not meet 0.6, and the reason is
 not that the threshold is badly chosen.
 
@@ -209,9 +219,16 @@ deviates from its expectation at all, while the largest residuals are legitimate
 that the forecaster failed to anticipate. Residual magnitude does not separate real
 faults from forecast misses here.
 
-The best precision available at recall ≥ 0.8 is **0.519, with no suppression at all**.
-Closing the gap needs a better expected-load model, not a better threshold — which is
-a finding about where the remaining engineering effort belongs.
+The best precision available at recall ≥ 0.8 is **0.550, with no suppression at all**.
+Precision does reach 0.601 at k = 10, but only by giving up recall (0.756) — the wrong
+trade for a detector whose misses burn energy every hour they go unnoticed. Closing
+the gap needs a better expected-load model, not a better threshold, which is a finding
+about where the remaining engineering effort belongs.
+
+Both figures are still rising as the simulator's live fault record accumulates: a
+correct detection of a fault that was never recorded cannot be credited, so it is
+excluded from scoring instead. Precision at k = 8 read 0.515 against 454 recorded
+events and 0.550 against 618.
 
 ## Roadmap
 
