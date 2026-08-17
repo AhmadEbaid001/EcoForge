@@ -24,9 +24,14 @@ python scripts/fetch_osm_buildings.py
 python -m gemp.optimize.cli --budget 10000000 --compare
 ```
 
-No database, no broker, no containers required for any of the above.
+No database, no broker, no containers required for any of the above — the optimizer
+runs from CSV fixtures alone. For the full stack (map, ingestion, dashboards):
 
-## What works today (Phase 0 complete)
+```bash
+docker compose up -d && python -m gemp.seed --months 6
+```
+
+## What works today (Phases 0–3 complete)
 
 | Command | What it does |
 |---|---|
@@ -36,7 +41,7 @@ No database, no broker, no containers required for any of the above.
 | `python -m gemp.optimize.cli --budget 10000000` | Solve and print an allocation. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare` | CP-SAT vs greedy vs equal-split on the same instance. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats greedy. |
-| `python -m pytest` | 92 tests. |
+| `python -m pytest` | 226 tests. |
 
 ### Current headline numbers
 
@@ -93,7 +98,7 @@ src/gemp/
     runner.py      one interface, three solvers, one return type
   ingest/      Phase 1: MQTT -> hash-chained storage
   ml/          Phase 2: forecasting and anomaly detection
-  api/  web/   Phase 3: FastAPI + Leaflet
+  api/  web/   Phase 3: FastAPI + inline-SVG map (no mapping library — see CLAUDE.md)
 ```
 
 `domain/` importing nothing infrastructural is what lets the optimizer run against CSV
