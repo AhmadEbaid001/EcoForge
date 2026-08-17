@@ -80,10 +80,10 @@ def print_comparison(results: dict[str, Allocation], objective: str) -> None:
 
     baseline = results["equal_split"]
     print()
-    print(f"  {'SOLVER':<14}{'STATUS':<12}{'FUNDED':>8}{'SPENT EGP':>15}"
+    print(f"  {'SOLVER':<16}{'STATUS':<12}{'FUNDED':>8}{'SPENT EGP':>15}"
           f"{'TOTAL ' + unit:>18}{'vs EQUAL SPLIT':>17}{'ms':>8}")
-    print(f"  {'-' * 92}")
-    for name in ("equal_split", "greedy", "cpsat"):
+    print(f"  {'-' * 94}")
+    for name in ("equal_split", "greedy", "greedy_upgrade", "cpsat"):
         a = results[name]
         delta = improvement_pct(a, baseline, objective)
         delta_str = "baseline" if name == "equal_split" else (
@@ -92,18 +92,22 @@ def print_comparison(results: dict[str, Allocation], objective: str) -> None:
         if name != "equal_split" and delta == float("inf"):
             delta_str = "baseline funded 0"
         print(
-            f"  {name:<14}{a.status:<12}{a.buildings_funded:>8}{_fmt(a.total_cost_egp):>15}"
+            f"  {name:<16}{a.status:<12}{a.buildings_funded:>8}{_fmt(a.total_cost_egp):>15}"
             f"{_fmt(total(a)):>18}{delta_str:>17}{a.solve_ms:>8.0f}"
         )
 
-    gap = improvement_pct(results["cpsat"], results["greedy"], objective)
+    strong = improvement_pct(results["cpsat"], results["greedy_upgrade"], objective)
+    plain = improvement_pct(results["cpsat"], results["greedy"], objective)
     print()
-    print(f"  CP-SAT over greedy: {gap:+.2f}%")
+    print(f"  CP-SAT over greedy_upgrade: {strong:+.2f}%   (over plain greedy: {plain:+.2f}%)")
     print(
-        "  A small gap here is expected and is reported rather than hidden: on an\n"
-        "  unconstrained knapsack a density-ordered heuristic is near-optimal. Exact\n"
-        "  optimization earns its place through side constraints greedy cannot express\n"
-        "  (try --district-cap 4) and through returning a proven optimum."
+        "  The first number is the honest one. Plain greedy never revisits a funded\n"
+        "  building, so above roughly 16 M EGP it stops spending and the gap against it\n"
+        "  measures its ceiling rather than the value of exact optimization. A small gap\n"
+        "  against greedy_upgrade is expected: on an unconstrained knapsack a good\n"
+        "  heuristic is near-optimal. Exact optimization earns its place through side\n"
+        "  constraints no greedy can express (try --district-cap 4) and through\n"
+        "  returning a proven optimum."
     )
 
 

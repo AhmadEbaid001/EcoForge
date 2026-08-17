@@ -192,12 +192,105 @@ def test_all_solvers_return_the_same_shape(tiny):
     """What makes the evaluation harness a for-loop and the UI a dropdown."""
     buildings, candidates = tiny
     results = compare(candidates, buildings, 100)
-    assert set(results) == {"cpsat", "greedy", "equal_split"}
+    assert set(results) == {"cpsat", "greedy", "greedy_upgrade", "equal_split"}
     for name, alloc in results.items():
         assert alloc.solver == name
         assert alloc.budget_egp == 100
         assert alloc.total_cost_egp <= 100
         assert isinstance(alloc.benefit_per_egp, float)
+
+
+def test_plain_greedy_saturates_and_stops_spending():
+    """The defect the evaluation harness found in the headline comparison.
+
+    Plain greedy never revisits a funded building, so once each holds its
+    best-density option it stops - here at 60 EGP of a 1000 EGP budget, having
+    bought 30 benefit where 300 was affordable.
+    """
+    buildings = [make_building(id=f"b{i}", code=f"B{i}") for i in range(1, 4)]
+    candidates = []
+    for i in range(1, 4):
+        # Cheap option wins on density (2.0 vs 1.0) but caps out at 10 benefit.
+        candidates.append(candidate(f"b{i}", f"cheap{i}", 20, 40))
+        candidates.append(candidate(f"b{i}", f"big{i}", 300, 300))
+
+    plain = solve(candidates, buildings, 1000, solver="greedy")
+    assert plain.total_cost_egp == pytest.approx(60.0)
+    assert plain.total_benefit_kgco2e == pytest.approx(120.0)
+
+
+def test_greedy_upgrade_spends_the_rest_of_the_budget():
+    """The repair: keep swapping up while the money lasts."""
+    buildings = [make_building(id=f"b{i}", code=f"B{i}") for i in range(1, 4)]
+    candidates = []
+    for i in range(1, 4):
+        candidates.append(candidate(f"b{i}", f"cheap{i}", 20, 40))
+        candidates.append(candidate(f"b{i}", f"big{i}", 300, 300))
+
+    upgraded = solve(candidates, buildings, 1000, solver="greedy_upgrade")
+
+    assert upgraded.total_cost_egp == pytest.approx(900.0)
+    assert upgraded.total_benefit_kgco2e == pytest.approx(900.0)
+    assert {i.candidate_key for i in upgraded.items} == {"big1", "big2", "big3"}
+
+
+def test_greedy_upgrade_is_never_worse_than_plain_greedy(tiny):
+    """It starts from greedy's own solution, so it cannot lose to it."""
+    buildings, candidates = tiny
+    for budget in (0, 19, 20, 49, 50, 99, 100, 1000):
+        plain = solve(candidates, buildings, budget, solver="greedy")
+        upgraded = solve(candidates, buildings, budget, solver="greedy_upgrade")
+        assert upgraded.total_benefit_kgco2e >= plain.total_benefit_kgco2e
+        assert upgraded.total_cost_egp <= budget
+
+
+def test_greedy_upgrade_respects_the_district_cap():
+    """Upgrading in place must not consume a second district slot."""
+    buildings = [make_building(id=f"b{i}", code=f"B{i}", district="D1") for i in range(1, 5)]
+    candidates = []
+    for i in range(1, 5):
+        candidates.append(candidate(f"b{i}", f"cheap{i}", 20, 40, district="D1"))
+        candidates.append(candidate(f"b{i}", f"big{i}", 100, 150, district="D1"))
+
+    alloc = solve(candidates, buildings, 1000, solver="greedy_upgrade",
+                  max_funded_per_district=2)
+
+    assert alloc.buildings_funded == 2
+    # Both slots upgraded to the expensive option rather than left at the cheap one.
+    assert {i.candidate_key for i in alloc.items} == {"big1", "big2"}
+
+
+def test_a_non_finite_budget_is_rejected_before_the_model_is_built(tiny):
+    """`int(round(inf))` raises deep inside CP-SAT and surfaces as an opaque 500.
+
+    Checked here rather than only at the API boundary, because the CLI and the
+    evaluation harness call `solve` without passing through FastAPI at all.
+    """
+    buildings, candidates = tiny
+    for budget in (float("inf"), float("nan"), float("-inf")):
+        with pytest.raises(ValueError, match="finite"):
+            solve(candidates, buildings, budget)
+
+
+def test_an_expired_solve_falls_back_to_the_strong_heuristic(tiny, monkeypatch):
+    """A demonstration that returns nothing is worse than one that returns an answer
+    and labels it. The status has to make the fallback unmistakable, so nobody quotes
+    a heuristic result as a proven optimum."""
+    from gemp.domain.models import Allocation
+    from gemp.optimize import runner
+
+    def expired(candidates, buildings, budget_egp, **kwargs):
+        return Allocation(solver="cpsat", objective=kwargs.get("objective", "lca_carbon"),
+                          status="UNKNOWN", budget_egp=budget_egp, items=[], solve_ms=1.0)
+
+    monkeypatch.setitem(runner.SOLVERS, "cpsat", expired)
+
+    buildings, candidates = tiny
+    alloc = solve(candidates, buildings, 100, solver="cpsat")
+
+    assert alloc.status == "FALLBACK_FROM_UNKNOWN"
+    assert alloc.items
+    assert alloc.total_cost_egp <= 100
 
 
 def test_unknown_solver_and_objective_are_rejected(tiny):
