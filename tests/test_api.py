@@ -197,6 +197,64 @@ def test_unknown_run_is_404(client):
     assert client.get("/api/v1/runs/does-not-exist").status_code == 404
 
 
+def test_building_candidates_list_every_option_considered(client):
+    """The "why this building, why this measure" view. A recommendation nobody can
+    interrogate is one they are asked to take on trust."""
+    body = client.get("/api/v1/buildings/b001/candidates").json()
+
+    assert body["building"]["id"] == "b001"
+    assert body["options"], "a building with no options cannot be explained"
+    # Ordered by benefit density, best first.
+    scores = [o["score_per_kegp"] for o in body["options"]]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_building_candidates_mark_the_one_a_run_chose(client):
+    run_id = client.post("/api/v1/optimize", json={"budget_egp": 10_000_000}).json()
+    funded = run_id["items"][0]["building_id"]
+
+    body = client.get(f"/api/v1/buildings/{funded}/candidates",
+                      params={"run_id": run_id["run_id"]}).json()
+
+    assert body["chosen_key"]
+    assert sum(1 for o in body["options"] if o["chosen"]) == 1
+
+
+def test_unknown_building_candidates_is_404(client):
+    assert client.get("/api/v1/buildings/nope/candidates").status_code == 404
+
+
+def test_forecast_metrics_report_which_model_is_in_use(client):
+    body = client.get("/api/v1/metrics/forecast").json()
+    assert "by_model" in body
+    # F3: how many buildings are priced from measurement rather than the fixture.
+    assert "annual_kwh_source" in body
+
+
+def test_anomaly_metrics_expose_the_threshold_actually_in_use(client):
+    """The threshold is tuned, so the dashboard must say which value produced the
+    numbers on it - otherwise a re-tuning silently changes what the counts mean."""
+    body = client.get("/api/v1/metrics/anomaly").json()
+    assert body["threshold_k"] > 0
+    assert body["window_days"] > 0
+    assert "by_severity" in body
+    assert isinstance(body["worst"], list)
+
+
+def test_narrative_contrasts_two_buildings_with_different_best_measures(client):
+    """Evidences the claim that replaced the proposal's Table 1 reversal: the best
+    measure is building-specific, so no portfolio-wide priority list is right."""
+    response = client.get("/api/v1/narrative/building-specific")
+    assert response.status_code == 200
+
+    body = response.json()
+    assert len(body["buildings"]) == 2
+    assert body["buildings"][0]["best"] != body["buildings"][1]["best"]
+    assert sum(body["distribution"].values()) == 50
+    for building in body["buildings"]:
+        assert building["options"], "the contrast is only readable with the options shown"
+
+
 def test_recompute_materialises_the_candidate_set(client):
     """Called after Nada edits data/. Writes the set a run was solved against, so a
     stored recommendation stays explainable once the catalog moves on."""

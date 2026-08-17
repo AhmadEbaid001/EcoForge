@@ -83,6 +83,9 @@ function ringsOf(feature) {
 
 const PAD = 60;
 
+/* Zoom at which real footprints replace the consumption-sized squares. */
+const FOOTPRINT_ZOOM = 3;
+
 function buildGeometry() {
   const svg = $('map');
   const W = svg.clientWidth, H = svg.clientHeight;
@@ -96,13 +99,24 @@ function buildGeometry() {
   const consumptions = state.geo.features.map((f) => f.properties.annual_kwh || 0);
   const maxKwh = Math.max(...consumptions, 1);
 
+  const toScreen = ([lon, lat]) => [
+    PAD + (lon - p.minLon) * p.kx * scale,
+    PAD + (p.maxLat - lat) * scale,              // screen y grows downward
+  ];
+
   state.projected = state.geo.features.map((f) => {
     const props = f.properties;
-    const lon = props.lon, lat = props.lat;
-    const x = PAD + (lon - p.minLon) * p.kx * scale;
-    const y = PAD + (p.maxLat - lat) * scale;      // screen y grows downward
+    const [x, y] = toScreen([props.lon, props.lat]);
     const side = 9 + 26 * Math.sqrt((props.annual_kwh || 0) / maxKwh);
-    return { id: props.id, props, cx: x, cy: y, side };
+
+    // The true OpenStreetMap outline, projected once. At overview zoom a real
+    // footprint is about a pixel across, so the square is what gets drawn; zoom in
+    // and the actual building shape takes over. Fetching real geometry and never
+    // showing it would make "real footprints" a claim rather than something a
+    // reviewer can see.
+    const ring = (ringsOf(f)[0] || []).map(toScreen);
+
+    return { id: props.id, props, cx: x, cy: y, side, ring };
   });
 }
 
@@ -135,18 +149,31 @@ function render() {
     );
   }
 
+  // Past this zoom the real outlines are big enough to read.
+  const showFootprints = k >= FOOTPRINT_ZOOM;
+
   for (const b of state.projected) {
     const isFunded = funded.has(b.id);
     const half = b.side / 2;
     const fill = isFunded ? 'var(--funded)' : districtColour(b.props.district);
     const cls = 'bldg' + (state.selected === b.id ? ' selected' : '');
-    parts.push(
-      `<rect class="${cls}" data-id="${b.id}" rx="2" ` +
-      `x="${(b.cx - half).toFixed(1)}" y="${(b.cy - half).toFixed(1)}" ` +
-      `width="${b.side.toFixed(1)}" height="${b.side.toFixed(1)}" ` +
-      `fill="${fill}"><title>${escapeHtml(b.props.code)} — ` +
-      `${compact(b.props.annual_kwh)} kWh/yr${isFunded ? ' — funded' : ''}</title></rect>`
-    );
+    const title = `<title>${escapeHtml(b.props.code)} — ` +
+      `${compact(b.props.annual_kwh)} kWh/yr${isFunded ? ' — funded' : ''}</title>`;
+
+    if (showFootprints && b.ring.length >= 4) {
+      const points = b.ring.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ');
+      parts.push(
+        `<polygon class="${cls}" data-id="${b.id}" points="${points}" ` +
+        `fill="${fill}">${title}</polygon>`
+      );
+    } else {
+      parts.push(
+        `<rect class="${cls}" data-id="${b.id}" rx="2" ` +
+        `x="${(b.cx - half).toFixed(1)}" y="${(b.cy - half).toFixed(1)}" ` +
+        `width="${b.side.toFixed(1)}" height="${b.side.toFixed(1)}" ` +
+        `fill="${fill}">${title}</rect>`
+      );
+    }
     if (b.props.anomalies > 0) {
       parts.push(
         `<circle class="anom-ring" cx="${b.cx.toFixed(1)}" cy="${b.cy.toFixed(1)}" ` +
