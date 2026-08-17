@@ -33,8 +33,16 @@ import paho.mqtt.client as mqtt
 from sqlalchemy import text
 
 from gemp.config import get_settings
-from gemp.db import IntegrityCheckpointRow, ReadingRow, insert_ignore, session_scope
+from gemp.db import (
+    AnomalyRow,
+    IntegrityCheckpointRow,
+    ReadingRow,
+    insert_ignore,
+    session_scope,
+)
+from gemp.domain.catalog import load_params
 from gemp.ingest.integrity import GENESIS, as_utc, sign
+from gemp.ingest.live_anomaly import StreamingDetector
 
 log = logging.getLogger("gemp.ingest")
 
@@ -64,10 +72,16 @@ class Ingester:
         self.session_factory = session_factory or session_scope
         self.anchor_path = anchor_path or ANCHOR_PATH
 
+        # Anomalies are scored as readings arrive, not only in the nightly batch:
+        # a fault found the next morning has already burned a night of energy, and
+        # during a demonstration nothing would appear on the map at all.
+        self.detector = StreamingDetector(k=load_params().anomaly_k)
+
         self.queue: deque[dict[str, Any]] = deque()
         self.chains: dict[str, ChainState] = {}
         self.running = True
         self.written = 0
+        self.anomalies = 0
         self.duplicates = 0
         self.malformed = 0
         self._last_checkpoint = time.monotonic()
@@ -108,6 +122,11 @@ class Ingester:
                 log.warning("dropping malformed message on %s: %s", message.topic, exc)
 
     # -- chain state ---------------------------------------------------------
+
+    def warm_detector(self) -> None:
+        """Give the streaming detector its history before the first live reading."""
+        with self.session_factory() as session:
+            self.detector.warm_from_db(session)
 
     def load_chain_heads(self) -> None:
         """Resume every building's chain from what is already stored."""
@@ -163,12 +182,37 @@ class Ingester:
         if not rows:
             return 0
 
-        with self.session_factory() as session:
-            session.execute(
-                insert_ignore(ReadingRow, session.bind.dialect.name), rows
+        detected = [
+            found
+            for found in (
+                self.detector.score(r["building_id"], r["ts"], r["kw"]) for r in rows
             )
+            if found is not None
+        ]
+
+        with self.session_factory() as session:
+            dialect = session.bind.dialect.name
+            session.execute(insert_ignore(ReadingRow, dialect), rows)
+
+            if detected:
+                # insert_ignore because the nightly batch may already have flagged the
+                # same (building, timestamp); one fault is one row either way.
+                session.execute(insert_ignore(AnomalyRow, dialect), [
+                    {
+                        "building_id": a.building_id,
+                        "ts": a.ts,
+                        "observed_kw": a.observed_kw,
+                        "expected_kw": a.expected_kw,
+                        "residual": a.residual,
+                        "robust_z": a.robust_z,
+                        "severity": a.severity,
+                        "acknowledged": False,
+                    }
+                    for a in detected
+                ])
 
         self.written += len(rows)
+        self.anomalies += len(detected)
         return len(rows)
 
     def write_checkpoint(self) -> None:
@@ -219,6 +263,7 @@ class Ingester:
 
     def run(self, max_seconds: float | None = None) -> int:
         self.load_chain_heads()
+        self.warm_detector()
         self.client.connect(self.settings.mqtt_host, self.settings.mqtt_port, keepalive=60)
         self.client.loop_start()
 
@@ -247,8 +292,8 @@ class Ingester:
         self.client.loop_stop()
         self.client.disconnect()
 
-        log.info("wrote %d rows, dropped %d duplicates, %d malformed",
-                 self.written, self.duplicates, self.malformed)
+        log.info("wrote %d rows, flagged %d anomalies, dropped %d duplicates, %d malformed",
+                 self.written, self.anomalies, self.duplicates, self.malformed)
         return self.written
 
 

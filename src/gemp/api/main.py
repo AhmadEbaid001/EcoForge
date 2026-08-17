@@ -89,13 +89,42 @@ def _start_ingester() -> tuple[object, threading.Thread] | tuple[None, None]:
     return ingester, thread
 
 
+def configure_logging() -> None:
+    """Make the application's own loggers visible under uvicorn.
+
+    uvicorn installs its own handlers and does not touch other loggers, so
+    everything `gemp.*` logs - the ingester connecting, the scheduler arming, a
+    building skipped during a refit - goes nowhere by default. The containers looked
+    healthy while being silent about the two background threads doing the actual
+    work, which is precisely the state in which a failure goes unnoticed.
+    """
+    root = logging.getLogger("gemp")
+    if root.handlers:
+        return
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)-5s %(name)s  %(message)s")
+    )
+    root.addHandler(handler)
+    root.setLevel(os.environ.get("GEMP_LOG_LEVEL", "INFO"))
+    root.propagate = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
     log.info("gemp api starting")
     ingester, thread = _start_ingester()
+
+    from gemp.scheduler import start_scheduler
+
+    scheduler = start_scheduler()
     try:
         yield
     finally:
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
         if ingester is not None:
             ingester.stop()
             thread.join(timeout=10)
