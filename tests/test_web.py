@@ -191,3 +191,62 @@ def test_the_root_font_size_is_not_stated_in_rem():
                     "html is sized in rem, which compounds the whole type scale: "
                     f"{declaration.group(0).strip()}"
                 )
+
+
+def test_the_map_does_not_solve_for_a_role_that_may_not(): 
+    """A viewer's first sight of the product used to be a red error.
+
+    `main()` called `solve()` on mount unconditionally, and `/optimize` is
+    analyst-only - so a viewer got a red health indicator reading "this action
+    requires the analyst role", five metrics showing em-dashes, and a budget slider
+    that 403'd on every drag. Nothing was broken; they simply were not allowed, and
+    the screen had no way to say so.
+    """
+    source = (WEB / "js" / "map.js").read_text(encoding="utf-8")
+
+    assert "canSolve" in source, "the map must know whether the caller may solve"
+    assert re.search(r"if \(canSolve\)\s*\{\s*await solve\(\)", source), (
+        "solve() must be reached only when the caller holds the analyst role"
+    )
+    assert "showStoredRun" in source, (
+        "a viewer needs the most recent stored allocation, not an empty map"
+    )
+
+
+def test_view_scoped_listeners_are_tied_to_a_lifetime():
+    """Replacing `#view` drops the listeners inside it and nothing else.
+
+    The map listens on `window` for resize, mouseup and mousemove. Without an abort
+    signal those survive every navigation away and back: five visits to the Map meant
+    five resize handlers, each rebuilding the projection for a screen nobody was
+    looking at. Measured in the browser before the fix - the count climbed 1, 2, 3, 4;
+    after it, it stays at 1.
+    """
+    app = (WEB / "js" / "app.js").read_text(encoding="utf-8")
+    assert "AbortController" in app, "the shell must own a lifetime per mounted view"
+    assert "signal" in app, "the lifetime has to reach the view that needs it"
+
+    # Counting rather than parsing: a listener's own body can contain `);`, so any
+    # regex that tries to find where the call ends gets it wrong on the first
+    # multi-statement handler. Every window-level registration has to carry a signal,
+    # so the two counts simply have to match.
+    map_source = (WEB / "js" / "map.js").read_text(encoding="utf-8")
+    registrations = map_source.count("window.addEventListener(")
+    signalled = len(re.findall(r"\{\s*signal\s*\}\s*\)", map_source))
+
+    assert registrations and signalled >= registrations, (
+        f"{registrations} window listeners in map.js but only {signalled} bound to a "
+        "lifetime - the unbound ones survive every navigation away and back"
+    )
+
+
+def test_credentials_are_never_minted_through_a_browser_prompt():
+    """`window.prompt` is clear text, has no confirmation field, validates nothing
+    before the request, and cannot be filled from a password manager. The one flow
+    that creates accounts is the last place to accept that."""
+    for path in WEB.rglob("*.js"):
+        source = "\n".join(
+            line for line in path.read_text(encoding="utf-8").splitlines()
+            if not COMMENT_LINE.match(line)
+        )
+        assert "window.prompt(" not in source, f"{path.name} mints input via window.prompt"

@@ -15,6 +15,7 @@
 
 import { api, setPasswordChangeHandler, setUnauthenticatedHandler } from './api.js';
 import { escapeHtml, icon } from './charts.js';
+
 import { mapView } from './map.js';
 import { account, admin, alerts, forecasts, integrity, overview, runs } from './views.js';
 
@@ -36,7 +37,7 @@ const can = (user, role) => ROLE_LADDER.indexOf(user.role) >= ROLE_LADDER.indexO
 
 const $ = (id) => document.getElementById(id);
 
-const state = { user: null, view: 'overview' };
+const state = { user: null, view: 'overview', viewLifetime: null };
 
 /* -------------------------------------------------------------- appearance */
 
@@ -112,33 +113,91 @@ function showLogin(message = '') {
     window.history.replaceState(null, '', window.location.pathname);
   }
 
+  /* The reference's sign-in screen: a slim product bar, one centred card, a
+   * second card stating what the deployment is, and a footer rule.
+   *
+   * Its second card listed an encryption algorithm, a FIPS level, a node
+   * identifier and a version number. None of those are things this system can
+   * support, and a compliance claim in front of judges has to be one the code
+   * can back. The four below are: the Administration screen reports every one
+   * of them, and `test_auth.py` pins them. */
   $('root').innerHTML = `
     <div class="login-wrap">
-      <form class="login" id="login-form">
-        <div class="brand">
-          <span class="mark"></span>
-          <div>
-            <h1>Green Energy Monitoring Platform</h1>
-            <p class="sub">Budget-constrained retrofit prioritization</p>
-          </div>
+      <header class="login-bar">
+        <span class="mark">${icon('bolt')}</span>
+        <p class="wordmark">GEMP</p>
+        <span class="chip">Restricted access</span>
+        ${appearanceSwitch()}
+      </header>
+
+      <div class="login-body">
+        <div class="login-col">
+          <form class="login" id="login-form">
+            <h2>Sign in</h2>
+            <p class="lede">Green Energy Monitoring Platform — budget-constrained
+            retrofit prioritization.</p>
+
+            ${message ? `<div class="error-box" role="alert">${escapeHtml(message)}</div>` : ''}
+
+            <label for="login-user">Username
+              <input id="login-user" name="username" type="text"
+                     autocomplete="username" required autofocus></label>
+
+            <label for="login-pass">Password
+              <span class="password-field">
+                <input id="login-pass" name="password" type="password"
+                       autocomplete="current-password" required>
+                <button type="button" class="reveal" id="login-reveal"
+                        aria-pressed="false">Show</button>
+              </span>
+              <span class="caps-hint" id="caps-hint" role="status">Caps Lock is on.</span>
+            </label>
+
+            <button type="submit" class="primary" id="login-submit">Sign in</button>
+          </form>
+
+          <section class="login-facts">
+            <h3>Authorized personnel only</h3>
+            <dl>
+              <div><dt>Sessions</dt><dd>Server-side, revocable</dd></div>
+              <div><dt>Idle timeout</dt><dd>8 hours</dd></div>
+              <div><dt>Password hashing</dt><dd>scrypt</dd></div>
+              <div><dt>Audit log</dt><dd>Every action</dd></div>
+            </dl>
+          </section>
         </div>
+      </div>
 
-        ${message ? `<div class="error-box" role="alert">${escapeHtml(message)}</div>` : ''}
-
-        <label for="login-user">Username
-          <input id="login-user" name="username" autocomplete="username" required autofocus></label>
-        <label for="login-pass">Password
-          <input id="login-pass" name="password" type="password" autocomplete="current-password" required></label>
-        <button type="submit" class="primary" id="login-submit">Sign in</button>
-
-        <p class="caption">Accounts are created by an administrator. There is no
-        self-service registration and no default account.</p>
-
-        <div class="form-actions">${appearanceSwitch()}</div>
-      </form>
+      <footer class="login-foot">
+        <span>Accounts are created by an administrator. No self-service registration,
+        no default account.</span>
+        <span>Team Ecoforge &middot; RoboDam2026</span>
+      </footer>
     </div>`;
 
   wireAppearance($('root'));
+
+  /* Caps Lock is the commonest reason a correct password is refused, and the
+   * server deliberately will not say which reason it was - so the page has to
+   * catch this one itself, before the request goes out. */
+  const caps = $('caps-hint');
+  const watchCaps = (event) => {
+    if (typeof event.getModifierState !== 'function') return;
+    caps.classList.toggle('on', event.getModifierState('CapsLock'));
+  };
+  $('login-pass').addEventListener('keydown', watchCaps);
+  $('login-pass').addEventListener('keyup', watchCaps);
+  $('login-user').addEventListener('keyup', watchCaps);
+
+  const reveal = $('login-reveal');
+  reveal.addEventListener('click', () => {
+    const field = $('login-pass');
+    const shown = field.type === 'text';
+    field.type = shown ? 'password' : 'text';
+    reveal.textContent = shown ? 'Show' : 'Hide';
+    reveal.setAttribute('aria-pressed', String(!shown));
+    field.focus();
+  });
 
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -196,40 +255,69 @@ function showPasswordChange() {
 
 /* --------------------------------------------------------------------- app */
 
+/* Seven destinations in a row of top tabs was already crowding the header at
+ * 1180px, and it left nowhere to put a page title. A fixed sidebar gives each
+ * destination a stable position, room for a label AND an icon, and hands the
+ * whole top of the workspace back to the screen you are actually on. It
+ * collapses to icons on a narrow window rather than wrapping. */
 async function showApp() {
   document.body.className = 'signed-in';
 
-  const tabs = ORDER
-    .filter((key) => !VIEWS[key].requiredRole || can(state.user, VIEWS[key].requiredRole))
-    .map((key) => `<button class="tab" type="button" data-view="${key}">${escapeHtml(VIEWS[key].title)}</button>`)
-    .join('');
+  const visible = ORDER
+    .filter((key) => !VIEWS[key].requiredRole || can(state.user, VIEWS[key].requiredRole));
+
+  const navItems = visible.map((key) => `
+    <button class="nav-item" type="button" data-view="${key}">
+      ${icon(key)}<span class="nav-label">${escapeHtml(VIEWS[key].title)}</span>
+    </button>`).join('');
 
   const who = escapeHtml(state.user.display_name || state.user.username);
 
   $('root').innerHTML = `
-    <header class="bar">
-      <div class="brand">
-        <span class="mark"></span>
-        <div>
-          <h1>Green Energy Monitoring Platform</h1>
-          <p class="sub">Team Ecoforge</p>
+    <div class="shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+          <span class="mark">${icon('bolt')}</span>
+          <div class="sidebar-brand-text">
+            <h1>GEMP</h1>
+            <p class="sub">Team Ecoforge</p>
+          </div>
         </div>
+
+        <nav class="nav" aria-label="Views">${navItems}</nav>
+
+        <div class="sidebar-foot">
+          <div class="status" id="status" role="status">
+            <span class="nav-slot"><span class="dot" id="health-dot"></span></span>
+            <span id="health-text" class="nav-label">connecting</span>
+          </div>
+          <button class="nav-item" type="button" data-view="account"
+                  aria-label="Account settings for ${who}">
+            ${icon('account')}
+            <span class="nav-label nav-user">
+              <span class="nav-user-name">${who}</span>
+              <span class="badge role">${escapeHtml(state.user.role)}</span>
+            </span>
+          </button>
+          <button class="nav-item" type="button" id="sign-out">
+            ${icon('signout')}<span class="nav-label">Sign out</span>
+          </button>
+          <button class="nav-item" type="button" id="nav-toggle"
+                  aria-controls="sidebar" aria-expanded="true">
+            ${icon('menu')}<span class="nav-label">Collapse</span>
+          </button>
+          ${appearanceSwitch()}
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <!-- The page header sits OUTSIDE the scrolling pane, which is what
+             keeps it and the sidebar still while fourteen rows of alerts move
+             underneath them. Views write into it through ui.pageHead(). -->
+        <div id="page-head"></div>
+        <main id="view"></main>
       </div>
-      <nav class="tabs" aria-label="Views">${tabs}</nav>
-      <div class="status" id="status" role="status">
-        <span class="dot" id="health-dot"></span><span id="health-text">connecting</span>
-      </div>
-      ${appearanceSwitch()}
-      <div class="who">
-        <button class="ghost small" type="button" data-view="account"
-                aria-label="Account settings for ${who}">
-          ${who}
-          <span class="badge role">${escapeHtml(state.user.role)}</span>
-        </button>
-        <button class="ghost small" type="button" id="sign-out">Sign out</button>
-      </div>
-    </header>
-    <main id="view"></main>`;
+    </div>`;
 
   wireAppearance($('root'));
 
@@ -242,8 +330,23 @@ async function showApp() {
     showLogin();
   });
 
+  /* Collapsing is a choice the person made, so it outlives a navigation. */
+  const toggle = $('nav-toggle');
+  const applyCollapse = (collapsed) => {
+    document.body.classList.toggle('nav-collapsed', collapsed);
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    try { window.localStorage.setItem(NAV_KEY, collapsed ? 'collapsed' : 'open'); } catch { /* ignore */ }
+  };
+  toggle.addEventListener('click', () =>
+    applyCollapse(!document.body.classList.contains('nav-collapsed')));
+  try {
+    applyCollapse(window.localStorage.getItem(NAV_KEY) === 'collapsed');
+  } catch { applyCollapse(false); }
+
   await navigate(fromHash() || 'overview');
 }
+
+const NAV_KEY = 'gemp.nav';
 
 function fromHash() {
   const key = window.location.hash.replace(/^#\/?/, '');
@@ -260,16 +363,36 @@ async function navigate(key) {
 
   /* aria-current rather than a class, so the styling and the announcement to a
    * screen reader cannot drift apart: there is one source for both. */
-  document.querySelectorAll('.tab').forEach((tab) => {
-    if (tab.dataset.view === key) tab.setAttribute('aria-current', 'page');
-    else tab.removeAttribute('aria-current');
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    if (item.dataset.view === key) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
   });
+  /* Cleared here rather than by each view, so a view that throws before it
+   * renders cannot leave the previous screen's title above the error. */
+  const head = $('page-head');
+  if (head) head.innerHTML = '';
+
+  /* Every listener a view attaches outside its own subtree is tied to this.
+   *
+   * Replacing `#view`'s innerHTML drops the listeners INSIDE it, and nothing else.
+   * A view that listens on `window` - the map does, for resize, mouseup and
+   * mousemove - leaves those behind on every mount, so five visits to the Map
+   * meant five resize handlers, each rebuilding the projection for a screen that
+   * was no longer on it.
+   *
+   * Aborting the previous signal before rendering the next view removes them in
+   * one step, and a view opts in simply by passing `{ signal }` to
+   * addEventListener. No teardown function to remember to return, and nothing to
+   * forget when a new view is written. */
+  if (state.viewLifetime) state.viewLifetime.abort();
+  state.viewLifetime = new AbortController();
 
   const root = $('view');
   root.innerHTML = '<div class="loading">Loading…</div>';
   try {
     await view.render(root, {
       user: state.user,
+      signal: state.viewLifetime.signal,
       onPasswordChanged: refreshSession,
     });
   } catch (error) {

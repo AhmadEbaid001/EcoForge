@@ -12,6 +12,7 @@
 'use strict';
 
 import { api } from './api.js';
+import { pageHead } from './ui.js';
 
 /* Class names here are namespaced `map-*` on purpose. `controls` and `legend`
  * used to be shared with the panel toolbars and the chart legends, and the
@@ -35,35 +36,37 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
 
     <div class="field">
       <label for="objective">Rank by</label>
-      <select id="objective">
+      <span class="select-wrap"><select id="objective">
         <option value="lca_carbon">Life-cycle carbon (kgCO&#8322;e)</option>
         <option value="raw_kwh">First-year energy (kWh)</option>
         <option value="egp_saved">First-year money (EGP)</option>
-      </select>
+      </select></span>
     </div>
 
     <div class="field">
       <label for="solver">Allocation method</label>
-      <select id="solver">
+      <span class="select-wrap"><select id="solver">
         <option value="cpsat">Exact optimization (CP-SAT)</option>
         <option value="greedy_upgrade">Greedy + upgrade pass</option>
         <option value="greedy">Greedy heuristic (saturates)</option>
         <option value="equal_split">Equal split &mdash; status quo</option>
-      </select>
+      </select></span>
     </div>
 
     <div class="field">
       <label for="cap">Max funded per district</label>
-      <select id="cap">
+      <span class="select-wrap"><select id="cap">
         <option value="">No cap</option>
         <option value="2">2</option>
         <option value="4">4</option>
         <option value="6">6</option>
-      </select>
+      </select></span>
     </div>
 
-    <button id="compare-btn" type="button" class="ghost accent">Compare all four methods</button>
-    <button id="narrative-btn" type="button" class="ghost">Why building-specific?</button>
+    <div class="map-actions">
+      <button id="compare-btn" type="button" class="primary">Compare all four methods</button>
+      <button id="narrative-btn" type="button" class="ghost">Why building-specific?</button>
+    </div>
 
     <div class="map-legend">
       <h3>Map</h3>
@@ -85,9 +88,21 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
       <div class="metric"><span class="k" id="m-solve">&mdash;</span><span class="v">solve time</span></div>
     </div>
 
-    <svg id="map" role="img" aria-label="District map of the building portfolio"></svg>
+    <svg id="map" tabindex="0" role="img" aria-describedby="map-help"
+         aria-label="District map of the building portfolio"></svg>
 
-    <div class="maphint">Scroll to zoom &mdash; real OpenStreetMap footprints appear as you zoom in &middot; drag to pan &middot; click a building for its options</div>
+    <!-- Zoom was a mouse wheel and nothing else, which left the map unusable
+         from a keyboard and awkward on a trackpad in front of a room. The
+         buttons and the arrow keys reach the same state the wheel does. -->
+    <div class="map-zoom" role="group" aria-label="Zoom">
+      <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+      <button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button>
+      <button type="button" id="zoom-reset" aria-label="Fit the whole district">Fit</button>
+    </div>
+
+    <p class="maphint" id="map-help">Scroll or use + and &minus; to zoom &mdash; real
+    OpenStreetMap footprints appear as you zoom in &middot; drag or use the arrow keys to
+    pan &middot; click a building for its options</p>
   </section>
 
   <!-- ---------------------------------------------------------------- -->
@@ -100,29 +115,83 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
     <div id="detail-body" hidden></div>
   </aside>`;
 
+/* `tabindex="-1"` so the dialog itself can take focus when it opens. That is
+ * what lets Escape work without a document-level listener - the key event
+ * bubbles from inside the modal - and it is also what stops a keyboard user
+ * being left behind on the button that opened it. */
 const MODAL_HTML = String.raw`<div id="narrative-modal" class="modal" hidden>
-  <div class="modal-inner">
-    <button class="close" id="narrative-close" aria-label="Close">&times;</button>
+  <div class="modal-inner" tabindex="-1" role="dialog" aria-modal="true"
+       aria-label="The best measure is building-specific">
+    <button class="close" id="narrative-close" type="button" aria-label="Close">&times;</button>
     <h2>The best measure is building-specific</h2>
     <div id="narrative-body">Loading&hellip;</div>
   </div>
 </div>
 
 <div id="compare-modal" class="modal" hidden>
-  <div class="modal-inner">
-    <button class="close" id="compare-close" aria-label="Close">&times;</button>
+  <div class="modal-inner" tabindex="-1" role="dialog" aria-modal="true"
+       aria-label="Same portfolio, same budget, four methods">
+    <button class="close" id="compare-close" type="button" aria-label="Close">&times;</button>
     <h2>Same portfolio, same budget, four methods</h2>
     <div id="compare-body">Press Compare to solve.</div>
   </div>
 </div>`;
 
+/* Whether the person looking at this may run the optimizer.
+ *
+ * A viewer may read the portfolio but not solve - `/optimize` is analyst-only. The
+ * map used to call it on mount regardless, so a viewer's first sight of the product
+ * was a red health indicator reading "this action requires the analyst role", five
+ * summary metrics showing em-dashes, and a budget slider that 403'd on every drag.
+ * Nothing was broken; they simply were not allowed, and the screen had no way to say
+ * so.
+ *
+ * Read-only is a real state here, not a degraded one: the stored allocations are the
+ * decisions the organisation actually made, and someone who may not re-run the
+ * optimizer is precisely the person who should be looking at them. */
+let canSolve = false;
+
+const ROLE_LADDER = ['viewer', 'analyst', 'admin'];
+const atLeast = (role, needed) =>
+  ROLE_LADDER.indexOf(role) >= ROLE_LADDER.indexOf(needed);
+
 export const mapView = {
   title: 'Map',
   async render(root, ctx) {
-    root.innerHTML = `<div class="map-layout">${MAP_HTML}</div>${MODAL_HTML}`;
-    await main();
+    canSolve = atLeast(ctx?.user?.role || 'viewer', 'analyst');
+
+    root.innerHTML = `
+      ${pageHead({
+        title: 'Allocation map',
+        description: canSolve
+          ? 'Set a budget and a method; the optimizer decides which buildings get '
+            + 'which retrofit. Click a building to see every option it considered.'
+          : 'The most recent stored allocation. Click a building to see every option '
+            + 'the optimizer considered there, and which one it chose.',
+      })}
+      <div class="map-layout">${MAP_HTML}</div>${MODAL_HTML}`;
+
+    if (!canSolve) makeReadOnly(root);
+    await main(ctx?.signal);
   },
 };
+
+/* Remove the controls rather than disable them.
+ *
+ * A row of greyed-out sliders is a screen telling someone what they cannot have.
+ * Replacing the panel with the run's provenance answers the question they actually
+ * have - what is this allocation, and when was it decided. */
+function makeReadOnly(root) {
+  const controls = root.querySelector('.map-controls');
+  if (!controls) return;
+  controls.innerHTML = `
+    <div class="field">
+      <h3 class="field-title">Stored allocation</h3>
+      <p class="note" id="readonly-note">Showing the most recent optimizer run.
+      Running a new one needs the analyst role.</p>
+      <dl class="facts" id="run-facts"></dl>
+    </div>`;
+}
 
 
 
@@ -260,7 +329,12 @@ function districtColour(name) {
 function render() {
   const svg = $('map');
   const { x, y, k } = state.view;
-  const funded = new Set((state.run?.items || []).map((i) => i.building_id));
+  /* A run fetched from /runs/{id} carries building_code but not building_id, so
+   * fall back to the `funded` flag the server already put on each feature when
+   * the geojson was requested with that run. */
+  const funded = new Set(
+    (state.run?.items || []).map((i) => i.building_id).filter(Boolean));
+  const isFunded_ = (b) => funded.has(b.id) || b.props.funded === true;
 
   const parts = [`<g transform="translate(${x},${y}) scale(${k})">`];
 
@@ -284,7 +358,7 @@ function render() {
   const showFootprints = k >= FOOTPRINT_ZOOM;
 
   for (const b of state.projected) {
-    const isFunded = funded.has(b.id);
+    const isFunded = isFunded_(b);
     const half = b.side / 2;
     const fill = isFunded ? 'var(--funded)' : districtColour(b.props.district);
     const cls = 'bldg' + (isFunded ? ' funded' : '') +
@@ -329,7 +403,7 @@ function escapeHtml(s) {
 
 /* ------------------------------------------------------------ interaction */
 
-function attachPanZoom() {
+function attachPanZoom(signal) {
   const svg = $('map');
   let dragging = false, startX = 0, startY = 0, originX = 0, originY = 0;
 
@@ -338,25 +412,61 @@ function attachPanZoom() {
     startX = e.clientX; startY = e.clientY;
     originX = state.view.x; originY = state.view.y;
   });
-  window.addEventListener('mouseup', () => { dragging = false; svg.classList.remove('dragging'); });
+  /* `signal` ties these to the current mount. Without it they survive every
+   * navigation away and back, and the map ends up with one set per visit. */
+  window.addEventListener('mouseup', () => { dragging = false; svg.classList.remove('dragging'); }, { signal });
   window.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     state.view.x = originX + (e.clientX - startX);
     state.view.y = originY + (e.clientY - startY);
     render();
-  });
+  }, { signal });
   svg.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const next = Math.min(MAX_ZOOM, Math.max(0.4, state.view.k * factor));
     const rect = svg.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    // Keep the point under the cursor fixed while zooming.
-    state.view.x = mx - ((mx - state.view.x) * next) / state.view.k;
-    state.view.y = my - ((my - state.view.y) * next) / state.view.k;
-    state.view.k = next;
-    render();
+    zoomAbout(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top);
   }, { passive: false });
+
+  /* The keyboard reaches the same state the wheel does. Listeners hang off the
+   * svg rather than the window, so they leave with it - the map is already
+   * mounted more than once per session. */
+  svg.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 120 : 40;
+    const keys = {
+      ArrowLeft: () => { state.view.x += step; },
+      ArrowRight: () => { state.view.x -= step; },
+      ArrowUp: () => { state.view.y += step; },
+      ArrowDown: () => { state.view.y -= step; },
+      '+': () => zoomAbout(1.25),
+      '=': () => zoomAbout(1.25),
+      '-': () => zoomAbout(1 / 1.25),
+      '0': resetView,
+    };
+    const action = keys[e.key];
+    if (!action) return;
+    e.preventDefault();
+    action();
+    render();
+  });
+}
+
+/* Zooms about a point in the map's own coordinates, defaulting to the middle of
+ * the viewport - which is what a zoom BUTTON should do, since there is no cursor
+ * position to anchor to. */
+function zoomAbout(factor, px, py) {
+  const svg = $('map');
+  const next = Math.min(MAX_ZOOM, Math.max(0.4, state.view.k * factor));
+  const ax = px === undefined ? svg.clientWidth / 2 : px;
+  const ay = py === undefined ? svg.clientHeight / 2 : py;
+  state.view.x = ax - ((ax - state.view.x) * next) / state.view.k;
+  state.view.y = ay - ((ay - state.view.y) * next) / state.view.k;
+  state.view.k = next;
+  render();
+}
+
+function resetView() {
+  state.view = { x: 0, y: 0, k: 1 };
+  render();
 }
 
 /* ------------------------------------------------------------------- data */
@@ -391,9 +501,15 @@ async function solve() {
 }
 
 function showSummary(run) {
+  /* A live solve returns budget_used_frac and total_kwh_saving; a run read back
+   * from storage carries neither, so both are derived rather than shown as NaN. */
+  const spent = run.budget_used_frac ?? (run.budget_egp ? run.total_cost_egp / run.budget_egp : 0);
+  const kwh = run.total_kwh_saving
+    ?? (run.items || []).reduce((sum, i) => sum + (i.annual_kwh_saving || 0), 0);
+
   $('m-funded').textContent = run.buildings_funded;
-  $('m-spent').textContent = (run.budget_used_frac * 100).toFixed(0) + '%';
-  $('m-kwh').textContent = compact(run.total_kwh_saving);
+  $('m-spent').textContent = (spent * 100).toFixed(0) + '%';
+  $('m-kwh').textContent = compact(kwh);
   $('m-carbon').textContent = compact(run.total_benefit_kgco2e);
   $('m-solve').textContent = Math.round(run.solve_ms) + ' ms';
 }
@@ -410,14 +526,31 @@ async function selectBuilding(id) {
   }
 
   const b = data.building;
-  const rows = data.options.slice(0, 12).map((o) => `
-    <div class="opt ${o.chosen ? 'chosen' : ''} ${o.lifetime_benefit_kgco2e <= 0 ? 'negative' : ''}">
-      <div class="name">${escapeHtml(o.label)}</div>
-      <div class="row"><span>${compact(o.cost_egp)} EGP</span>
-        <span>${compact(o.annual_kwh_saving)} kWh/yr</span>
-        <span>${fmt(o.score_per_kegp, 0)} /kEGP</span></div>
-      ${o.chosen ? '<div class="tag">chosen by this allocation</div>' : ''}
-    </div>`).join('');
+
+  /* The options arrive ranked by the objective, so the position in the list is
+   * information. Numbering it makes that explicit rather than leaving the
+   * reader to count - and it means the chosen option can be seen NOT to be
+   * rank 1, which happens under a district cap and is exactly the case worth
+   * being able to interrogate. */
+  const rows = data.options.slice(0, 12).map((o, i) => {
+    const negative = o.lifetime_benefit_kgco2e <= 0;
+    return `
+    <div class="opt ${o.chosen ? 'chosen' : ''} ${negative ? 'negative' : ''}">
+      <div class="head">
+        <span class="name">${escapeHtml(o.label)}</span>
+        ${o.chosen ? '<span class="tag">Allocated</span>'
+          : negative ? '<span class="tag">Net negative</span>' : ''}
+      </div>
+      <div class="foot">
+        <div class="row">
+          <span>Cost: <b>${compact(o.cost_egp)} EGP</b></span>
+          <span>Saves: <b>${compact(o.annual_kwh_saving)} kWh/yr</b></span>
+          <span>Benefit: <b>${fmt(o.score_per_kegp, 0)} /kEGP</b></span>
+        </div>
+        <span class="rank">Rank #${i + 1}</span>
+      </div>
+    </div>`;
+  }).join('');
 
   $('detail-empty').hidden = true;
   const body = $('detail-body');
@@ -426,15 +559,16 @@ async function selectBuilding(id) {
     <h2>${escapeHtml(b.name)}</h2>
     <div class="code">${escapeHtml(b.code)} · ${escapeHtml(b.district)}</div>
     <div class="facts">
-      <div><span>Use</span><br>${escapeHtml(b.occupancy_pattern)}</div>
-      <div><span>Insulation</span><br>${escapeHtml(b.insulation_quality)}</div>
-      <div><span>HVAC age</span><br>${b.hvac_age_yr} yr</div>
-      <div><span>Roof</span><br>${fmt(b.roof_area_m2)} m²</div>
-      <div><span>Floor</span><br>${fmt(b.floor_area_m2)} m²</div>
-      <div><span>Consumption</span><br>${compact(b.annual_kwh)} kWh/yr</div>
+      <div><span>Use</span>${escapeHtml(b.occupancy_pattern)}</div>
+      <div><span>Insulation</span>${escapeHtml(b.insulation_quality)}</div>
+      <div><span>HVAC age</span>${b.hvac_age_yr} yr</div>
+      <div><span>Roof</span>${fmt(b.roof_area_m2)} m²</div>
+      <div><span>Floor</span>${fmt(b.floor_area_m2)} m²</div>
+      <div><span>Consumption</span>${compact(b.annual_kwh)} kWh/yr</div>
     </div>
-    <h3 class="section-label">Options considered (${data.options.length})</h3>
-    ${rows || '<p class="note">No applicable interventions.</p>'}`;
+    <h3 class="section-label">Options considered
+      <span class="count">${data.options.length}</span></h3>
+    <div class="opt-list">${rows || '<p class="note">No applicable interventions.</p>'}</div>`;
 }
 
 /* ---------------------------------------------------------------- compare */
@@ -577,38 +711,115 @@ async function checkHealth() {
   }
 }
 
-function wire() {
-  const budget = $('budget');
-  const showBudget = () => {
-    $('budget-out').textContent = fmt(Number(budget.value)) + ' EGP';
-  };
-  showBudget();
+function wire(signal) {
+  /* The solve controls only exist when the caller may solve. Zoom, pan and the
+   * building detail are wired either way - reading the allocation is the part a
+   * viewer is here for, and it is fully interactive for them. */
+  if (canSolve) {
+    const budget = $('budget');
+    const showBudget = () => {
+      $('budget-out').textContent = fmt(Number(budget.value)) + ' EGP';
+    };
+    showBudget();
 
-  // Debounced so dragging the slider does not queue a solve per pixel; 120 ms is
-  // below the threshold where the map stops feeling attached to the control.
-  const solveSoon = debounce(solve, 120);
-  budget.addEventListener('input', () => { showBudget(); solveSoon(); });
+    // Debounced so dragging the slider does not queue a solve per pixel; 120 ms is
+    // below the threshold where the map stops feeling attached to the control.
+    const solveSoon = debounce(solve, 120);
+    budget.addEventListener('input', () => { showBudget(); solveSoon(); });
 
-  ['objective', 'solver', 'cap'].forEach((id) => $(id).addEventListener('change', solve));
-  $('compare-btn').addEventListener('click', compare);
-  $('narrative-btn').addEventListener('click', narrative);
-  $('narrative-close').addEventListener('click', () => { $('narrative-modal').hidden = true; });
-  $('narrative-modal').addEventListener('click', (e) => {
-    if (e.target.id === 'narrative-modal') $('narrative-modal').hidden = true;
-  });
-  $('compare-close').addEventListener('click', () => { $('compare-modal').hidden = true; });
-  $('compare-modal').addEventListener('click', (e) => {
-    if (e.target.id === 'compare-modal') $('compare-modal').hidden = true;
-  });
-  window.addEventListener('resize', debounce(() => { buildGeometry(); render(); }, 150));
+    ['objective', 'solver', 'cap'].forEach((id) => $(id).addEventListener('change', solve));
+
+    wireModal('compare-modal', 'compare-close', $('compare-btn'), compare);
+    wireModal('narrative-modal', 'narrative-close', $('narrative-btn'), narrative);
+  }
+
+  $('zoom-in').addEventListener('click', () => zoomAbout(1.25));
+  $('zoom-out').addEventListener('click', () => zoomAbout(1 / 1.25));
+  $('zoom-reset').addEventListener('click', resetView);
+
+  window.addEventListener('resize', debounce(() => { buildGeometry(); render(); }, 150),
+                          { signal });
 }
 
-async function main() {
-  wire();
-  attachPanZoom();
+/* Open, dismiss and - the part that was missing - focus.
+ *
+ * Both modals used to open while focus stayed on the button behind the scrim,
+ * so Tab walked the page underneath and Escape did nothing. Moving focus into
+ * the dialog fixes the dismissal too: the key event bubbles from inside, so
+ * Escape needs no document-level listener to leak. */
+function wireModal(modalId, closeId, opener, onOpen) {
+  const modal = $(modalId);
+  const inner = modal.querySelector('.modal-inner');
+
+  const close = () => {
+    modal.hidden = true;
+    if (opener && opener.isConnected) opener.focus();
+  };
+
+  opener.addEventListener('click', async () => {
+    await onOpen();
+    inner.focus();
+  });
+  $(closeId).addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+  });
+}
+
+async function main(signal) {
+  wire(signal);
+  attachPanZoom(signal);
   await checkHealth();
   await loadMap();
-  await solve();
+
+  if (canSolve) {
+    await solve();
+  } else {
+    await showStoredRun();
+  }
+
   await loadMap();          // reload so anomaly rings and funded state agree
+}
+
+/* The read-only path: the newest stored allocation, as decided.
+ *
+ * `/dashboard/runs` and `/runs/{id}` are both viewer-readable, which is the whole
+ * point - the decisions are public to anyone who may see the portfolio, only making
+ * new ones is restricted.
+ */
+async function showStoredRun() {
+  setStatus('loading the last allocation', 'warn');
+  try {
+    const runs = await api.runs();
+    if (!runs.length) {
+      setStatus('no allocation stored yet', 'warn');
+      const note = $('readonly-note');
+      if (note) {
+        note.textContent = 'No optimizer run has been stored yet. An analyst has to '
+                         + 'run one before there is anything to show here.';
+      }
+      return;
+    }
+
+    state.run = await api.get(`/runs/${encodeURIComponent(runs[0].run_id)}`);
+    showSummary(state.run);
+    showRunFacts(state.run);
+    render();
+    setStatus(`stored run · ${state.run.status.toLowerCase()}`, 'ok');
+  } catch (err) {
+    setStatus(err.detail || err.message, 'bad');
+  }
+}
+
+function showRunFacts(run) {
+  const facts = $('run-facts');
+  if (!facts) return;
+  const when = (run.created_at || '').replace('T', ' ').slice(0, 16);
+  facts.innerHTML = `
+    <div><dt>Decided</dt><dd>${escapeHtml(when)}</dd></div>
+    <div><dt>Budget</dt><dd>${compact(run.budget_egp)} EGP</dd></div>
+    <div><dt>Ranked by</dt><dd>${escapeHtml(run.objective)}</dd></div>
+    <div><dt>Method</dt><dd>${escapeHtml(run.solver)}</dd></div>`;
 }
 
