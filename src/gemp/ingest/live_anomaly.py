@@ -29,11 +29,13 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 import numpy as np
-from sqlalchemy import text
+from sqlalchemy import func, select
 
+from gemp.db import ReadingRow
+from gemp.ingest.integrity import as_utc
 from gemp.ml.anomaly import FLATLINE_Z, MAD_TO_SIGMA, MIN_RELATIVE_SPREAD
 
 log = logging.getLogger("gemp.ingest.live")
@@ -97,23 +99,41 @@ class StreamingDetector:
         of data has streamed past - which, at 720x, is still several minutes of a
         demonstration spent showing nothing.
 
-        One unparameterised query for the whole portfolio: a per-building parameterised
-        read of a many-chunk hypertable is pathologically slow (measured at 130s for
-        6,694 rows versus 1.7s for 334,702).
+        One query for the whole portfolio, never one per building: a per-building read
+        of a many-chunk hypertable bound to a building id is pathologically slow
+        (measured at 130 s for 6,694 rows versus 1.7 s for 334,702). The date bound is
+        a parameter, which is fine - the pathology was chunk exclusion failing for an
+        unseen BUILDING value, not for a timestamp.
+
+        The cutoff is computed in Python and passed in, rather than written as
+        `INTERVAL '31 days'` in the SQL. That is the house rule and this function was
+        breaking it: the interval literal is PostgreSQL-only, so the ingester could not
+        run against SQLite at all, despite `Ingester` taking an injectable session
+        factory specifically so that it could. Nothing noticed until an integration
+        test ran the real consumer against a temporary database. The literal also
+        hardcoded 31 and ignored `days` entirely.
+
+        Anchored on the newest READING, not on `now()`. Under 720x replay data time
+        runs months ahead of the wall clock, and a wall-clock cutoff selects nothing.
         """
-        cutoff = datetime.now(UTC) - timedelta(days=days)
-        rows = session.execute(text("""
-            SELECT building_id, ts, kw FROM reading
-            WHERE ts >= (SELECT max(ts) FROM reading) - INTERVAL '31 days'
-            ORDER BY building_id, ts
-        """)).all()
+        newest = session.execute(select(func.max(ReadingRow.ts))).scalar()
+        if newest is None:
+            log.info("no readings stored; detector starts cold")
+            return 0
+
+        cutoff = as_utc(newest) - timedelta(days=days)
+        rows = session.execute(
+            select(ReadingRow.building_id, ReadingRow.ts, ReadingRow.kw)
+            .where(ReadingRow.ts >= cutoff)
+            .order_by(ReadingRow.building_id, ReadingRow.ts)
+        ).all()
 
         for building_id, ts, kw in rows:
             state = self.state[building_id]
-            state.remember(ts, float(kw))
+            state.remember(as_utc(ts), float(kw))
 
-        log.info("warmed %d buildings from %d readings", len(self.state), len(rows))
-        del cutoff
+        log.info("warmed %d buildings from %d readings since %s",
+                 len(self.state), len(rows), cutoff.isoformat())
         return len(rows)
 
     # -- scoring -------------------------------------------------------------

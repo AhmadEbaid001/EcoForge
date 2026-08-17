@@ -62,7 +62,21 @@ class ChainState:
 class Ingester:
     def __init__(self, settings, batch_rows: int | None = None,
                  batch_seconds: float | None = None, session_factory=None,
-                 anchor_path: Path | None = None):
+                 anchor_path: Path | None = None,
+                 client_id: str = "gemp-ingest", clean_session: bool = False):
+        """`client_id` and `clean_session` are parameters for one specific reason.
+
+        MQTT identities are exclusive: a second client connecting with an id that is
+        already in use disconnects the first. Anything that runs a second Ingester
+        against a live broker - an integration test, a debugging session - would
+        silently kick the production ingester off and stop ingestion for as long as it
+        ran. A durable session (`clean_session=False`) also leaves a subscription
+        queueing messages on the broker after it exits, so a throwaway client must not
+        ask for one.
+
+        The defaults are the production values; only a caller that knows it is a
+        second consumer should change them.
+        """
         self.settings = settings
         self.key = settings.key_bytes
         self.batch_rows = batch_rows or settings.ingest_batch_rows
@@ -87,7 +101,7 @@ class Ingester:
         self._last_checkpoint = time.monotonic()
 
         self.client = mqtt.Client(
-            mqtt.CallbackAPIVersion.VERSION2, client_id="gemp-ingest", clean_session=False
+            mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, clean_session=clean_session
         )
         self.client.username_pw_set(
             settings.mqtt_user, settings.mqtt_password.get_secret_value()
