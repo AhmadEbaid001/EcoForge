@@ -54,6 +54,12 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+markers = [
+    # Runs against the live TimescaleDB and skips itself when it is unreachable, so
+    # `pytest` still passes on a machine without the container stack:
+    #   GEMP_DB_HOST=127.0.0.1 GEMP_DB_PORT=5433 pytest -m integration
+    "integration: needs the running PostgreSQL/TimescaleDB stack",
+]
 
 [tool.ruff]
 line-length = 100
