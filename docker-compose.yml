@@ -120,30 +120,13 @@ services:
       core:
         condition: service_started
 
-  grafana:
-    image: grafana/grafana-oss:11.3.0
-    restart: always
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GEMP_GRAFANA_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
-      # No outbound calls: the demo must work with the network cable unplugged.
-      GF_INSTALL_PLUGINS: ""
-      GEMP_DB_HOST: timescaledb
-      GEMP_DB_NAME: ${GEMP_DB_NAME:-gemp}
-      GEMP_DB_RO_USER: ${GEMP_DB_RO_USER:-gemp_ro}
-      GEMP_DB_RO_PASSWORD: ${GEMP_DB_RO_PASSWORD:-gemp_ro}
-    volumes:
-      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "127.0.0.1:3000:3000"
-    depends_on:
-      timescaledb:
-        condition: service_healthy
+  # Grafana used to run here. Its dashboards are now views inside the application,
+  # which removes a second service, a second login and a second set of database
+  # credentials - and removes the standing problem that its panels queried the
+  # database with their own SQL and could therefore disagree with the application
+  # about what a number meant. The provisioning files are kept under infra/grafana
+  # so the Phase 3 work the paper describes is still on record.
 
 volumes:
   pgdata:
   mosquitto_data:
-  grafana_data:

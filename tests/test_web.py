@@ -29,12 +29,23 @@ COMMENT_LINE = re.compile(r"^\s*(//|/\*|\*|<!--|#)")
 
 
 def source_files():
-    return sorted(p for p in WEB.iterdir() if p.suffix in {".html", ".css", ".js"})
+    """Every file nginx serves, including the ES modules under web/js/."""
+    return sorted(p for p in WEB.rglob("*") if p.suffix in {".html", ".css", ".js"})
+
+
+def script_text() -> str:
+    """All the JavaScript, concatenated.
+
+    The UI became several modules when it grew a login screen and dashboards, and
+    these checks are about what the shipped code as a whole references - not about
+    which file happens to hold a given line.
+    """
+    return "\n".join(p.read_text(encoding="utf-8") for p in WEB.rglob("*.js"))
 
 
 def test_the_ui_exists():
     names = {p.name for p in source_files()}
-    assert {"index.html", "style.css", "app.js"} <= names
+    assert {"index.html", "style.css", "app.js", "api.js", "map.js"} <= names
 
 
 @pytest.mark.parametrize("path", source_files(), ids=lambda p: p.name)
@@ -66,24 +77,41 @@ def test_no_bundler_or_package_manifest():
 def test_every_element_the_script_reaches_for_exists_in_the_page():
     """A typo in an id is silent in JavaScript: the handler simply never fires, the
     control looks fine and does nothing. Cheap to catch here."""
-    html = (WEB / "index.html").read_text(encoding="utf-8")
-    script = (WEB / "app.js").read_text(encoding="utf-8")
+    # The shell renders its own markup, so the ids a script reaches for may be
+    # declared in another module's template rather than in index.html.
+    html = "\n".join(p.read_text(encoding="utf-8")
+                     for p in [*WEB.rglob("*.html"), *WEB.rglob("*.js")])
+    script = script_text()
 
     ids_in_html = set(re.findall(r'id="([^"]+)"', html))
     ids_wanted = set(re.findall(r"""\$\(['"]([^'"]+)['"]\)""", script))
     ids_wanted |= set(re.findall(r"""getElementById\(['"]([^'"]+)['"]\)""", script))
 
     missing = sorted(ids_wanted - ids_in_html)
-    assert not missing, f"app.js references ids that do not exist: {missing}"
+    assert not missing, f"the UI references ids that do not exist: {missing}"
 
 
 def test_api_paths_used_by_the_ui_are_the_ones_the_server_serves():
     """Keeps the UI and the routes from drifting apart silently."""
     from gemp.api.main import app
 
-    script = (WEB / "app.js").read_text(encoding="utf-8")
+    script = script_text()
     used = set(re.findall(r"`\$\{API\}(/[a-z0-9/{}_-]+)", script))
-    served = {r.path.replace("/api/v1", "") for r in app.routes if hasattr(r, "path")}
+    # api.js states its paths as plain strings against a fixed base.
+    used |= set(re.findall(r"""request\(['"][A-Z]+['"], ?[`'"](/[a-z0-9/{}_$-]+)""", script))
+    # Walk into included routers. FastAPI 0.141 keeps one as a single wrapper entry
+    # rather than flattening its children, so reading only the top level reports that
+    # every auth and dashboard endpoint is missing.
+    served = set()
+    stack = list(app.routes)
+    while stack:
+        route = stack.pop()
+        nested = getattr(route, "original_router", None)
+        children = getattr(nested, "routes", None) or getattr(route, "routes", None)
+        if children:
+            stack.extend(children)
+        elif hasattr(route, "path"):
+            served.add(route.path.replace("/api/v1", ""))
 
     for path in used:
         # Template segments in the script become path parameters on the server.
@@ -100,7 +128,7 @@ def test_the_zoom_ceiling_lets_a_footprint_be_read():
     reviewer can see. The ceiling has to leave room for the outline to get big enough
     to recognise.
     """
-    source = (WEB / "app.js").read_text(encoding="utf-8")
+    source = script_text()
 
     ceiling = re.search(r"const MAX_ZOOM = (\d+)", source)
     switch = re.search(r"const FOOTPRINT_ZOOM = (\d+)", source)
@@ -132,7 +160,7 @@ def test_hidden_modals_are_actually_hidden():
 
 def test_the_ui_does_not_claim_three_solvers():
     """There are four. Stale copy in front of judges reads as a system nobody checked."""
-    for name in ("index.html", "app.js"):
-        text = (WEB / name).read_text(encoding="utf-8")
+    for path in [*WEB.rglob("*.html"), *WEB.rglob("*.js")]:
+        text = path.read_text(encoding="utf-8")
         assert "three methods" not in text
         assert "all three" not in text

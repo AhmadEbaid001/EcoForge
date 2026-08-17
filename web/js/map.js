@@ -1,16 +1,119 @@
-/* GEMP map UI.
+/* The map view.
  *
- * Deliberately no mapping library. F13 requires the demonstration to survive an
- * unplugged network cable, and Leaflet's default tile layer fetches from a remote
- * host - a dependency that fails silently until the one moment it matters. The
- * "map" here is fifty building polygons, which inline SVG draws natively with a
- * ten-line equirectangular projection and no bytes from anywhere.
+ * Moved wholesale out of the old single-page map and into a module the shell can
+ * mount, keeping its internals untouched: this is the part of the system that has
+ * been demonstrated most, and rewriting working projection and rendering code to fit
+ * a new navigation shell would risk the one screen that must not break.
  *
- * Everything with judgement in it lives on the server. This file fetches, projects,
- * paints and formats.
+ * The markup it needs travels with it, so the shell stays generic and no other view
+ * has to know that this one wants an <svg> of a particular id.
  */
 
 'use strict';
+
+import { api } from './api.js';
+
+const MAP_HTML = String.raw`<!-- ---------------------------------------------------------------- -->
+  <section class="controls" aria-label="Allocation controls">
+
+    <div class="field">
+      <label for="budget">Budget</label>
+      <output id="budget-out">10,000,000 EGP</output>
+      <input type="range" id="budget" min="1000000" max="30000000" step="500000" value="10000000">
+      <div class="scale"><span>1M</span><span>15M</span><span>30M</span></div>
+    </div>
+
+    <div class="field">
+      <label for="objective">Rank by</label>
+      <select id="objective">
+        <option value="lca_carbon">Life-cycle carbon (kgCO&#8322;e)</option>
+        <option value="raw_kwh">First-year energy (kWh)</option>
+        <option value="egp_saved">First-year money (EGP)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="solver">Allocation method</label>
+      <select id="solver">
+        <option value="cpsat">Exact optimization (CP-SAT)</option>
+        <option value="greedy_upgrade">Greedy + upgrade pass</option>
+        <option value="greedy">Greedy heuristic (saturates)</option>
+        <option value="equal_split">Equal split &mdash; status quo</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="cap">Max funded per district</label>
+      <select id="cap">
+        <option value="">No cap</option>
+        <option value="2">2</option>
+        <option value="4">4</option>
+        <option value="6">6</option>
+      </select>
+    </div>
+
+    <button id="compare-btn" class="ghost">Compare all four methods</button>
+    <button id="narrative-btn" class="ghost" style="margin-top:8px">Why building-specific?</button>
+
+    <div class="legend">
+      <h3>Map</h3>
+      <div><i class="sw funded"></i> Funded by this allocation</div>
+      <div><i class="sw unfunded"></i> Not funded</div>
+      <div><i class="sw anomaly"></i> Open anomaly</div>
+      <p class="note">Size reflects annual consumption.</p>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+  <section class="mapwrap">
+    <div class="summary" id="summary">
+      <div class="metric"><span class="k" id="m-funded">&mdash;</span><span class="v">buildings funded</span></div>
+      <div class="metric"><span class="k" id="m-spent">&mdash;</span><span class="v">of budget spent</span></div>
+      <div class="metric"><span class="k" id="m-kwh">&mdash;</span><span class="v">kWh/yr saved</span></div>
+      <div class="metric"><span class="k" id="m-carbon">&mdash;</span><span class="v">kgCO&#8322;e lifetime</span></div>
+      <div class="metric"><span class="k" id="m-solve">&mdash;</span><span class="v">solve time</span></div>
+    </div>
+
+    <svg id="map" role="img" aria-label="District map of the building portfolio"></svg>
+
+    <div class="maphint">Scroll to zoom &mdash; real OpenStreetMap footprints appear as you zoom in &middot; drag to pan &middot; click a building for its options</div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+  <aside class="detail" id="detail">
+    <div class="empty" id="detail-empty">
+      <h2>Select a building</h2>
+      <p>Every option the optimizer considered there is listed, with the one it chose
+         and why &mdash; so a recommendation can be interrogated rather than taken on trust.</p>
+    </div>
+    <div id="detail-body" hidden></div>
+  </aside>`;
+
+const MODAL_HTML = String.raw`<div id="narrative-modal" class="modal" hidden>
+  <div class="modal-inner">
+    <button class="close" id="narrative-close" aria-label="Close">&times;</button>
+    <h2>The best measure is building-specific</h2>
+    <div id="narrative-body">Loading&hellip;</div>
+  </div>
+</div>
+
+<div id="compare-modal" class="modal" hidden>
+  <div class="modal-inner">
+    <button class="close" id="compare-close" aria-label="Close">&times;</button>
+    <h2>Same portfolio, same budget, four methods</h2>
+    <div id="compare-body">Press Compare to solve.</div>
+  </div>
+</div>`;
+
+export const mapView = {
+  title: 'Map',
+  async render(root, ctx) {
+    root.innerHTML = `<div class="map-layout">${MAP_HTML}</div>${MODAL_HTML}`;
+    await main();
+  },
+};
+
+
 
 const API = '/api/v1';
 
@@ -243,9 +346,7 @@ function attachPanZoom() {
 /* ------------------------------------------------------------------- data */
 
 async function loadMap() {
-  const runParam = state.run?.run_id ? `?run_id=${encodeURIComponent(state.run.run_id)}` : '';
-  const res = await fetch(`${API}/map/geojson${runParam}`);
-  state.geo = await res.json();
+  state.geo = await api.geojson(state.run?.run_id);
   buildGeometry();
   render();
 }
@@ -263,13 +364,7 @@ function currentRequest() {
 async function solve() {
   setStatus('solving', 'warn');
   try {
-    const res = await fetch(`${API}/optimize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(currentRequest()),
-    });
-    if (!res.ok) throw new Error(`optimize returned ${res.status}`);
-    state.run = await res.json();
+    state.run = await api.optimize(currentRequest());
     showSummary(state.run);
     render();
     if (state.selected) selectBuilding(state.selected);
@@ -291,10 +386,12 @@ async function selectBuilding(id) {
   state.selected = id;
   render();
 
-  const runParam = state.run?.run_id ? `?run_id=${encodeURIComponent(state.run.run_id)}` : '';
-  const res = await fetch(`${API}/buildings/${encodeURIComponent(id)}/candidates${runParam}`);
-  if (!res.ok) return;
-  const data = await res.json();
+  let data;
+  try {
+    data = await api.buildingCandidates(id, state.run?.run_id);
+  } catch {
+    return;
+  }
 
   const b = data.building;
   const rows = data.options.slice(0, 12).map((o) => `
@@ -332,12 +429,13 @@ async function compare() {
   modal.hidden = false;
   $('compare-body').textContent = 'Solving all four…';
 
-  const res = await fetch(`${API}/compare`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(currentRequest()),
-  });
-  const data = await res.json();
+  let data;
+  try {
+    data = await api.compare(currentRequest());
+  } catch (error) {
+    $('compare-body').innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
+    return;
+  }
 
   const names = {
     equal_split: 'Equal split (status quo)',
@@ -407,9 +505,13 @@ async function narrative() {
   modal.hidden = false;
   $('narrative-body').textContent = 'Loading…';
 
-  const res = await fetch(`${API}/narrative/building-specific`);
-  if (!res.ok) { $('narrative-body').textContent = 'Not available for this catalog.'; return; }
-  const data = await res.json();
+  let data;
+  try {
+    data = await api.narrative();
+  } catch {
+    $('narrative-body').textContent = 'Not available for this catalog.';
+    return;
+  }
 
   const cards = data.buildings.map((b) => {
     const rows = b.options.slice(0, 5).map((o) => `
@@ -495,4 +597,3 @@ async function main() {
   await loadMap();          // reload so anomaly rings and funded state agree
 }
 
-main();

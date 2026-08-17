@@ -1,0 +1,284 @@
+"""Read model for the in-app dashboards.
+
+These endpoints exist because the dashboards moved in-house. Grafana reached into the
+database with its own SQL, which meant the panels and the application disagreed about
+what a number meant whenever one of them changed - and it needed a second service, a
+second login and a second set of credentials to show figures the API already had.
+
+Everything here is shaped for one panel and aggregated server-side. The alternative,
+shipping raw rows to the browser and summing them in JavaScript, moves two million
+readings over the wire to draw three hundred pixels.
+
+Every window is anchored on the newest READING, never on `now()`. Under 720x replay
+data time runs months ahead of the wall clock, and a wall-clock window is empty.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections import Counter, defaultdict
+from datetime import timedelta
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
+
+from gemp.api.deps import get_session
+from gemp.auth.deps import VIEWER, require
+from gemp.db import AnomalyRow, BuildingRow, OptimizationRunRow, ReadingRow
+from gemp.repository import latest_reading_ts, open_anomaly_count
+
+log = logging.getLogger("gemp.api.dashboard")
+
+router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"],
+                   dependencies=[Depends(require(VIEWER))])
+
+# Roughly a point per pixel on a wide chart. More is invisible and slower.
+MAX_POINTS = 400
+
+
+@router.get("/summary")
+def summary(session: Session = Depends(get_session)) -> dict:
+    """The stat tiles: one round trip for the whole header row."""
+    newest = latest_reading_ts(session)
+    readings = session.execute(select(func.count()).select_from(ReadingRow)).scalar_one()
+    buildings = session.execute(select(func.count()).select_from(BuildingRow)).scalar_one()
+
+    measured = session.execute(
+        select(BuildingRow.annual_kwh_source, func.count())
+        .group_by(BuildingRow.annual_kwh_source)
+    ).all()
+
+    severities = session.execute(
+        select(AnomalyRow.severity, func.count())
+        .where(AnomalyRow.acknowledged.is_(False))
+        .group_by(AnomalyRow.severity)
+    ).all()
+
+    latest_run = session.execute(
+        select(OptimizationRunRow).order_by(OptimizationRunRow.created_at.desc()).limit(1)
+    ).scalars().first()
+
+    return {
+        "buildings": int(buildings),
+        "readings": int(readings),
+        "data_clock": newest.isoformat() if newest else None,
+        "open_anomalies": open_anomaly_count(session),
+        "open_by_severity": {row[0]: int(row[1]) for row in severities},
+        # F3: how many buildings are costed against measured consumption rather than
+        # the figure the portfolio fixture shipped with. The number the whole
+        # forecasting layer exists to move.
+        "annual_kwh_source": {row[0]: int(row[1]) for row in measured},
+        "latest_run": None if latest_run is None else {
+            "run_id": latest_run.id,
+            "created_at": latest_run.created_at.isoformat(),
+            "budget_egp": latest_run.budget_egp,
+            "objective": latest_run.objective,
+            "solver": latest_run.solver,
+            "buildings_funded": latest_run.buildings_funded,
+            "total_cost_egp": latest_run.total_cost_egp,
+            "total_benefit_kgco2e": latest_run.total_benefit_kgco2e,
+        },
+    }
+
+
+@router.get("/load")
+def portfolio_load(
+    session: Session = Depends(get_session),
+    days: int = Query(default=14, ge=1, le=180),
+) -> dict:
+    """Total portfolio demand over recent DATA time.
+
+    Reads the continuous aggregate when it exists, which is what it was created for -
+    hourly buckets already materialised, four times fewer rows than the hypertable and
+    no client-side resampling. Falls back to the raw table on a deployment without
+    TimescaleDB, and on SQLite, where the tests run.
+    """
+    newest = latest_reading_ts(session)
+    if newest is None:
+        return {"points": [], "unit": "kW"}
+
+    cutoff = newest - timedelta(days=days)
+
+    try:
+        rows = session.execute(text("""
+            SELECT bucket AS ts, sum(avg_kw) AS kw
+            FROM reading_hourly
+            WHERE bucket >= :cutoff
+            GROUP BY bucket
+            ORDER BY bucket
+        """), {"cutoff": cutoff}).all()
+    except Exception:  # noqa: BLE001 - fall back rather than fail a dashboard
+        session.rollback()
+        rows = _raw_hourly(session, cutoff)
+
+    return {"points": _downsample(rows), "unit": "kW", "from": cutoff.isoformat()}
+
+
+def _raw_hourly(session: Session, cutoff) -> list:
+    """Portable fallback: bucket in Python rather than in dialect-specific SQL.
+
+    `date_trunc` is PostgreSQL, `strftime` is SQLite, and writing both means the
+    dashboard silently means something different depending on where it runs.
+    """
+    rows = session.execute(
+        select(ReadingRow.ts, ReadingRow.kw).where(ReadingRow.ts >= cutoff)
+    ).all()
+
+    buckets: dict = defaultdict(float)
+    for ts, kw in rows:
+        buckets[ts.replace(minute=0, second=0, microsecond=0)] += float(kw)
+    return sorted(buckets.items())
+
+
+@router.get("/anomalies/daily")
+def anomalies_daily(
+    session: Session = Depends(get_session),
+    days: int = Query(default=30, ge=1, le=365),
+) -> dict:
+    """Alerts per day of DATA time, split by severity - the triage trend."""
+    newest = latest_reading_ts(session)
+    if newest is None:
+        return {"days": []}
+
+    cutoff = newest - timedelta(days=days)
+    rows = session.execute(
+        select(AnomalyRow.ts, AnomalyRow.severity, AnomalyRow.acknowledged)
+        .where(AnomalyRow.ts >= cutoff)
+    ).all()
+
+    by_day: dict[str, Counter] = defaultdict(Counter)
+    for ts, severity, acknowledged in rows:
+        key = ts.date().isoformat()
+        by_day[key][severity] += 1
+        by_day[key]["total"] += 1
+        if not acknowledged:
+            by_day[key]["open"] += 1
+
+    return {
+        "days": [
+            {"date": day, **{k: int(v) for k, v in counts.items()}}
+            for day, counts in sorted(by_day.items())
+        ]
+    }
+
+
+@router.get("/anomalies")
+def anomaly_feed(
+    session: Session = Depends(get_session),
+    limit: int = Query(default=50, ge=1, le=500),
+    only_open: bool = True,
+    severity: str | None = None,
+    building_id: str | None = None,
+) -> list[dict]:
+    """The alert inbox, worst first. Carries ids so a row can be acknowledged."""
+    stmt = (
+        select(AnomalyRow, BuildingRow.code)
+        .join(BuildingRow, BuildingRow.id == AnomalyRow.building_id)
+        .order_by(func.abs(AnomalyRow.robust_z).desc())
+        .limit(limit)
+    )
+    if only_open:
+        stmt = stmt.where(AnomalyRow.acknowledged.is_(False))
+    if severity:
+        stmt = stmt.where(AnomalyRow.severity == severity)
+    if building_id:
+        stmt = stmt.where(AnomalyRow.building_id == building_id)
+
+    return [
+        {
+            "id": row.id,
+            "building_id": row.building_id,
+            "building_code": code,
+            "ts": row.ts.isoformat(),
+            "observed_kw": row.observed_kw,
+            "expected_kw": row.expected_kw,
+            "robust_z": None if row.robust_z != row.robust_z else row.robust_z,
+            "severity": row.severity,
+            "acknowledged": row.acknowledged,
+        }
+        for row, code in session.execute(stmt).all()
+    ]
+
+
+@router.get("/runs")
+def recent_runs(
+    session: Session = Depends(get_session),
+    limit: int = Query(default=25, ge=1, le=200),
+) -> list[dict]:
+    """Stored allocations, newest first. The record of what was decided and when."""
+    rows = session.execute(
+        select(OptimizationRunRow)
+        .order_by(OptimizationRunRow.created_at.desc())
+        .limit(limit)
+    ).scalars().all()
+
+    return [
+        {
+            "run_id": row.id,
+            "created_at": row.created_at.isoformat(),
+            "budget_egp": row.budget_egp,
+            "objective": row.objective,
+            "solver": row.solver,
+            "status": row.status,
+            "buildings_funded": row.buildings_funded,
+            "total_cost_egp": row.total_cost_egp,
+            "total_benefit_kgco2e": row.total_benefit_kgco2e,
+            "solve_ms": row.solve_ms,
+            "inputs_hash": row.inputs_hash[:16],
+        }
+        for row in rows
+    ]
+
+
+@router.get("/forecast/{building_id}")
+def forecast_vs_actual(
+    building_id: str,
+    session: Session = Depends(get_session),
+    hours: int = Query(default=168, ge=24, le=720),
+) -> dict:
+    """Actual against predicted for one building - the forecast panel.
+
+    Two series on one axis is the only honest way to show a forecast: a MAPE figure
+    alone tells a reviewer the model is good without letting them see where it is
+    wrong.
+    """
+    newest = latest_reading_ts(session, building_id)
+    if newest is None:
+        return {"building_id": building_id, "actual": [], "forecast": []}
+
+    cutoff = newest - timedelta(hours=hours)
+
+    actual = session.execute(
+        select(ReadingRow.ts, ReadingRow.kw)
+        .where(ReadingRow.building_id == building_id, ReadingRow.ts >= cutoff)
+        .order_by(ReadingRow.ts)
+    ).all()
+
+    forecast = session.execute(text("""
+        SELECT ts, yhat FROM forecast
+        WHERE building_id = :b AND ts >= :cutoff
+        ORDER BY ts
+    """), {"b": building_id, "cutoff": cutoff}).all()
+
+    return {
+        "building_id": building_id,
+        "actual": _downsample(actual),
+        "forecast": _downsample(forecast),
+    }
+
+
+def _downsample(rows: list) -> list[list]:
+    """Every nth point. Crude on purpose.
+
+    Averaging into buckets would smooth away the spikes an anomaly panel exists to
+    show, which is the one thing this chart must not do.
+    """
+    if not rows:
+        return []
+    step = max(1, len(rows) // MAX_POINTS)
+    return [
+        [ts.isoformat(), round(float(value), 2)]
+        for ts, value in rows[::step]
+        if value is not None
+    ]

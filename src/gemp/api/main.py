@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from gemp.api import auth_routes
+from gemp.api import auth_routes, dashboard_routes
 from gemp.api.deps import get_session
 from gemp.auth.deps import (
     ADMIN,
@@ -141,6 +141,7 @@ app = FastAPI(
 
 
 app.include_router(auth_routes.router)
+app.include_router(dashboard_routes.router)
 
 
 # Sent on every response. Each one closes a class of attack that a single-origin app

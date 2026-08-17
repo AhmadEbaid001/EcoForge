@@ -186,3 +186,194 @@ th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: va
 td { font-variant-numeric: tabular-nums; }
 tr.best td { color: var(--funded); font-weight: 600; }
 .caption { font-size: 12px; color: var(--ink-dim); margin-top: 12px; line-height: 1.6; }
+
+/* =====================================================================
+   Application shell, login and the in-app dashboards.
+
+   Added when the platform stopped being a single map page: navigation, a
+   login screen, and the panels that replaced Grafana. The colour tokens
+   at the top of this file are reused rather than extended, so the
+   dashboards and the map cannot drift into looking like two products.
+   ===================================================================== */
+
+body.signed-in, body.signed-out, body.booting { display: block; height: auto; min-height: 100%; }
+body.signed-in main { display: block; padding: 20px; max-width: 1180px; margin: 0 auto; }
+
+/* ------------------------------------------------------------- login */
+
+.login-wrap {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.login {
+  width: min(420px, 100%); background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 26px;
+}
+.login .brand { margin-bottom: 20px; }
+.login h1 { font-size: 17px; margin: 0 0 4px; }
+.login label { display: block; margin: 14px 0; font-size: 13px; color: var(--ink-dim); }
+.login input {
+  display: block; width: 100%; margin-top: 6px; padding: 10px 12px;
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; font-size: 14px;
+}
+.login input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.login button[type="submit"] {
+  width: 100%; margin-top: 8px; padding: 11px;
+  background: var(--accent); color: #04121f; border: none;
+  border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.login button[type="submit"]:disabled { opacity: .6; cursor: default; }
+
+/* ------------------------------------------------------- navigation */
+
+body.signed-in .bar { position: sticky; top: 0; z-index: 10; gap: 18px; flex-wrap: wrap; }
+.tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+.tab {
+  background: none; border: 1px solid transparent; color: var(--ink-dim);
+  padding: 7px 13px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.tab:hover { color: var(--ink); background: var(--panel-2); }
+.tab.active { color: var(--ink); background: var(--panel-2); border-color: var(--line); }
+.who { display: flex; gap: 8px; align-items: center; }
+.badge {
+  display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+}
+.badge.role { margin-left: 6px; }
+
+/* ----------------------------------------------------------- panels */
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 18px;
+}
+.panel.narrow { max-width: 460px; }
+.panel > header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.panel h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.panel h4 { margin: 16px 0 8px; font-size: 13px; color: var(--ink-dim); }
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.muted { color: var(--ink-dim); }
+.small { font-size: 12px; }
+.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.loading { color: var(--ink-dim); padding: 20px 0; }
+
+.caption {
+  color: var(--ink-dim); font-size: 12.5px; line-height: 1.6;
+  margin: 12px 0 0; border-top: 1px solid var(--line); padding-top: 10px;
+}
+
+/* ------------------------------------------------------- stat tiles */
+
+.stat-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.stat-row.compact { margin-bottom: 0; }
+.stat {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.stat-value { font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+.stat-label { color: var(--ink-dim); font-size: 12.5px; margin-top: 2px; }
+.stat-hint { color: var(--ink-dim); font-size: 11.5px; margin-top: 6px; opacity: .8; }
+
+/* ----------------------------------------------------------- charts */
+
+.chart { width: 100%; height: auto; display: block; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--ink-dim); font-size: 11px; }
+.chart .axis.unit { fill: var(--ink-dim); font-size: 10px; }
+.chart .series { stroke-width: 1.6; }
+.chart .series.s0 { stroke: var(--accent); }
+.chart .series.s1 { stroke: var(--warn); }
+.chart.empty .axis { font-size: 13px; }
+.chart.proportion { height: 18px; border-radius: 4px; overflow: hidden; }
+
+.bar.b0, .seg.b0 { fill: var(--anomaly); }
+.bar.b1, .seg.b1 { fill: var(--warn); }
+.bar.b2, .seg.b2 { fill: var(--unfunded); }
+.bar.b3, .seg.b3 { fill: var(--accent); }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; }
+.legend .key { color: var(--ink-dim); display: flex; align-items: center; gap: 6px; }
+.legend .key::before {
+  content: ""; width: 10px; height: 10px; border-radius: 2px; display: inline-block;
+}
+.legend .key.s0::before { background: var(--accent); }
+.legend .key.s1::before { background: var(--warn); }
+.legend .key.b0::before { background: var(--anomaly); }
+.legend .key.b1::before { background: var(--warn); }
+.legend .key.b2::before { background: var(--unfunded); }
+.legend .key.b3::before { background: var(--accent); }
+
+/* ----------------------------------------------------------- tables */
+
+.panel table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.panel th {
+  text-align: left; color: var(--ink-dim); font-weight: 500; font-size: 12px;
+  padding: 6px 8px; border-bottom: 1px solid var(--line);
+}
+.panel td { padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.panel tr:last-child td { border-bottom: none; }
+.panel tr.denied td { color: var(--anomaly); }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+.sev { padding: 1px 8px; border-radius: 10px; font-size: 11.5px; }
+.sev.critical { background: rgba(224, 96, 58, .18); color: #ff9b7a; }
+.sev.high     { background: rgba(216, 162, 74, .18); color: #e8bd76; }
+.sev.medium   { background: rgba(139, 155, 176, .16); color: var(--ink-dim); }
+
+/* ------------------------------------------------- forms and boxes */
+
+.form label { display: block; margin: 12px 0; font-size: 13px; color: var(--ink-dim); }
+.form input {
+  display: block; width: 100%; margin-top: 6px; padding: 9px 11px;
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; font-size: 13px;
+}
+.form button {
+  padding: 9px 16px; background: var(--accent); color: #04121f;
+  border: none; border-radius: 6px; font-weight: 600; cursor: pointer;
+}
+select.inline {
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 10px; font-size: 13px;
+}
+label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-dim); }
+button.ghost.small { padding: 5px 10px; font-size: 12px; }
+
+.error-box, .warn-box, .ok-box, .hint-box {
+  padding: 10px 13px; border-radius: 6px; font-size: 13px; margin: 10px 0;
+  border: 1px solid;
+}
+.error-box { background: rgba(224, 96, 58, .12); border-color: rgba(224, 96, 58, .4); color: #ff9b7a; }
+.warn-box  { background: rgba(216, 162, 74, .12); border-color: rgba(216, 162, 74, .4); color: #e8bd76; }
+.ok-box    { background: rgba(46, 163, 106, .12); border-color: rgba(46, 163, 106, .4); color: #6fd3a1; }
+.hint-box  { background: var(--panel-2); border-color: var(--line); color: var(--ink-dim); }
+
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 0; font-size: 13px; }
+.facts dt { color: var(--ink-dim); }
+.facts dd { margin: 0; }
+
+.verdict {
+  display: inline-block; padding: 6px 16px; border-radius: 6px;
+  font-weight: 600; margin-bottom: 12px;
+}
+.verdict.good { background: rgba(46, 163, 106, .15); color: #6fd3a1; }
+.verdict.bad  { background: rgba(224, 96, 58, .15); color: #ff9b7a; }
+
+/* --------------------------------------------------------- map view */
+
+/* The map keeps the three-column layout it was designed with; the shell
+   just gives it a container instead of the whole page. */
+.map-layout {
+  display: grid; grid-template-columns: 250px 1fr 310px; gap: 14px;
+  height: calc(100vh - 160px); min-height: 520px;
+}
+@media (max-width: 1100px) {
+  .map-layout { grid-template-columns: 1fr; height: auto; }
+}

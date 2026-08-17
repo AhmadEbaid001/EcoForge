@@ -3,117 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GEMP &mdash; Retrofit Priority Map</title>
+<title>GEMP &mdash; Green Energy Monitoring Platform</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="booting">
 
-<header class="bar">
-  <div class="brand">
-    <span class="mark"></span>
-    <div>
-      <h1>Green Energy Monitoring Platform</h1>
-      <p class="sub">Budget-constrained retrofit prioritization &mdash; Team Ecoforge</p>
-    </div>
-  </div>
-  <div class="status" id="status">
-    <span class="dot" id="health-dot"></span><span id="health-text">connecting</span>
-  </div>
-</header>
+<!--
+  The shell is deliberately empty.
 
-<main>
-  <!-- ---------------------------------------------------------------- -->
-  <section class="controls" aria-label="Allocation controls">
+  Every screen is rendered by the application after it has asked the server who the
+  caller is, which means an unauthenticated browser is never handed markup describing
+  data it may not see - no half-drawn dashboard behind a login overlay, and nothing in
+  the page source worth reading before signing in.
 
-    <div class="field">
-      <label for="budget">Budget</label>
-      <output id="budget-out">10,000,000 EGP</output>
-      <input type="range" id="budget" min="1000000" max="30000000" step="500000" value="10000000">
-      <div class="scale"><span>1M</span><span>15M</span><span>30M</span></div>
-    </div>
-
-    <div class="field">
-      <label for="objective">Rank by</label>
-      <select id="objective">
-        <option value="lca_carbon">Life-cycle carbon (kgCO&#8322;e)</option>
-        <option value="raw_kwh">First-year energy (kWh)</option>
-        <option value="egp_saved">First-year money (EGP)</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="solver">Allocation method</label>
-      <select id="solver">
-        <option value="cpsat">Exact optimization (CP-SAT)</option>
-        <option value="greedy">Greedy heuristic</option>
-        <option value="equal_split">Equal split &mdash; status quo</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="cap">Max funded per district</label>
-      <select id="cap">
-        <option value="">No cap</option>
-        <option value="2">2</option>
-        <option value="4">4</option>
-        <option value="6">6</option>
-      </select>
-    </div>
-
-    <button id="compare-btn" class="ghost">Compare all four methods</button>
-    <button id="narrative-btn" class="ghost" style="margin-top:8px">Why building-specific?</button>
-
-    <div class="legend">
-      <h3>Map</h3>
-      <div><i class="sw funded"></i> Funded by this allocation</div>
-      <div><i class="sw unfunded"></i> Not funded</div>
-      <div><i class="sw anomaly"></i> Open anomaly</div>
-      <p class="note">Size reflects annual consumption.</p>
-    </div>
-  </section>
-
-  <!-- ---------------------------------------------------------------- -->
-  <section class="mapwrap">
-    <div class="summary" id="summary">
-      <div class="metric"><span class="k" id="m-funded">&mdash;</span><span class="v">buildings funded</span></div>
-      <div class="metric"><span class="k" id="m-spent">&mdash;</span><span class="v">of budget spent</span></div>
-      <div class="metric"><span class="k" id="m-kwh">&mdash;</span><span class="v">kWh/yr saved</span></div>
-      <div class="metric"><span class="k" id="m-carbon">&mdash;</span><span class="v">kgCO&#8322;e lifetime</span></div>
-      <div class="metric"><span class="k" id="m-solve">&mdash;</span><span class="v">solve time</span></div>
-    </div>
-
-    <svg id="map" role="img" aria-label="District map of the building portfolio"></svg>
-
-    <div class="maphint">Scroll to zoom &mdash; real OpenStreetMap footprints appear as you zoom in &middot; drag to pan &middot; click a building for its options</div>
-  </section>
-
-  <!-- ---------------------------------------------------------------- -->
-  <aside class="detail" id="detail">
-    <div class="empty" id="detail-empty">
-      <h2>Select a building</h2>
-      <p>Every option the optimizer considered there is listed, with the one it chose
-         and why &mdash; so a recommendation can be interrogated rather than taken on trust.</p>
-    </div>
-    <div id="detail-body" hidden></div>
-  </aside>
-</main>
-
-<div id="narrative-modal" class="modal" hidden>
-  <div class="modal-inner">
-    <button class="close" id="narrative-close" aria-label="Close">&times;</button>
-    <h2>The best measure is building-specific</h2>
-    <div id="narrative-body">Loading&hellip;</div>
-  </div>
+  Scripts are ES modules from this origin only. The Content-Security-Policy the server
+  sends forbids anything else, so a CDN <script> added later would be blocked by the
+  browser rather than silently breaking the offline guarantee (F13).
+-->
+<div id="root">
+  <div class="login-wrap"><div class="loading">Loading&hellip;</div></div>
 </div>
 
-<div id="compare-modal" class="modal" hidden>
-  <div class="modal-inner">
-    <button class="close" id="compare-close" aria-label="Close">&times;</button>
-    <h2>Same portfolio, same budget, four methods</h2>
-    <div id="compare-body">Press Compare to solve.</div>
+<noscript>
+  <div class="login-wrap">
+    <div class="error-box">
+      This application needs JavaScript. It draws its own maps and charts rather than
+      loading a charting library, so that it keeps working with the network unplugged.
+    </div>
   </div>
-</div>
+</noscript>
 
-<script src="app.js"></script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>
