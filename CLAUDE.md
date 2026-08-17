@@ -23,8 +23,9 @@ decision or display it.
 | 5 — rehearsal, documentation | **next** |
 | — | identity, RBAC and in-app dashboards (added after Phase 4) |
 
-278 tests plus 15 integration tests that skip themselves without the stack, 83%
-coverage, lint clean. Six containers healthy.
+344 tests plus 15 integration tests that skip themselves without the stack, lint
+clean, coverage floor 80%. **Five** containers: timescaledb, mosquitto, core, sim,
+nginx. Grafana was removed when its dashboards moved into the application.
 
 Integration tests need the stack and their own environment:
 

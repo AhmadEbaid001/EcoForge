@@ -46,7 +46,8 @@ docker compose up -d && python -m gemp.seed --months 6
 | `python -m gemp.evaluate` | Re-measure every claim below. Exits 1 if one has stopped holding. |
 | `python -m gemp.evaluate --with-db` | Adds the forecasting and anomaly claims. Needs the stack. |
 | `python scripts/check.py` | Every CI gate, locally: lint, tests with coverage, data contract, claims. |
-| `python -m pytest` | 278 tests; 15 integration tests skip themselves without the stack. |
+| `python -m gemp.auth.bootstrap --username you` | Create the first administrator. There is no default account. |
+| `python -m pytest` | 344 tests; 15 integration tests skip themselves without the stack. |
 | `curl localhost:8080/api/v1/integrity/verify/b001` | Walk one building's chain and check it against the external anchor. |
 
 ### Current headline numbers
