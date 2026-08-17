@@ -169,14 +169,17 @@ failing, and the failure is the signal that the LCA layer has begun to matter.
 
 ## Roadmap
 
-| Phase | Dates | Status |
-|---|---|---|
-| 0 — foundation + optimizer | Aug 14–17 | **complete** |
-| 1 — infrastructure, ingestion, integrity | Aug 18–20 | not started |
-| 2 — forecasting + anomaly detection | Aug 21–23 | not started |
-| 3 — map UI, controls, Grafana | Aug 24–26 | not started |
-| 4 — evaluation harness + hardening | Aug 27–29 | not started |
-| 5 — rehearsal + documentation | Aug 30–31 | not started |
+| Phase | Status |
+|---|---|
+| 0 — foundation + optimizer | **complete** |
+| 1 — infrastructure, ingestion, integrity | **complete** |
+| 2 — forecasting + anomaly detection | **complete** |
+| 3 — map UI, controls, Grafana | **complete** |
+| 4 — evaluation harness + hardening | next |
+| 5 — rehearsal + documentation | not started |
+
+See [CLAUDE.md](CLAUDE.md) for the working context: decisions, traps, and the findings
+that change the paper.
 
 Critical path: `catalog schema → savings model → candidates → CP-SAT → /optimize → map
 → rehearsal`. Everything else hangs off that spine and is severable.
