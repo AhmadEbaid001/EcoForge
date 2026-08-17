@@ -62,17 +62,21 @@ web/
   index.html        Empty shell. Renders nothing until the app asks the server who
                     the caller is, so an unauthenticated browser gets no markup
                     describing data it may not see.
-  style.css         ~380 lines. Design tokens at the top, map styles, then the
-                    shell/dashboard styles appended in one block at the bottom.
+  style.css         ~940 lines, in 13 numbered sections. Tokens first (light, then
+                    dark twice - see §5), then base, chrome, components, charts,
+                    map, responsive. One component per section; no appended block.
   js/
     app.js          Shell: login form, password-change gate, tab navigation,
-                    hash routing, session-expiry handling. ~230 lines.
+                    hash routing, session-expiry handling, and the appearance
+                    switch (auto / light / dark). ~330 lines.
     api.js          The single way in and out of the API. Attaches the CSRF token,
                     turns 401 into a login screen, normalises errors. ~120 lines.
     charts.js       Hand-drawn inline SVG: lineChart, stackedBars, proportionBar,
-                    statTile, plus escapeHtml and compact. ~170 lines.
-    views.js        Six views: overview, forecasts, alerts, runs, integrity, admin,
-                    account. Each exports render(root, ctx). ~470 lines.
+                    statTile, the three appearance icons, escapeHtml, compact.
+                    ~190 lines.
+    views.js        Seven views: overview, forecasts, alerts, runs, integrity,
+                    admin, account, plus openDialog() - the form that replaced
+                    window.prompt for minting credentials. ~730 lines.
     map.js          The map, moved wholesale from the old single-page app. Owns its
                     own markup (MAP_HTML / MODAL_HTML template strings at the top).
                     ~600 lines. Treat as working code to be respected, not rewritten.
@@ -96,6 +100,14 @@ These are not stylistic preferences. Each one is enforced by a test or by the br
 
 2. **No inline scripts or inline event handlers.** The CSP has no `'unsafe-inline'`.
    `onclick="..."` in markup will silently not fire. Attach listeners in JavaScript.
+
+2b. **No `style="..."` attributes either, for the same reason.** The policy is
+   `style-src 'self'` with no `'unsafe-inline'`, and that governs style *attributes*
+   as well as `<style>` elements. Three of them had been sitting in `map.js` since the
+   dashboards were built, doing nothing: the narrative modal's cards never had the
+   side-by-side layout their markup asked for. Nothing reports this — the attribute is
+   simply discarded. Every visual decision has to be reachable from `style.css`
+   through a class.
 
 3. **No build step.** `tests/test_web.py::test_no_bundler_or_package_manifest` fails
    if `package.json`, `node_modules`, `webpack.config.js` or `vite.config.js` appears
@@ -126,21 +138,58 @@ These are not stylistic preferences. Each one is enforced by a test or by the br
 
 ---
 
-## 5. Design tokens in use
+## 5. Design tokens, and the two appearances
 
-Defined at the top of `style.css` and reused by both the map and the dashboards, so
-the two cannot drift into looking like separate products.
+**This section replaces the dark-only token list that was here.** The interface now
+supports light and dark, and the old names survive only as aliases.
+
+Tokens are semantic — named for the job, not the colour — and defined in section 1 of
+`style.css`:
 
 ```css
---bg: #0f1419;        --panel: #161d26;     --panel-2: #1d2530;
---line: #2a3542;      --ink: #e6edf3;       --ink-dim: #8b9bb0;
---accent: #4a9eff;    --funded: #2ea36a;    --funded-lo: #1c6b46;
---unfunded: #3a4756;  --anomaly: #e0603a;   --warn: #d8a24a;
---radius: 8px;
+/* grounds */    --bg  --surface  --surface-2  --surface-3  --surface-hover
+/* lines */      --line  --line-strong  --control-line
+/* text */       --ink  --ink-2  --ink-3
+/* meaning */    --accent --accent-hover --accent-soft --on-accent
+                 --success --warn --danger, each with -soft and -ink variants
+/* data */       --sev-critical --sev-high --sev-medium --series-0 --series-1
+/* map */        --funded --funded-edge --unfunded --anomaly
+                 --district-s --district-l --bldg-edge --map-ground
+/* depth */      --shadow-1 --shadow-2 --shadow-3 --scrim --header-bg
+/* type */       --fs-micro … --fs-figure-lg, in rem
+/* space */      --s-1 … --s-10 on a 4px grid, --radius*, --ease, --dur
 ```
 
-Dark theme only. System font stack. Chart series use `--accent` then `--warn`;
-severity bars use `--anomaly`, `--warn`, `--unfunded`.
+`--panel`, `--panel-2`, `--ink-dim` and `--funded-lo` are kept as **aliases** of the
+new names. `map.js` draws `fill="var(--funded)"` into an SVG presentation attribute
+and this document used to name the old set, so removing them would have broken the
+screen that gets demonstrated most for no gain.
+
+**Each colour token is written three times.** Once for light on bare `:root`, once
+under `@media (prefers-color-scheme: dark)` guarded by `:not([data-theme="light"])`,
+and once under `:root[data-theme="dark"]`. That is not redundancy to tidy up: a token
+defined *only* inside a media query does not exist for anyone outside that query, and
+without the third block an explicit dark choice on a light system does nothing.
+
+Appearance is chosen in the header — **Auto / Light / Dark**, persisted in
+`localStorage` under `gemp.appearance`. Auto means *no* `data-theme` attribute, which
+leaves `prefers-color-scheme` in charge. That ordering is deliberate: the CSP forbids
+inline script, so nothing can run before first paint, and a design whose correct
+appearance depended on JavaScript would flash the wrong one on every load. Following
+the system by default means the common case is right before `app.js` executes.
+
+Every text pair was measured rather than eyeballed. On `--surface`: `--ink` is 18.4:1
+light and 14.8:1 dark, `--ink-2` is 7.0 and 8.6, `--ink-3` is 5.3 and 5.6. Accent and
+the three status colours clear 4.7:1 on both `--bg` and `--surface` in both
+appearances. `--control-line` exists because a separator may be faint but the boundary
+of an input may not — it measures 3.5:1 on white, which is what WCAG 1.4.11 asks of a
+control edge.
+
+Where colour carried meaning on its own, something else now carries it too: the second
+chart series is **dashed** as well as amber, a funded building has a lighter **outline**
+as well as a green fill, and each severity pill has a **dot**. Severity is ordinal, so
+its three fills separate by lightness (adjacent stack segments differ by 3.08:1 and
+1.55:1) rather than by hue alone.
 
 ---
 
@@ -166,7 +215,43 @@ the login screen.
 
 ## 7. The work: outstanding UI/UX issues
 
-Audited live against the running stack. Ordered by severity.
+Audited live against the running stack. Ordered by severity. Items marked **CLOSED**
+were fixed in the light/dark redesign pass; the rest are still open and still real.
+
+### Closed by the redesign pass
+
+- **Two class names were claimed by two components each.** `.controls` was both the
+  map's left column and a panel's toolbar; `.legend` was both the map key and a chart
+  key. The later block in the stylesheet won, so the map's sidebar and its legend were
+  both being laid out as wrapping flex **rows** — on the most demonstrated screen in
+  the system. `.facts` and `.caption` collided the same way with milder effects. Now
+  `.map-controls` / `.toolbar` and `.map-legend` / `.chart-legend`, and `.facts` is
+  scoped to `.detail` where the map needs its two-column form.
+- **Three `style="..."` attributes in `map.js` were being discarded by the CSP** (see
+  §4.2b). Replaced with `.section-label`, `.card` and `.card-row`.
+- **No focus indicator anywhere except the login inputs**, which made every dashboard
+  unusable from the keyboard. One `:focus-visible` ring now covers the application.
+- **`window.prompt` for minting credentials** — issue 3 below. Replaced with a real
+  dialog: labelled fields a password manager can fill, a confirmation field, length
+  checked before the request leaves, Escape and scrim to dismiss, and a
+  `crypto.getRandomValues` suggestion button.
+- **The blocking `window.alert`** — issue 5 below. The bulk acknowledge now explains
+  in place that it closes every alert of that severity, says how many that is, and
+  needs a second click.
+- **The alert list's silent cap** — issue 4. The footer now reads "showing the 100
+  largest of 31.6k open alerts". Real pagination still needs an `offset` on
+  `/dashboard/anomalies`, which the endpoint does not have.
+- **Sign-out left the hash pointing at the last view** — issue 8. Cleared with
+  `history.replaceState`.
+- **`onPasswordChanged` was a no-op** — issue 10. It re-reads the session.
+- **No `aria-label` on any control** — issue 9. Selects, alert filters, per-row admin
+  buttons and the appearance switch are labelled; the active tab carries
+  `aria-current="page"`, which is also what styles it, so the visual state and the
+  announced state cannot drift.
+- **Control sizes.** The small ghost buttons were 24px against a 28pt recommended
+  desktop default. Everything interactive is now at least 28px, most 30px.
+- **Text was sized in px throughout**, so the browser's own text-size setting could not
+  scale it. The type scale is in rem.
 
 ### Serious
 
@@ -183,42 +268,37 @@ Audited live against the running stack. Ordered by severity.
    mount. Five visits to the Map tab means five resize handlers, each rebuilding
    geometry. Views need a teardown hook, or those listeners belong in the shell.
 
-3. **Admin user creation uses `window.prompt` for passwords** (`views.js`, the
-   `#user-add` and `[data-reset]` handlers). Clear text, no confirmation field, no
-   strength feedback, no validation before the request, and awkward for a password
-   manager. This is the one flow that mints credentials; it deserves a real form.
+3. ~~**Admin user creation uses `window.prompt` for passwords.**~~ **CLOSED** — see
+   `openDialog()` in `views.js`.
 
 ### Moderate
 
-4. **The alert list silently caps at 100** with ~31,000 open. No pagination and no
-   "showing 100 of 31,566". Acknowledging rows refills the list forever with no sense
-   of progress.
+4. **The alert list caps at 100** with ~31,000 open. The count is now stated, so the
+   cap is no longer silent, but there is still no pagination — and there cannot be
+   until `/dashboard/anomalies` takes an `offset`. Acknowledging rows refills the list
+   from the pool.
 
-5. **"Acknowledge all shown" does not do what it says.** It requires a severity filter
-   and then acknowledges *every* alert of that severity, not the 100 shown. It is also
-   the only place in the app that uses a blocking `window.alert`.
+5. ~~**"Acknowledge all shown" does not do what it says.**~~ **CLOSED** — it is now
+   "Acknowledge by severity…", it states the scope and the count, and it confirms in
+   place rather than through `window.alert`.
 
 6. **Charts do not redraw on resize.** Written once as SVG strings with a fixed
    `viewBox="0 0 760 240"`. They scale, but tick density and label spacing are
    computed for 760 px, so labels are sparse on a wide monitor and crowded on a narrow
-   one. Only the map redraws.
+   one. Only the map redraws. Fixing this properly needs the teardown hook issue 2
+   also wants, so the two belong in one pass.
 
 7. **Nothing refreshes.** No polling anywhere. Data time advances at 720×, so the
    Overview a judge is looking at goes stale within a minute and nothing says so.
    Either poll the summary or timestamp the panels with "as of".
 
-8. **Sign-out leaves the hash pointing at the last view.** Signing out from `#/admin`
-   and back in as a viewer lands on `#/admin`, which `navigate()` silently refuses,
-   leaving the loading state visible. Clear the hash on logout.
+8. ~~**Sign-out leaves the hash pointing at the last view.**~~ **CLOSED.**
 
 ### Minor
 
-9. **No `aria-label` on any interactive control** in the shell or views — zero
-   occurrences outside the map and charts. Selects, alert filters and admin buttons
-   are unlabelled for a screen reader.
+9. ~~**No `aria-label` on any interactive control.**~~ **CLOSED.**
 
-10. **`onPasswordChanged` is a no-op** in `app.js`, so the Account view's success path
-    does not refresh session state.
+10. ~~**`onPasswordChanged` is a no-op.**~~ **CLOSED.**
 
 ---
 

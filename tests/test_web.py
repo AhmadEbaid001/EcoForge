@@ -164,3 +164,30 @@ def test_the_ui_does_not_claim_three_solvers():
         text = path.read_text(encoding="utf-8")
         assert "three methods" not in text
         assert "all three" not in text
+
+
+def test_the_root_font_size_is_not_stated_in_rem():
+    """A rem font-size on `html` compounds against itself, silently.
+
+    `html, body { font: var(--fs-body) ... }` set the ROOT to .875rem, so the root
+    became 14px and every rem token then resolved against 14 instead of 16 - one
+    compounding step, applied to the entire type scale. Measured in the browser: body
+    text 12.25px where the token table promised 14, captions 10.5px, navigation
+    11.4px. The interface was 12.5% smaller than it was designed to be.
+
+    It also overrides the reader: someone who has raised their browser's default font
+    size gets it scaled back down.
+    """
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+
+    # The `html` rule may set font-size, but only in a unit that cannot compound.
+    for match in re.finditer(r"(?:^|\})\s*html\s*(?:,\s*[^{]+)?\{([^}]*)\}", css, re.S):
+        block = match.group(1)
+        size = re.search(r"font-size\s*:\s*([^;]+)", block)
+        shorthand = re.search(r"\bfont\s*:\s*([^;]+)", block)
+        for declaration in (size, shorthand):
+            if declaration and "rem" in declaration.group(1):
+                raise AssertionError(
+                    "html is sized in rem, which compounds the whole type scale: "
+                    f"{declaration.group(0).strip()}"
+                )

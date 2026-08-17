@@ -15,6 +15,27 @@ export const escapeHtml = (value) =>
   String(value).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/* Icons, drawn here for the same reason the charts are: an icon font or an SVG
+ * sprite from a CDN would be blocked by the Content-Security-Policy, and an
+ * offline demonstration cannot depend on one anyway (F13).
+ *
+ * They are strokes in `currentColor`, so one drawing serves both appearances
+ * instead of needing a light and a dark asset.
+ */
+const ICONS = {
+  auto: '<circle cx="12" cy="12" r="8"/><path d="M12 4v16" />' +
+        '<path class="filled" d="M12 4a8 8 0 0 1 0 16z"/>',
+  light: '<circle cx="12" cy="12" r="4.2"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2' +
+         'M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/>',
+  dark: '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>',
+};
+
+export function icon(name) {
+  const body = ICONS[name];
+  if (!body) return '';
+  return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${body}</svg>`;
+}
+
 export function compact(n) {
   if (n === null || n === undefined || Number.isNaN(n)) return '—';
   const abs = Math.abs(n);
@@ -83,7 +104,7 @@ export function lineChart(series, { width = 760, height = 240, unit = '' } = {})
   const last = new Date(Math.max(...times)).toISOString().slice(0, 10);
 
   const legend = withData.length > 1
-    ? `<div class="legend">${withData.map((s, i) =>
+    ? `<div class="chart-legend">${withData.map((s, i) =>
         `<span class="key s${i}">${escapeHtml(s.label)}</span>`).join('')}</div>`
     : '';
 
@@ -124,7 +145,7 @@ export function stackedBars(days, keys, { width = 760, height = 200 } = {}) {
            `<text class="axis" x="${PAD.left - 8}" y="${(yy + 4).toFixed(1)}" text-anchor="end">${compact(t)}</text>`;
   }).join('');
 
-  const legend = `<div class="legend">${keys.map((k, i) =>
+  const legend = `<div class="chart-legend">${keys.map((k, i) =>
     `<span class="key b${i}">${escapeHtml(k)}</span>`).join('')}</div>`;
 
   return `${legend}<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="alerts per day">
@@ -154,7 +175,7 @@ export function proportionBar(entries) {
     `<span class="key b${i}">${escapeHtml(entry.label)} ${entry.value}</span>`).join('');
 
   return `<svg class="chart proportion" viewBox="0 0 760 18" preserveAspectRatio="none"
-    role="img" aria-label="proportions">${segments}</svg><div class="legend">${labels}</div>`;
+    role="img" aria-label="proportions">${segments}</svg><div class="chart-legend">${labels}</div>`;
 }
 
 export function statTile(label, value, hint = '') {

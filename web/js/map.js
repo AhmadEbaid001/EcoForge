@@ -13,8 +13,18 @@
 
 import { api } from './api.js';
 
+/* Class names here are namespaced `map-*` on purpose. `controls` and `legend`
+ * used to be shared with the panel toolbars and the chart legends, and the
+ * stylesheet's later block won both: this column was being laid out as a
+ * wrapping flex ROW, and so was the legend inside it. One class name claimed by
+ * two components is invisible until someone opens the screen and it is wrong.
+ *
+ * There are no `style="..."` attributes left in this file either. The
+ * Content-Security-Policy is `style-src 'self'` with no 'unsafe-inline', so the
+ * browser was discarding every one of them - the narrative cards had never had
+ * the side-by-side layout their markup asked for. */
 const MAP_HTML = String.raw`<!-- ---------------------------------------------------------------- -->
-  <section class="controls" aria-label="Allocation controls">
+  <section class="map-controls" aria-label="Allocation controls">
 
     <div class="field">
       <label for="budget">Budget</label>
@@ -52,15 +62,16 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
       </select>
     </div>
 
-    <button id="compare-btn" class="ghost">Compare all four methods</button>
-    <button id="narrative-btn" class="ghost" style="margin-top:8px">Why building-specific?</button>
+    <button id="compare-btn" type="button" class="ghost accent">Compare all four methods</button>
+    <button id="narrative-btn" type="button" class="ghost">Why building-specific?</button>
 
-    <div class="legend">
+    <div class="map-legend">
       <h3>Map</h3>
       <div><i class="sw funded"></i> Funded by this allocation</div>
       <div><i class="sw unfunded"></i> Not funded</div>
       <div><i class="sw anomaly"></i> Open anomaly</div>
-      <p class="note">Size reflects annual consumption.</p>
+      <p class="note">Size reflects annual consumption. A funded building carries a
+      lighter outline as well as its colour.</p>
     </div>
   </section>
 
@@ -236,10 +247,14 @@ function buildGeometry() {
   });
 }
 
+/* One hue per district, from the name, so the districts stay visually separate
+ * without a palette anyone has to maintain. Saturation and lightness come from
+ * tokens rather than being fixed here: at 30% lightness these were dark grey
+ * blocks, which is right on a dark ground and unreadable on a light one. */
 function districtColour(name) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) % 360;
-  return `hsl(${hash}, 18%, 30%)`;
+  return `hsl(${hash}, var(--district-s), var(--district-l))`;
 }
 
 function render() {
@@ -272,7 +287,8 @@ function render() {
     const isFunded = funded.has(b.id);
     const half = b.side / 2;
     const fill = isFunded ? 'var(--funded)' : districtColour(b.props.district);
-    const cls = 'bldg' + (state.selected === b.id ? ' selected' : '');
+    const cls = 'bldg' + (isFunded ? ' funded' : '') +
+      (state.selected === b.id ? ' selected' : '');
     const title = `<title>${escapeHtml(b.props.code)} — ` +
       `${compact(b.props.annual_kwh)} kWh/yr${isFunded ? ' — funded' : ''}</title>`;
 
@@ -417,8 +433,7 @@ async function selectBuilding(id) {
       <div><span>Floor</span><br>${fmt(b.floor_area_m2)} m²</div>
       <div><span>Consumption</span><br>${compact(b.annual_kwh)} kWh/yr</div>
     </div>
-    <h3 style="font-size:12px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.6px;">
-      Options considered (${data.options.length})</h3>
+    <h3 class="section-label">Options considered (${data.options.length})</h3>
     ${rows || '<p class="note">No applicable interventions.</p>'}`;
 }
 
@@ -520,9 +535,9 @@ async function narrative() {
         <td>${compact(o.cost_egp)}</td>
         <td>${fmt(o.score_per_kegp, 0)}</td></tr>`).join('');
     return `
-      <div style="flex:1;min-width:260px">
-        <h3 style="font-size:13px;margin:0 0 2px">${escapeHtml(b.code)}</h3>
-        <p class="caption" style="margin:0 0 8px">
+      <div class="card">
+        <h3>${escapeHtml(b.code)}</h3>
+        <p class="caption">
           ${escapeHtml(b.occupancy_pattern)} · ${escapeHtml(b.insulation_quality)} insulation ·
           HVAC ${b.hvac_age_yr} yr · ${compact(b.annual_kwh)} kWh/yr</p>
         <table><thead><tr><th>Measure</th><th>Cost EGP</th><th>Benefit /kEGP</th></tr></thead>
@@ -534,7 +549,7 @@ async function narrative() {
     .map(([k, n]) => `${ivName(k)} on ${n}`).join(', ');
 
   $('narrative-body').innerHTML = `
-    <div style="display:flex;gap:22px;flex-wrap:wrap">${cards}</div>
+    <div class="card-row">${cards}</div>
     <p class="caption">
       Across the portfolio the best single measure is ${escapeHtml(dist)} — so no single
       priority list is right for every building, which is what per-building optimization

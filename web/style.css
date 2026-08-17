@@ -1,379 +1,957 @@
-/* GEMP map UI.
+/* GEMP interface.
    No framework, no build step, no fonts or assets fetched from anywhere: the
-   demonstration has to work with the network cable unplugged (F13). */
+   demonstration has to work with the network cable unplugged (F13).
+
+   Two things about this file are load-bearing and easy to undo by accident.
+
+   1. Every colour is a token, and every token is defined THREE times: once for
+      light on bare `:root`, once under `prefers-color-scheme: dark`, once under
+      `[data-theme]` so an explicit choice wins over the system in both
+      directions. A colour whose only definition lives inside a media query has
+      no value for half the users of this page.
+
+   2. The Content-Security-Policy is `style-src 'self'` with no 'unsafe-inline',
+      so a `style="..."` attribute is DISCARDED BY THE BROWSER. Every visual
+      decision has to be reachable from here through a class. Three inline
+      styles had been sitting in map.js doing nothing for exactly this reason.
+   ===================================================================== */
+
+/* =====================================================================
+   1. Tokens — light is the base layer
+   ===================================================================== */
 
 :root {
-  --bg:        #0f1419;
-  --panel:     #161d26;
-  --panel-2:   #1d2530;
-  --line:      #2a3542;
-  --ink:       #e6edf3;
-  --ink-dim:   #8b9bb0;
-  --accent:    #4a9eff;
-  --funded:    #2ea36a;
-  --funded-lo: #1c6b46;
-  --unfunded:  #3a4756;
-  --anomaly:   #e0603a;
-  --warn:      #d8a24a;
-  --radius: 8px;
+  color-scheme: light dark;
+
+  /* Grounds, from the page floor up to what sits on top of it. */
+  --bg:            #eef1f6;
+  --surface:       #ffffff;
+  --surface-2:     #ffffff;   /* modals and popovers: elevated by shadow, not hue */
+  --surface-3:     #f3f5f9;   /* inset: fields, code, table stripes */
+  --surface-hover: #e9edf4;
+
+  /* Hairlines, and the heavier line a control's edge needs. A separator may be
+     faint; the boundary of an input may not — WCAG 1.4.11 wants 3:1 there, and
+     --control-line measures 3.50:1 on white. */
+  --line:          #d6dce6;
+  --line-strong:   #c3ccd9;
+  --control-line:  #7f8a9a;
+
+  /* Text, in three ranks. Measured on --surface: 18.4, 7.0 and 5.3 to 1. */
+  --ink:           #0f151c;
+  --ink-2:         #4d5a6b;
+  --ink-3:         #5f6d7e;
+
+  /* Meaning. Each one is 4.7:1 or better on both --bg and --surface. */
+  --accent:        #0b62c4;
+  --accent-hover:  #094e9e;
+  --accent-soft:   #e6effb;
+  --on-accent:     #ffffff;
+  --success:       #127a4e;
+  --success-soft:  #e4f4ec;
+  --success-ink:   #0e6641;
+  --warn:          #8a5a06;
+  --warn-soft:     #fbf1dd;
+  --warn-ink:      #7a4e05;
+  --danger:        #c03a25;
+  --danger-soft:   #fdeae6;
+  --danger-ink:    #98291a;
+
+  /* Data marks. Severity is ordinal, so the three fills separate by lightness
+     as well as hue: adjacent segments of a stack differ by 3.08 and 1.55 to 1,
+     which is what lets the stack be read without discriminating colour. */
+  --sev-critical:  #a82c18;
+  --sev-high:      #d9a52c;
+  --sev-medium:    #7d8b9c;
+  --series-0:      #0b62c4;
+  --series-1:      #b06a00;
+
+  /* Map. Funded is a colour AND an outline, because a funded building that is
+     only greener is invisible to a reviewer who cannot see green. */
+  --funded:        #127a4e;
+  --funded-edge:   #0a5334;
+  --unfunded:      #7d8b9c;
+  --anomaly:       #c03a25;
+  --district-s:    16%;
+  --district-l:    74%;
+  --bldg-edge:     rgba(15, 21, 28, .35);
+  --map-ground:    #e7ebf1;
+
+  /* Elevation. In light the shadow does the work; in dark it is mostly the
+     border, because a shadow on a dark ground is nearly invisible. */
+  --shadow-1: 0 1px 2px rgba(15, 21, 28, .06), 0 1px 1px rgba(15, 21, 28, .04);
+  --shadow-2: 0 4px 12px rgba(15, 21, 28, .08), 0 1px 3px rgba(15, 21, 28, .06);
+  --shadow-3: 0 18px 48px rgba(15, 21, 28, .18), 0 2px 8px rgba(15, 21, 28, .10);
+  --scrim:    rgba(15, 21, 28, .45);
+  --header-bg: rgba(255, 255, 255, .82);
+
+  /* Type. In rem, so the browser's own text-size setting scales the interface
+     instead of being overridden by it — this page's answer to Dynamic Type. */
+  --fs-micro:   .6875rem;   /* 11px, and never below: only ever paired with 600 */
+  --fs-caption: .75rem;     /* 12px */
+  --fs-small:   .8125rem;   /* 13px */
+  --fs-body:    .875rem;    /* 14px */
+  --fs-lead:    .9375rem;   /* 15px */
+  --fs-title:   1.0625rem;  /* 17px */
+  --fs-figure:  1.5rem;     /* 24px */
+  --fs-figure-lg: 1.75rem;  /* 28px */
+
+  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text",
+          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+
+  /* Space, on a 4px grid. */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --ease: cubic-bezier(.2, .7, .3, 1);
+  --dur: 140ms;
 }
+
+/* The dark palette. Not an inversion: the grounds get dimmer while the accents
+   get BRIGHTER, which is how a dark interface keeps foreground content forward.
+   Guarded against [data-theme="light"] so an explicit light choice survives a
+   dark system setting. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:            #0d1117;
+    --surface:       #151b23;
+    --surface-2:     #1c232d;
+    --surface-3:     #10151b;
+    --surface-hover: #1e2632;
+
+    --line:          #2b3644;
+    --line-strong:   #3a4756;
+    --control-line:  #627287;
+
+    --ink:           #e8eef5;
+    --ink-2:         #a9b8c9;
+    --ink-3:         #8494a6;
+
+    --accent:        #58a6ff;
+    --accent-hover:  #7cbaff;
+    --accent-soft:   #12243a;
+    --on-accent:     #06121f;
+    --success:       #43b581;
+    --success-soft:  #12241c;
+    --success-ink:   #7ad9ab;
+    --warn:          #e0a94d;
+    --warn-soft:     #2a2114;
+    --warn-ink:      #f0c476;
+    --danger:        #f4795b;
+    --danger-soft:   #2a1a15;
+    --danger-ink:    #ffb098;
+
+    --sev-critical:  #c94a30;
+    --sev-high:      #f2c063;
+    --sev-medium:    #7d8ca0;
+    --series-0:      #58a6ff;
+    --series-1:      #e0a94d;
+
+    --funded:        #43b581;
+    --funded-edge:   #baf0d6;
+    --unfunded:      #5b6a7d;
+    --anomaly:       #f4795b;
+    --district-s:    18%;
+    --district-l:    32%;
+    --bldg-edge:     rgba(0, 0, 0, .45);
+    --map-ground:    #0a0e13;
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .5);
+    --shadow-2: 0 4px 14px rgba(0, 0, 0, .45);
+    --shadow-3: 0 24px 60px rgba(0, 0, 0, .6), 0 2px 10px rgba(0, 0, 0, .5);
+    --scrim:    rgba(3, 6, 10, .66);
+    --header-bg: rgba(21, 27, 35, .82);
+  }
+}
+
+/* And the same palette again for an explicit dark choice on a light system.
+   Duplicated on purpose: a token defined only inside a media query is a token
+   that does not exist for whoever is not in that media query. */
+:root[data-theme="dark"] {
+  --bg:            #0d1117;
+  --surface:       #151b23;
+  --surface-2:     #1c232d;
+  --surface-3:     #10151b;
+  --surface-hover: #1e2632;
+
+  --line:          #2b3644;
+  --line-strong:   #3a4756;
+  --control-line:  #627287;
+
+  --ink:           #e8eef5;
+  --ink-2:         #a9b8c9;
+  --ink-3:         #8494a6;
+
+  --accent:        #58a6ff;
+  --accent-hover:  #7cbaff;
+  --accent-soft:   #12243a;
+  --on-accent:     #06121f;
+  --success:       #43b581;
+  --success-soft:  #12241c;
+  --success-ink:   #7ad9ab;
+  --warn:          #e0a94d;
+  --warn-soft:     #2a2114;
+  --warn-ink:      #f0c476;
+  --danger:        #f4795b;
+  --danger-soft:   #2a1a15;
+  --danger-ink:    #ffb098;
+
+  --sev-critical:  #c94a30;
+  --sev-high:      #f2c063;
+  --sev-medium:    #7d8ca0;
+  --series-0:      #58a6ff;
+  --series-1:      #e0a94d;
+
+  --funded:        #43b581;
+  --funded-edge:   #baf0d6;
+  --unfunded:      #5b6a7d;
+  --anomaly:       #f4795b;
+  --district-s:    18%;
+  --district-l:    32%;
+  --bldg-edge:     rgba(0, 0, 0, .45);
+  --map-ground:    #0a0e13;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .5);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, .45);
+  --shadow-3: 0 24px 60px rgba(0, 0, 0, .6), 0 2px 10px rgba(0, 0, 0, .5);
+  --scrim:    rgba(3, 6, 10, .66);
+  --header-bg: rgba(21, 27, 35, .82);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+
+/* Legacy token names, kept as aliases.
+   The map draws `fill="var(--funded)"` into an SVG presentation attribute and
+   the handoff document names this set. Aliasing costs nothing and means the
+   rename cannot break the one screen that gets demonstrated most. */
+:root {
+  --panel:     var(--surface);
+  --panel-2:   var(--surface-3);
+  --ink-dim:   var(--ink-2);
+  --funded-lo: var(--funded-edge);
+}
+
+/* =====================================================================
+   2. Base
+   ===================================================================== */
 
 * { box-sizing: border-box; }
 
-html, body {
-  margin: 0; height: 100%;
-  background: var(--bg); color: var(--ink);
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+/* The root stays at the browser's own size, and that is load-bearing.
+ *
+ * `html, body { font: var(--fs-body) ... }` applied a rem value to the ROOT, so the
+ * root became 14px and every rem token then resolved against 14 instead of 16 -
+ * compounding once, everywhere. Measured in the browser: body text 12.25px where the
+ * token table promised 14, captions 10.5px, navigation 11.4px. The whole interface
+ * was 12.5% smaller than it was designed to be, which is most of what "hard on the
+ * eyes" turns out to mean.
+ *
+ * Sizing the root in a relative unit also fights the reader: someone who has set a
+ * larger default font in their browser gets it silently scaled back down.
+ */
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
-/* ---------------------------------------------------------------- header */
+body {
+  margin: 0;
+  min-height: 100%;
+  display: block;
+  height: auto;
+  background: var(--bg);
+  color: var(--ink);
+  font: var(--fs-body)/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { line-height: 1.3; letter-spacing: -.01em; }
+
+/* One focus ring for the whole application, on the control that actually has
+   focus from the keyboard. Before this, only the login inputs showed focus at
+   all, which made every dashboard unusable without a mouse. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+:focus:not(:focus-visible) { outline: none; }
+
+::selection { background: var(--accent); color: var(--on-accent); }
+
+/* Scrollbars follow the theme rather than staying black in light mode. */
+* { scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+
+/* Every animation in here is decorative. Someone who has asked the system for
+   less motion gets none of it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+/* =====================================================================
+   3. Header
+   ===================================================================== */
 
 .bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 18px; border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--line);
+  background: var(--header-bg);
+  flex-wrap: wrap;
 }
-.brand { display: flex; align-items: center; gap: 12px; }
+
+/* Translucency only where the browser can blur what is behind it. Without the
+   blur a semi-transparent header is just a washed-out header. */
+@supports (backdrop-filter: blur(20px)) {
+  .bar { backdrop-filter: saturate(180%) blur(20px); }
+}
+
+body.signed-in .bar { position: sticky; top: 0; z-index: 10; }
+
+.brand { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+
+/* The mark is drawn, not fetched. An <img> here would be one more thing that
+   has to exist on the demonstration machine. */
 .mark {
-  width: 26px; height: 26px; border-radius: 6px;
-  background: linear-gradient(135deg, var(--funded), var(--accent));
+  width: 30px; height: 30px; border-radius: 9px; flex: none;
+  background: linear-gradient(140deg, var(--success), var(--accent));
+  box-shadow: var(--shadow-1);
+  position: relative;
 }
-.bar h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .2px; }
-.sub { margin: 0; font-size: 12px; color: var(--ink-dim); }
-
-.status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-dim); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
-.dot.ok   { background: var(--funded); }
-.dot.bad  { background: var(--anomaly); }
-
-/* ----------------------------------------------------------------- layout */
-
-main {
-  display: grid;
-  grid-template-columns: 260px 1fr 340px;
-  height: calc(100% - 48px);
-}
-@media (max-width: 1100px) { main { grid-template-columns: 220px 1fr; } .detail { display: none; } }
-
-/* --------------------------------------------------------------- controls */
-
-.controls {
-  padding: 16px; border-right: 1px solid var(--line);
-  background: var(--panel); overflow-y: auto;
-}
-.field { margin-bottom: 18px; }
-.field label {
-  display: block; font-size: 11px; text-transform: uppercase;
-  letter-spacing: .6px; color: var(--ink-dim); margin-bottom: 6px;
-}
-output {
-  display: block; font-size: 17px; font-weight: 600;
-  font-variant-numeric: tabular-nums; margin-bottom: 6px;
-}
-input[type=range] { width: 100%; accent-color: var(--accent); }
-.scale {
-  display: flex; justify-content: space-between;
-  font-size: 10px; color: var(--ink-dim); margin-top: 2px;
-}
-select {
-  width: 100%; padding: 7px 8px; border-radius: 6px;
-  background: var(--panel-2); color: var(--ink);
-  border: 1px solid var(--line); font-size: 13px;
-}
-button.ghost {
-  width: 100%; padding: 9px; border-radius: 6px; cursor: pointer;
-  background: transparent; color: var(--accent);
-  border: 1px solid var(--accent); font-size: 13px;
-}
-button.ghost:hover { background: rgba(74, 158, 255, .1); }
-
-.legend { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 14px; }
-.legend h3 {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
-  color: var(--ink-dim); margin: 0 0 8px;
-}
-.legend div { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 5px; }
-.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.sw.funded   { background: var(--funded); }
-.sw.unfunded { background: var(--unfunded); }
-.sw.anomaly  { background: var(--anomaly); }
-.note { font-size: 11px; color: var(--ink-dim); margin: 8px 0 0; }
-
-/* -------------------------------------------------------------------- map */
-
-.mapwrap { position: relative; overflow: hidden; }
-#map { width: 100%; height: 100%; display: block; cursor: grab; background: var(--bg); }
-#map.dragging { cursor: grabbing; }
-
-.summary {
-  position: absolute; top: 12px; left: 12px; right: 12px; z-index: 2;
-  display: flex; gap: 10px; flex-wrap: wrap;
-  pointer-events: none;
-}
-.metric {
-  background: rgba(22, 29, 38, .92); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 8px 12px; min-width: 108px;
-}
-.metric .k {
-  display: block; font-size: 18px; font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.metric .v { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-dim); }
-
-.maphint {
-  position: absolute; bottom: 10px; left: 12px;
-  font-size: 11px; color: var(--ink-dim);
+.mark::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, .22);
 }
 
-.bldg { stroke: rgba(0,0,0,.45); stroke-width: .6; cursor: pointer; transition: opacity .1s; }
-.bldg:hover { stroke: var(--ink); stroke-width: 1.6; }
-.bldg.selected { stroke: var(--accent); stroke-width: 2.2; }
-.district-label { fill: var(--ink-dim); font-size: 11px; letter-spacing: .8px; text-transform: uppercase; }
-.anom-ring { fill: none; stroke: var(--anomaly); stroke-width: 1.6; }
+.bar h1 { font-size: var(--fs-lead); margin: 0; font-weight: 600; }
+.sub { margin: 0; font-size: var(--fs-caption); color: var(--ink-2); }
 
-/* ----------------------------------------------------------------- detail */
+.status {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-caption); color: var(--ink-2);
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line); border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+.dot.ok  { background: var(--success); }
+.dot.bad { background: var(--danger); }
 
-.detail { border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 16px; }
-.empty h2 { font-size: 15px; margin: 0 0 8px; }
-.empty p { font-size: 13px; color: var(--ink-dim); }
+/* Navigation as a segmented control: one enclosure, so it reads as a set of
+   alternatives rather than seven loose buttons. */
+.tabs {
+  display: flex; gap: 2px; flex: 1 1 auto; flex-wrap: wrap;
+  padding: 3px; border-radius: var(--radius);
+  background: var(--surface-3); border: 1px solid var(--line);
+}
+.tab {
+  appearance: none; background: none; border: 1px solid transparent;
+  color: var(--ink-2); font: 500 var(--fs-small)/1 var(--font);
+  padding: 0 var(--s-3); min-height: 30px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  white-space: nowrap;
+}
+.tab:hover { color: var(--ink); background: var(--surface-hover); }
+.tab[aria-current="page"] {
+  color: var(--ink); background: var(--surface);
+  border-color: var(--line-strong); box-shadow: var(--shadow-1);
+  font-weight: 600;
+}
 
-.detail h2 { font-size: 15px; margin: 0 0 2px; }
-.detail .code { font-size: 12px; color: var(--ink-dim); margin-bottom: 12px; }
+.who { display: flex; gap: var(--s-2); align-items: center; }
 
-.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-bottom: 14px; }
-.facts div { font-size: 12px; }
-.facts span { color: var(--ink-dim); }
+.badge {
+  display: inline-block; padding: 1px var(--s-2); border-radius: var(--radius-pill);
+  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .02em;
+  background: var(--surface-3); border: 1px solid var(--line); color: var(--ink-2);
+}
+.badge.role { margin-left: var(--s-1); }
 
-.opt {
+/* ---- appearance switch ---------------------------------------------- */
+
+/* Three states, not two. The default is Auto, which follows the system, so the
+   common case needs no choice at all — the platform guidance is that an app
+   should respect the systemwide setting rather than invent its own. Light and
+   Dark exist because this screen gets demonstrated on a projector, where the
+   right answer is whatever the room can read. */
+.appearance {
+  display: flex; gap: 2px; padding: 3px;
   border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 9px 11px; margin-bottom: 7px; background: var(--panel-2);
+  background: var(--surface-3);
 }
-.opt.chosen { border-color: var(--funded); background: rgba(46, 163, 106, .1); }
-.opt .name { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
-.opt .row { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-dim); }
-.opt .tag {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
-  color: var(--funded); font-weight: 600;
+.appearance button {
+  appearance: none; border: 1px solid transparent; background: none;
+  color: var(--ink-2); cursor: pointer;
+  width: 30px; height: 26px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.opt.negative { opacity: .55; }
-.opt.negative .name::after { content: " — net negative"; color: var(--anomaly); font-weight: 400; }
+.appearance button:hover { color: var(--ink); background: var(--surface-hover); }
+.appearance button[aria-pressed="true"] {
+  color: var(--ink); background: var(--surface);
+  border-color: var(--line-strong); box-shadow: var(--shadow-1);
+}
+.appearance svg { width: 15px; height: 15px; display: block; }
 
-/* ------------------------------------------------------------------ modal */
+/* The icons are drawn as strokes so one set works in both appearances. */
+.icon { fill: none; stroke: currentColor; stroke-width: 1.6;
+        stroke-linecap: round; stroke-linejoin: round; }
+.icon .filled { fill: currentColor; stroke: none; }
+
+/* =====================================================================
+   4. Buttons and controls
+   ===================================================================== */
+
+/* 30px, everywhere, deliberately. The recommended default control size on a
+   desktop is 28pt and the floor is 20pt; the small ghost buttons in the admin
+   tables were 24px, which is inside the floor but nowhere near comfortable for
+   anyone whose pointing is imprecise. */
+button, .btn {
+  font: 500 var(--fs-small)/1 var(--font);
+  min-height: 30px; padding: 0 var(--s-4);
+  border-radius: var(--radius-sm); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+              color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+button:disabled { opacity: .55; cursor: default; }
+button:active:not(:disabled) { transform: translateY(.5px); }
+
+button.primary, .form button, .login button[type="submit"] {
+  background: var(--accent); color: var(--on-accent);
+  border: 1px solid transparent; font-weight: 600;
+}
+button.primary:hover:not(:disabled),
+.form button:hover:not(:disabled),
+.login button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
+
+button.ghost {
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--control-line);
+}
+button.ghost:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--ink-3); }
+
+/* A ghost button that carries the accent reads as the recommended action in a
+   panel that has no primary. */
+button.ghost.accent { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+button.ghost.accent:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent-hover); }
+
+button.ghost.small { padding: 0 var(--s-3); font-size: var(--fs-caption); min-height: 28px; }
+button.danger { background: var(--danger-soft); color: var(--danger-ink); border: 1px solid var(--danger); }
+
+/* The map's sidebar buttons are the full width of the column they sit in. */
+.map-controls button.ghost { width: 100%; }
+
+input[type=text], input[type=password], input[type=number], select, textarea {
+  font: var(--fs-small)/1.4 var(--font);
+  color: var(--ink); background: var(--surface-3);
+  border: 1px solid var(--control-line); border-radius: var(--radius-sm);
+  padding: 7px var(--s-3); min-height: 32px; width: 100%;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+input:hover, select:hover { border-color: var(--ink-3); }
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 0;
+}
+select { cursor: pointer; }
+select.inline { width: auto; min-width: 9rem; background: var(--surface); }
+
+input[type=range] {
+  width: 100%; accent-color: var(--accent); min-height: 24px;
+}
+input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+label.check {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-small); color: var(--ink-2);
+  min-height: 30px; padding: 0 var(--s-2); cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+label.check:hover { background: var(--surface-hover); color: var(--ink); }
+
+/* =====================================================================
+   5. Login
+   ===================================================================== */
+
+.login-wrap {
+  min-height: 100vh; display: grid; place-items: center; padding: var(--s-6);
+  /* A quiet wash rather than a flat field, so the card has something to sit on
+     in both appearances. */
+  background:
+    radial-gradient(1100px 520px at 50% -10%, var(--accent-soft), transparent 70%),
+    var(--bg);
+}
+.login {
+  width: min(26rem, 100%); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+  padding: var(--s-8) var(--s-6) var(--s-6);
+  box-shadow: var(--shadow-3);
+}
+.login .brand { margin-bottom: var(--s-6); }
+.login h1 { font-size: var(--fs-title); margin: 0 0 2px; }
+.login label {
+  display: block; margin: var(--s-4) 0;
+  font-size: var(--fs-small); font-weight: 500; color: var(--ink-2);
+}
+.login input { margin-top: var(--s-2); background: var(--surface-3); min-height: 38px; }
+.login button[type="submit"] { width: 100%; margin-top: var(--s-4); min-height: 38px; }
+
+/* =====================================================================
+   6. Layout and panels
+   ===================================================================== */
+
+body.signed-in main {
+  display: block; padding: var(--s-6) var(--s-5) var(--s-10);
+  max-width: 1240px; margin: 0 auto;
+}
+
+.panel {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s-4) var(--s-5) var(--s-5);
+  margin-bottom: var(--s-5); box-shadow: var(--shadow-1);
+}
+.panel.narrow { max-width: 30rem; }
+.panel > header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-3); margin-bottom: var(--s-4); flex-wrap: wrap;
+  min-height: 30px;
+}
+.panel h3 { margin: 0; font-size: var(--fs-lead); font-weight: 600; }
+.panel h4 {
+  margin: var(--s-5) 0 var(--s-2);
+  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-2);
+}
+
+/* A panel's own controls. Named `toolbar` rather than `controls`, which is what
+   it used to be called — and which collided with the map's sidebar, also
+   `.controls`. The later rule won, so the map's whole left column was being
+   laid out as a wrapping flex ROW. Two blocks in one stylesheet claiming one
+   class name is how that happens silently. */
+.toolbar { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
+.inline-label { font-size: var(--fs-caption); color: var(--ink-2); font-weight: 500; }
+
+/* A heading a screen reader needs and a sighted reader does not: the actions
+   column of a table has no useful visible title. Positioned rather than
+   `display: none`, which would take it out of the accessibility tree too. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+.muted { color: var(--ink-2); }
+.small { font-size: var(--fs-caption); }
+.mono { font-family: var(--font-mono); font-size: var(--fs-caption); }
+
+.loading {
+  color: var(--ink-2); padding: var(--s-5) 0; font-size: var(--fs-small);
+  display: flex; align-items: center; gap: var(--s-2);
+}
+.loading::before {
+  content: ""; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--line-strong); border-top-color: var(--accent);
+  animation: spin 700ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.caption {
+  color: var(--ink-2); font-size: var(--fs-caption); line-height: 1.65;
+  margin: var(--s-4) 0 0; border-top: 1px solid var(--line); padding-top: var(--s-3);
+}
+.caption strong { color: var(--ink); }
+
+/* =====================================================================
+   7. Stat tiles
+   ===================================================================== */
+
+.stat-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--s-3); margin-bottom: var(--s-5);
+}
+.stat-row.compact { margin-bottom: 0; }
+.stat {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s-4);
+  box-shadow: var(--shadow-1); position: relative; overflow: hidden;
+}
+/* A hairline of accent along the top edge. Enough to make a row of tiles read
+   as the headline of the page without colouring the whole tile. */
+.stat::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent 75%);
+  opacity: .8;
+}
+.stat-value {
+  font-size: var(--fs-figure); font-weight: 650; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; line-height: 1.15;
+}
+.stat-label { color: var(--ink-2); font-size: var(--fs-caption); margin-top: 2px; font-weight: 500; }
+.stat-hint { color: var(--ink-3); font-size: var(--fs-micro); margin-top: var(--s-2); line-height: 1.5; }
+
+/* =====================================================================
+   8. Charts
+   ===================================================================== */
+
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--ink-2); font-size: 11px; font-family: var(--font); }
+.chart .axis.unit { fill: var(--ink-3); font-size: 10px; }
+.chart .series { stroke-width: 1.8; fill: none; }
+.chart .series.s0 { stroke: var(--series-0); }
+/* Dashed, not merely a second colour. Two lines that differ only in hue are
+   one line to a reader who cannot separate blue from amber. */
+.chart .series.s1 { stroke: var(--series-1); stroke-dasharray: 5 3; }
+.chart.empty .axis { font-size: 13px; fill: var(--ink-3); }
+.chart.proportion { height: 20px; border-radius: var(--radius-sm); overflow: hidden; }
+
+/* Severity fills carry a hairline edge: amber on white is 2.1:1, so the shape
+   of a bar would otherwise be guesswork at the top of a light-mode stack. */
+.bar, .seg { stroke: var(--surface); stroke-width: .75; }
+.bar.b0, .seg.b0 { fill: var(--sev-critical); }
+.bar.b1, .seg.b1 { fill: var(--sev-high); }
+.bar.b2, .seg.b2 { fill: var(--sev-medium); }
+.bar.b3, .seg.b3 { fill: var(--accent); }
+
+/* Named `chart-legend`, because `legend` was the other half of the collision
+   with the map sidebar described above. */
+.chart-legend {
+  display: flex; gap: var(--s-4); flex-wrap: wrap;
+  margin-bottom: var(--s-2); font-size: var(--fs-caption);
+}
+.chart-legend .key { color: var(--ink-2); display: inline-flex; align-items: center; gap: var(--s-2); }
+.chart-legend .key::before {
+  content: ""; width: 10px; height: 10px; border-radius: 3px; display: inline-block;
+  border: 1px solid var(--line-strong);
+}
+.chart-legend .key.s0::before { background: var(--series-0); }
+.chart-legend .key.s1::before {
+  /* Matches the dashed stroke it stands for. */
+  background: repeating-linear-gradient(90deg, var(--series-1) 0 3px, transparent 3px 5px);
+}
+.chart-legend .key.b0::before { background: var(--sev-critical); }
+.chart-legend .key.b1::before { background: var(--sev-high); }
+.chart-legend .key.b2::before { background: var(--sev-medium); }
+.chart-legend .key.b3::before { background: var(--accent); }
+
+/* =====================================================================
+   9. Tables
+   ===================================================================== */
+
+.table-wrap { overflow-x: auto; margin: 0 calc(-1 * var(--s-2)); padding: 0 var(--s-2); }
+
+.panel table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
+.panel th {
+  text-align: left; color: var(--ink-2); font-weight: 600;
+  font-size: var(--fs-micro); letter-spacing: .05em; text-transform: uppercase;
+  padding: var(--s-2); border-bottom: 1px solid var(--line-strong);
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
+  white-space: nowrap;
+}
+.panel td { padding: var(--s-2); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.panel tbody tr:hover td { background: var(--surface-3); }
+.panel tr:last-child td { border-bottom: none; }
+.panel tr.denied td { color: var(--danger-ink); }
+.panel td.num, .panel th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.row-actions { display: flex; gap: var(--s-2); justify-content: flex-end; }
+
+/* Row count and paging live under the table they describe. */
+.table-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-3);
+  font-size: var(--fs-caption); color: var(--ink-2);
+}
+
+.sev {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: 2px var(--s-2); border-radius: var(--radius-pill);
+  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .02em;
+  border: 1px solid transparent; white-space: nowrap;
+}
+/* The dot repeats the severity as a shape and a position, so the pill is not
+   read by colour alone. */
+.sev::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sev.critical { background: var(--danger-soft); color: var(--danger-ink); border-color: var(--danger); }
+.sev.high     { background: var(--warn-soft);   color: var(--warn-ink);   border-color: var(--warn); }
+.sev.medium   { background: var(--surface-3);   color: var(--ink-2);      border-color: var(--line-strong); }
+
+/* =====================================================================
+   10. Forms, boxes, definition lists
+   ===================================================================== */
+
+.form label {
+  display: block; margin: var(--s-3) 0;
+  font-size: var(--fs-small); font-weight: 500; color: var(--ink-2);
+}
+.form input, .form select { margin-top: var(--s-2); }
+.form .hint { font-weight: 400; font-size: var(--fs-caption); color: var(--ink-3); }
+.form .field-error { color: var(--danger-ink); font-size: var(--fs-caption); margin-top: var(--s-1); }
+.form-actions { display: flex; gap: var(--s-2); align-items: center; margin-top: var(--s-4); }
+
+.error-box, .warn-box, .ok-box, .hint-box {
+  padding: var(--s-3) var(--s-4); border-radius: var(--radius-sm);
+  font-size: var(--fs-small); line-height: 1.55; margin: var(--s-3) 0;
+  border: 1px solid; border-left-width: 3px;
+}
+.error-box { background: var(--danger-soft);  border-color: var(--danger);  color: var(--danger-ink); }
+.warn-box  { background: var(--warn-soft);    border-color: var(--warn);    color: var(--warn-ink); }
+.ok-box    { background: var(--success-soft); border-color: var(--success); color: var(--success-ink); }
+.hint-box  { background: var(--surface-3);    border-color: var(--line-strong); color: var(--ink-2); }
+
+.facts {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-5);
+  margin: 0; font-size: var(--fs-small);
+}
+.facts dt { color: var(--ink-2); }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.verdict {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-4); border-radius: var(--radius-pill);
+  font-weight: 600; margin-bottom: var(--s-3); font-size: var(--fs-small);
+  border: 1px solid;
+}
+.verdict::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.verdict.good { background: var(--success-soft); color: var(--success-ink); border-color: var(--success); }
+.verdict.bad  { background: var(--danger-soft);  color: var(--danger-ink);  border-color: var(--danger); }
+
+/* =====================================================================
+   11. Modals and dialogs
+   ===================================================================== */
 
 .modal {
   position: fixed; inset: 0; z-index: 20;
-  background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
+  background: var(--scrim); display: flex; align-items: center; justify-content: center;
+  padding: var(--s-5);
+}
+@supports (backdrop-filter: blur(6px)) {
+  .modal { backdrop-filter: blur(6px); }
 }
 /* Without this the `hidden` attribute does nothing here. `[hidden]` gets its
    `display: none` from the browser's own stylesheet, and ANY author rule setting
    display beats a user-agent rule - so `display: flex` above kept both modals on
-   screen from the moment the page loaded. The map opened behind a full-screen overlay
-   reading "Solving...", with nothing solving. */
+   screen from the moment the page loaded. The map opened behind a full-screen
+   overlay reading "Solving...", with nothing solving. */
 .modal[hidden] { display: none; }
+
 .modal-inner {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  padding: 22px; width: min(760px, 92vw); max-height: 86vh; overflow-y: auto; position: relative;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); padding: var(--s-6);
+  width: min(48rem, 100%); max-height: 86vh; overflow-y: auto;
+  position: relative; box-shadow: var(--shadow-3);
 }
-.modal h2 { margin: 0 0 14px; font-size: 16px; }
+.modal-inner.narrow { width: min(26rem, 100%); }
+.modal h2 { margin: 0 var(--s-8) var(--s-4) 0; font-size: var(--fs-title); }
 .close {
-  position: absolute; top: 12px; right: 14px; background: none; border: none;
-  color: var(--ink-dim); font-size: 24px; cursor: pointer; line-height: 1;
+  position: absolute; top: var(--s-3); right: var(--s-3);
+  background: none; border: 1px solid transparent; color: var(--ink-2);
+  width: 30px; height: 30px; min-height: 30px; padding: 0;
+  border-radius: var(--radius-sm); font-size: 20px; line-height: 1;
 }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { padding: 7px 9px; text-align: right; border-bottom: 1px solid var(--line); }
-th:first-child, td:first-child { text-align: left; }
-th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-dim); font-weight: 500; }
-td { font-variant-numeric: tabular-nums; }
-tr.best td { color: var(--funded); font-weight: 600; }
-.caption { font-size: 12px; color: var(--ink-dim); margin-top: 12px; line-height: 1.6; }
+.close:hover { background: var(--surface-hover); color: var(--ink); }
+
+/* The compare table and the narrative cards are the only tables outside a
+   panel, so they need their own rules rather than inheriting `.panel table`. */
+.modal table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
+.modal th, .modal td {
+  padding: var(--s-2) var(--s-3); text-align: right;
+  border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums;
+}
+.modal th:first-child, .modal td:first-child { text-align: left; }
+.modal th {
+  font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-2); font-weight: 600;
+}
+.modal tr.best td { color: var(--success-ink); font-weight: 600; }
+
+/* Replaces three `style="..."` attributes in map.js that the CSP was throwing
+   away, so the narrative cards had been rendering as an unstyled stack. */
+.card-row { display: flex; gap: var(--s-6); flex-wrap: wrap; }
+.card-row > .card { flex: 1 1 16rem; min-width: 16rem; }
+.card h3 { font-size: var(--fs-small); margin: 0 0 2px; }
+.card .caption { margin: 0 0 var(--s-2); border: none; padding: 0; }
+.section-label {
+  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-2); margin: 0 0 var(--s-2);
+}
 
 /* =====================================================================
-   Application shell, login and the in-app dashboards.
-
-   Added when the platform stopped being a single map page: navigation, a
-   login screen, and the panels that replaced Grafana. The colour tokens
-   at the top of this file are reused rather than extended, so the
-   dashboards and the map cannot drift into looking like two products.
+   12. Map
    ===================================================================== */
 
-body.signed-in, body.signed-out, body.booting { display: block; height: auto; min-height: 100%; }
-body.signed-in main { display: block; padding: 20px; max-width: 1180px; margin: 0 auto; }
-
-/* ------------------------------------------------------------- login */
-
-.login-wrap {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  padding: 24px;
-}
-.login {
-  width: min(420px, 100%); background: var(--panel);
-  border: 1px solid var(--line); border-radius: var(--radius); padding: 26px;
-}
-.login .brand { margin-bottom: 20px; }
-.login h1 { font-size: 17px; margin: 0 0 4px; }
-.login label { display: block; margin: 14px 0; font-size: 13px; color: var(--ink-dim); }
-.login input {
-  display: block; width: 100%; margin-top: 6px; padding: 10px 12px;
-  background: var(--bg); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 6px; font-size: 14px;
-}
-.login input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.login button[type="submit"] {
-  width: 100%; margin-top: 8px; padding: 11px;
-  background: var(--accent); color: #04121f; border: none;
-  border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
-}
-.login button[type="submit"]:disabled { opacity: .6; cursor: default; }
-
-/* ------------------------------------------------------- navigation */
-
-body.signed-in .bar { position: sticky; top: 0; z-index: 10; gap: 18px; flex-wrap: wrap; }
-.tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
-.tab {
-  background: none; border: 1px solid transparent; color: var(--ink-dim);
-  padding: 7px 13px; border-radius: 6px; cursor: pointer; font-size: 13px;
-}
-.tab:hover { color: var(--ink); background: var(--panel-2); }
-.tab.active { color: var(--ink); background: var(--panel-2); border-color: var(--line); }
-.who { display: flex; gap: 8px; align-items: center; }
-.badge {
-  display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px;
-  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim);
-}
-.badge.role { margin-left: 6px; }
-
-/* ----------------------------------------------------------- panels */
-
-.panel {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 18px;
-}
-.panel.narrow { max-width: 460px; }
-.panel > header {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
-}
-.panel h3 { margin: 0; font-size: 14px; font-weight: 600; }
-.panel h4 { margin: 16px 0 8px; font-size: 13px; color: var(--ink-dim); }
-.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.muted { color: var(--ink-dim); }
-.small { font-size: 12px; }
-.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-.loading { color: var(--ink-dim); padding: 20px 0; }
-
-.caption {
-  color: var(--ink-dim); font-size: 12.5px; line-height: 1.6;
-  margin: 12px 0 0; border-top: 1px solid var(--line); padding-top: 10px;
-}
-
-/* ------------------------------------------------------- stat tiles */
-
-.stat-row {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px; margin-bottom: 18px;
-}
-.stat-row.compact { margin-bottom: 0; }
-.stat {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 14px 16px;
-}
-.stat-value { font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
-.stat-label { color: var(--ink-dim); font-size: 12.5px; margin-top: 2px; }
-.stat-hint { color: var(--ink-dim); font-size: 11.5px; margin-top: 6px; opacity: .8; }
-
-/* ----------------------------------------------------------- charts */
-
-.chart { width: 100%; height: auto; display: block; }
-.chart .grid { stroke: var(--line); stroke-width: 1; }
-.chart .axis { fill: var(--ink-dim); font-size: 11px; }
-.chart .axis.unit { fill: var(--ink-dim); font-size: 10px; }
-.chart .series { stroke-width: 1.6; }
-.chart .series.s0 { stroke: var(--accent); }
-.chart .series.s1 { stroke: var(--warn); }
-.chart.empty .axis { font-size: 13px; }
-.chart.proportion { height: 18px; border-radius: 4px; overflow: hidden; }
-
-.bar.b0, .seg.b0 { fill: var(--anomaly); }
-.bar.b1, .seg.b1 { fill: var(--warn); }
-.bar.b2, .seg.b2 { fill: var(--unfunded); }
-.bar.b3, .seg.b3 { fill: var(--accent); }
-
-.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; }
-.legend .key { color: var(--ink-dim); display: flex; align-items: center; gap: 6px; }
-.legend .key::before {
-  content: ""; width: 10px; height: 10px; border-radius: 2px; display: inline-block;
-}
-.legend .key.s0::before { background: var(--accent); }
-.legend .key.s1::before { background: var(--warn); }
-.legend .key.b0::before { background: var(--anomaly); }
-.legend .key.b1::before { background: var(--warn); }
-.legend .key.b2::before { background: var(--unfunded); }
-.legend .key.b3::before { background: var(--accent); }
-
-/* ----------------------------------------------------------- tables */
-
-.panel table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.panel th {
-  text-align: left; color: var(--ink-dim); font-weight: 500; font-size: 12px;
-  padding: 6px 8px; border-bottom: 1px solid var(--line);
-}
-.panel td { padding: 7px 8px; border-bottom: 1px solid var(--line); }
-.panel tr:last-child td { border-bottom: none; }
-.panel tr.denied td { color: var(--anomaly); }
-.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
-
-.sev { padding: 1px 8px; border-radius: 10px; font-size: 11.5px; }
-.sev.critical { background: rgba(224, 96, 58, .18); color: #ff9b7a; }
-.sev.high     { background: rgba(216, 162, 74, .18); color: #e8bd76; }
-.sev.medium   { background: rgba(139, 155, 176, .16); color: var(--ink-dim); }
-
-/* ------------------------------------------------- forms and boxes */
-
-.form label { display: block; margin: 12px 0; font-size: 13px; color: var(--ink-dim); }
-.form input {
-  display: block; width: 100%; margin-top: 6px; padding: 9px 11px;
-  background: var(--bg); color: var(--ink); border: 1px solid var(--line);
-  border-radius: 6px; font-size: 13px;
-}
-.form button {
-  padding: 9px 16px; background: var(--accent); color: #04121f;
-  border: none; border-radius: 6px; font-weight: 600; cursor: pointer;
-}
-select.inline {
-  background: var(--bg); color: var(--ink); border: 1px solid var(--line);
-  border-radius: 6px; padding: 6px 10px; font-size: 13px;
-}
-label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-dim); }
-button.ghost.small { padding: 5px 10px; font-size: 12px; }
-
-.error-box, .warn-box, .ok-box, .hint-box {
-  padding: 10px 13px; border-radius: 6px; font-size: 13px; margin: 10px 0;
-  border: 1px solid;
-}
-.error-box { background: rgba(224, 96, 58, .12); border-color: rgba(224, 96, 58, .4); color: #ff9b7a; }
-.warn-box  { background: rgba(216, 162, 74, .12); border-color: rgba(216, 162, 74, .4); color: #e8bd76; }
-.ok-box    { background: rgba(46, 163, 106, .12); border-color: rgba(46, 163, 106, .4); color: #6fd3a1; }
-.hint-box  { background: var(--panel-2); border-color: var(--line); color: var(--ink-dim); }
-
-.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 0; font-size: 13px; }
-.facts dt { color: var(--ink-dim); }
-.facts dd { margin: 0; }
-
-.verdict {
-  display: inline-block; padding: 6px 16px; border-radius: 6px;
-  font-weight: 600; margin-bottom: 12px;
-}
-.verdict.good { background: rgba(46, 163, 106, .15); color: #6fd3a1; }
-.verdict.bad  { background: rgba(224, 96, 58, .15); color: #ff9b7a; }
-
-/* --------------------------------------------------------- map view */
-
-/* The map keeps the three-column layout it was designed with; the shell
-   just gives it a container instead of the whole page. */
 .map-layout {
-  display: grid; grid-template-columns: 250px 1fr 310px; gap: 14px;
-  height: calc(100vh - 160px); min-height: 520px;
+  display: grid; grid-template-columns: 16rem 1fr 20rem; gap: var(--s-3);
+  height: calc(100vh - 190px); min-height: 32rem;
 }
-@media (max-width: 1100px) {
+
+/* Scoped to the map. The sidebar used to share the bare class `.controls` with
+   the panel toolbars, and lost. */
+.map-controls {
+  padding: var(--s-4); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow-1);
+}
+.field { margin-bottom: var(--s-5); }
+.field > label {
+  display: block; font-size: var(--fs-micro); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-2); margin-bottom: var(--s-2);
+}
+.field output {
+  display: block; font-size: var(--fs-title); font-weight: 650;
+  font-variant-numeric: tabular-nums; margin-bottom: var(--s-2);
+  letter-spacing: -.01em;
+}
+.scale {
+  display: flex; justify-content: space-between;
+  font-size: var(--fs-micro); color: var(--ink-3); margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.map-controls button.ghost + button.ghost { margin-top: var(--s-2); }
+
+.map-legend {
+  margin-top: var(--s-6); border-top: 1px solid var(--line); padding-top: var(--s-4);
+}
+.map-legend h3 {
+  font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--ink-2); margin: 0 0 var(--s-2);
+}
+.map-legend div {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-caption); margin-bottom: var(--s-1); color: var(--ink-2);
+}
+.sw {
+  width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none;
+  border: 1px solid var(--line-strong);
+}
+.sw.funded   { background: var(--funded); border-color: var(--funded-edge); }
+.sw.unfunded { background: var(--unfunded); }
+.sw.anomaly  { background: transparent; border: 2px solid var(--anomaly); border-radius: 50%; }
+.note { font-size: var(--fs-micro); color: var(--ink-3); margin: var(--s-2) 0 0; line-height: 1.5; }
+
+.mapwrap {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--map-ground); box-shadow: var(--shadow-1);
+}
+#map { width: 100%; height: 100%; display: block; cursor: grab; background: var(--map-ground); }
+#map.dragging { cursor: grabbing; }
+
+.summary {
+  position: absolute; top: var(--s-3); left: var(--s-3); right: var(--s-3); z-index: 2;
+  display: flex; gap: var(--s-2); flex-wrap: wrap;
+  pointer-events: none;
+}
+.metric {
+  background: var(--header-bg); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: var(--s-2) var(--s-3); min-width: 6.5rem;
+  box-shadow: var(--shadow-1);
+}
+@supports (backdrop-filter: blur(12px)) {
+  .metric { backdrop-filter: saturate(180%) blur(12px); }
+}
+.metric .k {
+  display: block; font-size: var(--fs-lead); font-weight: 650;
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+}
+.metric .v {
+  font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--ink-2);
+}
+
+.maphint {
+  position: absolute; bottom: var(--s-3); left: var(--s-3); right: var(--s-3);
+  font-size: var(--fs-micro); color: var(--ink-2); line-height: 1.5;
+  background: var(--header-bg); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: var(--s-1) var(--s-2);
+  pointer-events: none;
+}
+
+.bldg { stroke: var(--bldg-edge); stroke-width: .6; cursor: pointer; }
+.bldg:hover { stroke: var(--ink); stroke-width: 1.6; }
+/* Funded is an outline as well as a fill: the two states have to differ by
+   something other than hue. */
+.bldg.funded { stroke: var(--funded-edge); stroke-width: 1.1; }
+.bldg.selected { stroke: var(--accent); stroke-width: 2.4; }
+.district-label {
+  fill: var(--ink-2); font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; font-family: var(--font); font-weight: 600;
+}
+.anom-ring { fill: none; stroke: var(--anomaly); stroke-width: 1.8; }
+
+/* ---- the building detail column ------------------------------------ */
+
+.detail {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow-y: auto; padding: var(--s-4);
+  box-shadow: var(--shadow-1);
+}
+.detail h2 { font-size: var(--fs-lead); margin: 0 0 2px; }
+.detail .code { font-size: var(--fs-caption); color: var(--ink-2); margin-bottom: var(--s-3); }
+.empty h2 { font-size: var(--fs-lead); margin: 0 0 var(--s-2); }
+.empty p { font-size: var(--fs-caption); color: var(--ink-2); line-height: 1.6; }
+
+/* Two columns of small facts. Distinct from the `.facts` definition list used
+   by the dashboards, which was the third name collision in this file. */
+.detail .facts {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-1) var(--s-3);
+  margin-bottom: var(--s-4); font-size: var(--fs-caption);
+}
+.detail .facts div { font-size: var(--fs-caption); }
+.detail .facts span { color: var(--ink-2); }
+
+.opt {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: var(--s-2) var(--s-3); margin-bottom: var(--s-2); background: var(--surface-3);
+}
+.opt.chosen { border-color: var(--funded); background: var(--success-soft); }
+.opt .name { font-size: var(--fs-small); font-weight: 600; margin-bottom: var(--s-1); }
+.opt .row {
+  display: flex; justify-content: space-between; gap: var(--s-2);
+  font-size: var(--fs-micro); color: var(--ink-2); font-variant-numeric: tabular-nums;
+}
+.opt .tag {
+  font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--success-ink); font-weight: 700;
+}
+.opt.negative { opacity: .65; }
+.opt.negative .name::after { content: " — net negative"; color: var(--danger-ink); font-weight: 400; }
+
+/* =====================================================================
+   13. Responsive
+   ===================================================================== */
+
+/* Defer the compact layout as long as the full one still fits, so the screen
+   people are used to survives an ordinary window resize. */
+@media (max-width: 1180px) {
+  .map-layout { grid-template-columns: 14rem 1fr; height: calc(100vh - 190px); }
+  .map-layout .detail { display: none; }
+}
+
+@media (max-width: 860px) {
+  .bar { padding: var(--s-3) var(--s-4); }
+  .bar .sub { display: none; }
+  body.signed-in main { padding: var(--s-4) var(--s-3) var(--s-8); }
+  .panel { padding: var(--s-4); }
   .map-layout { grid-template-columns: 1fr; height: auto; }
+  .map-layout .mapwrap { height: 70vh; }
+  .map-layout .detail { display: block; }
+  .summary { position: static; padding: var(--s-2) 0 0; }
+  .metric { flex: 1 1 6.5rem; }
 }
+
+/* The empty shell before the first paint. Anything more here would be markup
+   describing data the caller may not be allowed to see. */
+body.booting .login-wrap { background: var(--bg); }
