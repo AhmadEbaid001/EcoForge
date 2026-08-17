@@ -39,9 +39,12 @@ docker compose up -d && python -m gemp.seed --months 6
 | `python scripts/fetch_osm_buildings.py` | Build the portfolio from **real** OpenStreetMap footprints (New Cairo). Needs network. |
 | `python scripts/gen_buildings.py` | Offline fallback: synthetic square footprints, same schema. |
 | `python -m gemp.optimize.cli --budget 10000000` | Solve and print an allocation. |
-| `python -m gemp.optimize.cli --budget 10000000 --compare` | CP-SAT vs greedy vs equal-split on the same instance. |
-| `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats greedy. |
-| `python -m pytest` | 226 tests. |
+| `python -m gemp.optimize.cli --budget 10000000 --compare` | Every solver on the same instance. |
+| `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats every heuristic. |
+| `python -m gemp.evaluate` | Re-measure every claim below. Exits 1 if one has stopped holding. |
+| `python -m gemp.evaluate --with-db` | Adds the forecasting and anomaly claims. Needs the stack. |
+| `python scripts/check.py` | Every CI gate, locally. |
+| `python -m pytest` | 271 tests; the 12 PostgreSQL ones skip themselves without the stack. |
 
 ### Current headline numbers
 
@@ -51,23 +54,33 @@ docker compose up -d && python -m gemp.seed --months 6
 |---|---|---|---|---|
 | equal_split | 30 | 5,117,794 | 12,526,901 | baseline |
 | greedy | 34 | 9,966,764 | 29,923,997 | +139 % |
+| greedy_upgrade | 34 | 9,998,550 | 29,965,474 | +139 % |
 | cpsat | 24 | 9,999,207 | 32,916,590 | **+163 %** |
 
-With a two-per-district cap the picture changes sharply — greedy spends only
-3.55 M of the 10 M because it commits its district slots to cheap high-density
-options and then cannot use the rest:
+With a two-per-district cap, plain greedy spends only 3.55 M of the 10 M: it commits
+its district slots to cheap high-density options and then cannot use the rest.
 
 | Solver | Funded | Spent | Life-cycle kgCO₂e | vs equal split |
 |---|---|---|---|---|
 | equal_split | 9 | 1,644,764 | 5,261,983 | baseline |
 | greedy | 10 | 3,553,479 | 13,411,548 | +155 % |
+| greedy_upgrade | 10 | 9,984,278 | 29,214,174 | +455 % |
 | cpsat | 10 | 9,986,292 | 31,368,000 | **+496 %** |
 
-**CP-SAT over greedy: +10 % unconstrained, +134 % under the cap.** The unconstrained
-gap is small because a density-ordered heuristic is near-optimal on a plain knapsack —
-that is reported rather than hidden. The cap is where exact optimization earns its
-place, and it is also the realistic case: no ministry funds nine buildings in one
-district and none in the next.
+**The headline is quoted against `greedy_upgrade`, never against plain greedy.** Plain
+greedy never revisits a funded building, so once every building holds its cheapest
+dense option — about 16 M EGP here — it stops spending altogether. Its benefit is then
+flat while the budget grows, and a comparison against it measures that ceiling rather
+than the value of exact optimization: the gap reaches +127 % at 40 M, by which point
+even equal split is beating it. `greedy_upgrade` adds the obvious repair, spending
+what is left on the best available swap, and is the baseline CP-SAT has to beat.
+
+Over 40 budget/objective instances from 2 M to 40 M EGP, measured by
+`python -m gemp.evaluate`: **CP-SAT wins by a median of 1.4 % unconstrained and 20.1 %
+under a district cap of 2.** The unconstrained gap is small because a good heuristic
+is near-optimal on a plain knapsack — that is reported rather than hidden. The cap is
+where exact optimization earns its place, and it is also the realistic case: no
+ministry funds nine buildings in one district and none in the next.
 
 Dominance pruning removes 60 % of the candidate set (1367 → 540) before solving.
 Provably safe — any solution using a dominated option can be rewritten to use its
@@ -172,6 +185,30 @@ marginal emission factor is added — making an HVAC kWh saved at a summer after
 worth more carbon than a lighting kWh saved in the evening — that test should start
 failing, and the failure is the signal that the LCA layer has begun to matter.
 
+Stated more usefully as what the difference is worth: choosing funding by raw kWh
+instead of life-cycle carbon costs at most **0.02 %** of the carbon a carbon-optimal
+allocation would deliver, across 20 budgets.
+
+## Open finding: the anomaly precision target is not reachable by tuning
+
+Episode-level detection reads **precision 0.52 at recall 0.80** (k = 8). Recall meets
+the 0.8 gate in the technical review; precision does not meet 0.6, and the reason is
+not that the threshold is badly chosen.
+
+`k` moves a point along a single precision/recall curve. To find out whether the curve
+itself could be moved, 64 combinations of `k`, minimum episode duration and minimum
+peak z were measured against injected ground truth. Requiring longer episodes buys
+precision at about the same exchange rate as raising `k` — 0.645 precision at 0.438
+recall. Requiring a higher peak z makes precision *worse*, moving it from 0.607 to
+0.535, which is informative rather than merely disappointing: a frozen meter barely
+deviates from its expectation at all, while the largest residuals are legitimate load
+that the forecaster failed to anticipate. Residual magnitude does not separate real
+faults from forecast misses here.
+
+The best precision available at recall ≥ 0.8 is **0.519, with no suppression at all**.
+Closing the gap needs a better expected-load model, not a better threshold — which is
+a finding about where the remaining engineering effort belongs.
+
 ## Roadmap
 
 | Phase | Status |
@@ -180,8 +217,8 @@ failing, and the failure is the signal that the LCA layer has begun to matter.
 | 1 — infrastructure, ingestion, integrity | **complete** |
 | 2 — forecasting + anomaly detection | **complete** |
 | 3 — map UI, controls, Grafana | **complete** |
-| 4 — evaluation harness + hardening | next |
-| 5 — rehearsal + documentation | not started |
+| 4 — evaluation harness + hardening | **complete** |
+| 5 — rehearsal + documentation | next |
 
 See [CLAUDE.md](CLAUDE.md) for the working context: decisions, traps, and the findings
 that change the paper.

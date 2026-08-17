@@ -19,10 +19,11 @@ decision or display it.
 | 1 — infra, ingestion, integrity | done |
 | 2 — forecasting, anomaly detection | done |
 | 3 — map UI, controls, Grafana | done (audited) |
-| 4 — evaluation harness, hardening, CI | **next** |
-| 5 — rehearsal, documentation | not started |
+| 4 — evaluation harness, hardening, CI | done |
+| 5 — rehearsal, documentation | **next** |
 
-226 tests, lint clean. Six containers healthy.
+271 tests (12 of them PostgreSQL integration tests that skip without the stack), lint
+clean. Six containers healthy.
 
 ## Run it
 
@@ -32,6 +33,11 @@ python -m gemp.seed --months 6                    # ~6 min, 863k signed readings
 python -m gemp.optimize.cli --budget 10000000 --compare
 python -m gemp.ml.jobs                            # refit + anomalies, ~45 s
 python -m gemp.ml.evaluate --k 4 6 8 10           # tune the anomaly threshold
+
+python scripts/check.py                           # every CI gate, locally
+python -m gemp.evaluate                           # re-measure every claim, ~12 s
+python -m gemp.evaluate --with-db                 # adds forecasting and anomalies
+pytest -m integration                             # needs the stack; skips without it
 ```
 
 Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/docs`.
@@ -65,6 +71,26 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   Compute cutoffs in Python and pass them as parameters.
 - `docker compose build core` does **not** rebuild `sim` — they are separate images
   from the same Dockerfile.
+- **A container that writes a file needs a mount for it, and nothing says so when it
+  does not.** The `sim` service wrote `anchor/live_anomalies.jsonl` — the ground truth
+  for every fault it injects — inside the container, because only `core` mounted
+  `./anchor`. It ran for months of data time with no error anywhere, and the loss only
+  became visible as an anomaly precision of 0.26 that should have been 0.52.
+- **Never score a detector past the end of its ground truth.** Data keeps arriving at
+  720×; the truth file does not. Every correctly detected fault beyond it counts as a
+  false alarm. Coverage is tracked **per source** (`seed`, `live`) and episodes outside
+  a covered window are excluded rather than judged — a single min-to-max span would
+  swallow the gap where nothing was being recorded and reintroduce the same error.
+- **`pytest` imports every test module before running any of them**, so
+  `tests/test_api.py` setting `GEMP_HMAC_KEY` in the process environment applies to the
+  whole session. Environment beats `.env` in pydantic-settings, so host-side code that
+  calls `get_settings()` inside a test run gets the *test* key. It presented as an
+  intact production chain reporting "modified at seq 0".
+- **A continuous aggregate's refresh policy is scheduled in WALL time** while the data
+  it materialises advances in data time. At 720× the 5-minute schedule is 60 hours of
+  data, so the aggregate tail is routinely a day or two behind the hypertable. That is
+  the design working; comparing the newest buckets against the raw table measures
+  refresh timing rather than correctness.
 
 ## Decisions worth not relitigating
 
@@ -103,8 +129,29 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
    `test_lca_adjustment_barely_changes_the_funded_set`. A time-of-use marginal
    emission factor would make it bite — and would make the metered time series reach
    the decision, which today it barely does.
-5. **CP-SAT beats greedy by ~10 % unconstrained, ~134 % under a district cap.** Lead
-   with the cap; report the unconstrained gap honestly.
+5. **The old "CP-SAT beats greedy by ~10 % unconstrained, ~134 % under a cap" was
+   measured against a saturating baseline and must not be quoted.** Plain greedy never
+   revisits a funded building, so once every building holds its cheapest dense option —
+   about 16 M EGP on this portfolio — it stops spending entirely. Its benefit is flat
+   from there while CP-SAT keeps climbing, the "gap" grows to +127 % at 40 M, and above
+   30 M even equal split beats it. The number was measuring greedy's ceiling.
+
+   `greedy_upgrade` is the repair: first fit, then keep swapping a funded building up
+   to a costlier better option while the money lasts. Against **that** baseline, over
+   40 budget/objective instances: **CP-SAT wins by a median of 1.4 % unconstrained and
+   20.1 % under a district cap of 2** — a 14.7× ratio. Both optimizers beat equal split
+   by 163–234 %. That is the defensible version of the argument and it is the one the
+   paper should make: exact optimization earns its place through side constraints no
+   greedy variant can express, not through a large unconstrained margin.
+
+6. **Two claims in the review were mis-specified rather than wrong.** "Every bundle
+   saves less than the sum of its parts" fails for 509 of 1,114 bundles and should:
+   lighting and HVAC controls act on different end uses and rooftop solar is
+   generation, so there is no interaction term to lose. What holds is the narrower
+   claim — bundles *sharing an end use* are strictly sub-additive (605/605), and no
+   bundle exceeds the sum of its parts. Likewise the LCA finding is better stated as
+   what the difference is worth (worst-case 0.02 % of carbon) than as set identity,
+   which differs at 3 of 20 budgets purely through ties.
 
 ## Open items
 
@@ -112,13 +159,32 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   `python -m gemp.domain.catalog --validate --strict` fails until they are sourced.
   This is the one thing code cannot close, and every number the platform reports
   derives from it.
-- **Anomaly precision is 0.50 at recall 0.82** (k=8, episode-level). Recall meets the
-  0.8 gate; precision does not meet 0.6. Roughly 1.5 false alerts per building per six
-  months.
-- Tests run against SQLite, not the live PostgreSQL. A Postgres-backed integration
-  test belongs in Phase 4.
-- Footprint rendering past zoom 3 is implemented and syntax-checked but was never
-  visually confirmed — browser access was blocked before it could be re-checked.
+- **Anomaly precision is 0.52 at recall 0.80** (k=8, episode-level), and **the 0.6
+  target is not reachable by tuning.** k only slides a point along one curve. Phase 4
+  swept 64 combinations of k, minimum episode duration and minimum peak z: duration
+  buys precision at the same exchange rate as k, and a peak-z floor makes precision
+  *worse* (0.607 → 0.535 at k=8), because a frozen meter barely deviates while the
+  largest residuals are legitimate load the forecaster missed. Best precision at
+  recall ≥ 0.8 is 0.519, with no suppression at all. Closing this needs a better
+  expected-load model — the fixed features in `ml/features.py` are the place to look,
+  not `anomaly_k`.
+- The claims harness reports two known-open findings (`DATA`, `F9-b`). They print
+  `FAIL*` and do not fail the run.
+
+## The evaluation harness
+
+`python -m gemp.evaluate` re-measures every claim the paper makes and exits 1 if one
+has stopped holding. It is not a test suite: a test pins behaviour that must not
+change, a claim re-measures a sentence already written down so the sentence can be
+corrected when the measurement moves. It found the greedy saturation defect, the
+mis-specified bundling claim, and the anomaly scoring error above.
+
+Claims already documented as open — the uncited catalog, the anomaly precision target
+— report `FAIL*` and do **not** fail the run. A permanently red gate teaches everyone
+to ignore the gate.
+
+`scripts/check.py` runs the four CI gates locally, which is what actually enforces
+them: the repository has no remote, so `.github/workflows/ci.yml` has never fired.
 
 ## House style
 
