@@ -77,7 +77,11 @@ what is left on the best available swap, and is the baseline CP-SAT has to beat.
 
 Over 40 budget/objective instances from 2 M to 40 M EGP, measured by
 `python -m gemp.evaluate`: **CP-SAT wins by a median of 1.4 % unconstrained and 20.1 %
-under a district cap of 2.** The unconstrained gap is small because a good heuristic
+under a district cap of 2.** The unconstrained advantage is not flat — it peaks at
+11.5 % around 14 M EGP, where the budget binds hardest and the choice of which
+building to skip actually matters, then decays toward zero as the budget grows enough
+to fund everything worth funding. The capped advantage does the opposite, climbing to
+35 % at 40 M. The unconstrained gap is small because a good heuristic
 is near-optimal on a plain knapsack — that is reported rather than hidden. The cap is
 where exact optimization earns its place, and it is also the realistic case: no
 ministry funds nine buildings in one district and none in the next.
