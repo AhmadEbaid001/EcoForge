@@ -13,7 +13,7 @@ import os
 import threading
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -292,11 +292,39 @@ def map_geojson(session: Session = Depends(get_session),
             for item in items
         }
 
+    # Open anomalies per building, so the map can show where something is wrong now
+    # rather than only where money should go next year.
+    #
+    # The cutoff is computed here rather than written as `INTERVAL '7 days'`, which is
+    # PostgreSQL-only and breaks the SQLite-backed contract tests. It is also anchored
+    # on the newest READING, not on the wall clock: under accelerated replay data time
+    # runs ahead, and a wall-clock window would come back empty.
+    latest = latest_reading_ts(session)
+    anomalies: dict[str, int] = {}
+    if latest is not None:
+        cutoff = latest - timedelta(days=7)
+        anomalies = dict(session.execute(
+            text("""
+                SELECT building_id, count(*) FROM anomaly
+                WHERE acknowledged = false AND ts > :cutoff
+                GROUP BY building_id
+            """),
+            {"cutoff": cutoff},
+        ).all())
+
     features = []
     for row in load_building_rows(session):
         properties = {
-            "id": row.id, "code": row.code, "district": row.district,
-            "annual_kwh": row.annual_kwh, "funded": row.id in funded,
+            "id": row.id, "code": row.code, "name": row.name,
+            "district": row.district,
+            "annual_kwh": row.annual_kwh,
+            "annual_kwh_source": row.annual_kwh_source,
+            "occupancy_pattern": row.occupancy_pattern,
+            "insulation_quality": row.insulation_quality,
+            "roof_area_m2": row.roof_area_m2,
+            "lat": row.lat, "lon": row.lon,
+            "funded": row.id in funded,
+            "anomalies": int(anomalies.get(row.id, 0)),
         }
         properties.update(funded.get(row.id, {}))
         features.append({
@@ -391,6 +419,142 @@ def recompute_candidates(session: Session = Depends(get_session)) -> dict:
         "candidates": written,
         "inputs_hash": context.inputs_hash[:16],
         "uncited_catalog_rows": [iv.id for iv in context.catalog if iv.needs_citation],
+    }
+
+
+@app.get("/api/v1/narrative/building-specific")
+def building_specific_narrative(
+    context: OptimizerContext = Depends(get_context),
+) -> dict:
+    """Two real buildings whose best measure differs, and the attributes that drive it.
+
+    This replaces the claim made in the proposal's Table 1 - that life-cycle scoring
+    reverses solar and insulation - which does not survive contact with the corrected
+    model. Measured on this catalog, rooftop generation never has the best benefit
+    density at any building: cheap controls and lighting dominate it everywhere, which
+    is the ordinary efficiency-before-generation loading order rather than a defect.
+
+    The claim that DOES hold, and that this endpoint evidences, is the more useful
+    one: the right measure is building-specific, so a single portfolio-wide priority
+    list is wrong and per-building optimization is the point.
+    """
+    best: dict[str, object] = {}
+    for c in context.candidates:
+        if len(c.intervention_ids) != 1:
+            continue
+        current = best.get(c.building_id)
+        if current is None or c.score_per_kegp > current.score_per_kegp:
+            best[c.building_id] = c
+
+    by_building = {b.id: b for b in context.buildings}
+    groups: dict[str, list] = {}
+    for building_id, candidate in best.items():
+        groups.setdefault(candidate.intervention_ids[0], []).append(building_id)
+
+    ranked = sorted(groups.items(), key=lambda kv: len(kv[1]), reverse=True)
+    if len(ranked) < 2:
+        raise HTTPException(
+            409, "every building has the same best measure; there is no contrast to show"
+        )
+
+    def describe(building_id: str) -> dict:
+        building = by_building[building_id]
+        winner = best[building_id]
+        options = sorted(
+            (c for c in context.candidates
+             if c.building_id == building_id and len(c.intervention_ids) == 1),
+            key=lambda c: c.score_per_kegp, reverse=True,
+        )
+        return {
+            "code": building.code,
+            "occupancy_pattern": building.occupancy_pattern,
+            "insulation_quality": building.insulation_quality,
+            "hvac_age_yr": building.hvac_age_yr,
+            "roof_area_m2": building.roof_area_m2,
+            "annual_kwh": building.annual_kwh,
+            "best": winner.intervention_ids[0],
+            "options": [
+                {
+                    "intervention": c.intervention_ids[0],
+                    "label": c.label,
+                    "cost_egp": c.cost_egp,
+                    "score_per_kegp": c.score_per_kegp,
+                }
+                for c in options
+            ],
+        }
+
+    # The largest building in each of the two most common groups: bigger buildings
+    # make the contrast legible rather than marginal.
+    picks = []
+    for _intervention, ids in ranked[:2]:
+        picks.append(max(ids, key=lambda i: by_building[i].annual_kwh))
+
+    return {
+        "distribution": {k: len(v) for k, v in ranked},
+        "buildings": [describe(i) for i in picks],
+    }
+
+
+@app.get("/api/v1/buildings/{building_id}/candidates")
+def building_candidates(
+    building_id: str,
+    session: Session = Depends(get_session),
+    context: OptimizerContext = Depends(get_context),
+    run_id: str | None = Query(default=None),
+) -> dict:
+    """Every option considered at one building, and which one a run chose.
+
+    This is the "why was this building funded, and why this measure" view. A
+    recommendation a reviewer cannot interrogate is a recommendation they are being
+    asked to take on trust, which is the opposite of the point.
+    """
+    building = next((b for b in context.buildings if b.id == building_id), None)
+    if building is None:
+        raise HTTPException(404, f"no building {building_id}")
+
+    chosen_key = None
+    if run_id:
+        try:
+            _run, items = get_run(session, run_id)
+        except KeyError as exc:
+            raise HTTPException(404, f"no run {run_id}") from exc
+        chosen_key = next(
+            (i.candidate_key for i in items if i.building_id == building_id), None
+        )
+
+    options = sorted(
+        (c for c in context.candidates if c.building_id == building_id),
+        key=lambda c: c.score_per_kegp,
+        reverse=True,
+    )
+
+    return {
+        "building": {
+            "id": building.id, "code": building.code, "name": building.name,
+            "district": building.district,
+            "occupancy_pattern": building.occupancy_pattern,
+            "insulation_quality": building.insulation_quality,
+            "hvac_age_yr": building.hvac_age_yr,
+            "roof_area_m2": building.roof_area_m2,
+            "floor_area_m2": building.floor_area_m2,
+            "annual_kwh": building.annual_kwh,
+        },
+        "chosen_key": chosen_key,
+        "options": [
+            {
+                "key": c.key,
+                "label": c.label,
+                "intervention_ids": list(c.intervention_ids),
+                "cost_egp": c.cost_egp,
+                "annual_kwh_saving": c.annual_kwh_saving,
+                "annual_egp_saving": c.annual_egp_saving,
+                "lifetime_benefit_kgco2e": c.lifetime_benefit_kgco2e,
+                "score_per_kegp": c.score_per_kegp,
+                "chosen": c.key == chosen_key,
+            }
+            for c in options
+        ],
     }
 
 

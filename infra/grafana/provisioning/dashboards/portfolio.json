@@ -1,0 +1,150 @@
+{
+  "uid": "gemp-portfolio",
+  "title": "GEMP — Portfolio Operations",
+  "tags": ["gemp"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-90d", "to": "now+30d" },
+  "templating": {
+    "list": [
+      {
+        "name": "building",
+        "label": "Building",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "gemp" },
+        "refresh": 1,
+        "includeAll": false,
+        "query": "SELECT code AS __text, id AS __value FROM building ORDER BY code"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Portfolio load",
+      "description": "Hourly mean across every building, read from the continuous aggregate rather than the raw hypertable.",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "gemp" },
+      "fieldConfig": {
+        "defaults": { "unit": "kwatt", "custom": { "fillOpacity": 12, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT bucket AS time, sum(avg_kw) AS \"portfolio kW\" FROM reading_hourly WHERE $__timeFilter(bucket) GROUP BY bucket ORDER BY bucket"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Readings stored",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "gemp" },
+      "targets": [
+        { "format": "table", "rawQuery": true, "rawSql": "SELECT count(*) AS value FROM reading" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Buildings costed against measurement",
+      "description": "F3: how many buildings the optimizer prices using forecast-derived consumption rather than the figure the portfolio fixture shipped with.",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "gemp" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FILTER (WHERE annual_kwh_source = 'forecast') AS value FROM building"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Selected building — actual vs forecast",
+      "description": "The residual between these two is what the anomaly detector scores.",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "gemp" },
+      "fieldConfig": { "defaults": { "unit": "kwatt" }, "overrides": [] },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT bucket AS time, avg_kw AS actual FROM reading_hourly WHERE building_id = '$building' AND $__timeFilter(bucket) ORDER BY bucket"
+        },
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT ts AS time, yhat AS forecast FROM forecast WHERE building_id = '$building' AND $__timeFilter(ts) ORDER BY ts"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "piechart",
+      "title": "Forecaster in use",
+      "description": "The learned model is kept only where it beats a seasonal-naive baseline on held-out data. A large baseline share means the load is close to perfectly weekly, which is information rather than a failure.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "gemp" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT model_version AS metric, count(DISTINCT building_id) AS value FROM forecast GROUP BY model_version"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Anomalies flagged",
+      "description": "Hourly flags, not alerts: consecutive flags are one incident.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "gemp" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT date_trunc('day', ts) AS time, severity AS metric, count(*) AS value FROM anomaly WHERE $__timeFilter(ts) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Most severe open anomalies",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "gemp" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT b.code AS building, a.ts, round(a.observed_kw::numeric, 1) AS observed_kw, round(a.expected_kw::numeric, 1) AS expected_kw, round(a.robust_z::numeric, 1) AS z, a.severity FROM anomaly a JOIN building b ON b.id = a.building_id WHERE NOT a.acknowledged ORDER BY abs(a.robust_z) DESC NULLS LAST LIMIT 25"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Recent allocations",
+      "description": "Every stored optimization run, with the inputs hash that produced it — so a recommendation can be traced back to the catalog and consumption figures it was costed against.",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 23 },
+      "datasource": { "type": "postgres", "uid": "gemp" },
+      "targets": [
+        {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT created_at, solver, objective, status, budget_egp, round(total_cost_egp::numeric, 0) AS spent_egp, buildings_funded, round(total_benefit_kgco2e::numeric, 0) AS lifetime_kgco2e, round(solve_ms::numeric, 0) AS solve_ms, left(inputs_hash, 12) AS inputs FROM optimization_run ORDER BY created_at DESC LIMIT 20"
+        }
+      ]
+    }
+  ]
+}

@@ -94,6 +94,15 @@ def run_optimization(
 
     run_id = str(uuid.uuid4())
     if persist:
+        # The run row is flushed before its allocations. `allocation.run_id` is a
+        # foreign key to `optimization_run.id`, and relying on the unit of work to
+        # order the two inserts was not enough here: the allocations went first and
+        # the whole transaction died on a foreign-key violation at commit, which is
+        # AFTER the response has been built. The endpoint therefore returned a
+        # perfectly good run_id for a run that did not exist, and every later request
+        # for it 404'd - the map went blank with no error anywhere the caller could
+        # see. An explicit flush makes the ordering a property of this code rather
+        # than of SQLAlchemy's dependency sort.
         session.add(OptimizationRunRow(
             id=run_id,
             created_at=datetime.now(UTC),
@@ -110,6 +119,7 @@ def run_optimization(
             solve_ms=allocation.solve_ms,
             inputs_hash=context.inputs_hash,
         ))
+        session.flush()
         session.add_all([
             AllocationRow(
                 run_id=run_id,
@@ -126,6 +136,18 @@ def run_optimization(
             )
             for item in allocation.items
         ])
+
+        # Committed here, not left to the request-scoped session.
+        #
+        # FastAPI resumes a `yield` dependency AFTER the response has been sent, so
+        # the commit would land after the client already holds the run_id. A browser
+        # issues its follow-up request faster than that: the map asked for
+        # /map/geojson?run_id=... and got a 404 for a run that was moments from
+        # existing. curl never reproduced it, because starting a process is slower
+        # than the race window.
+        #
+        # A run_id must not leave this function until the run it names is durable.
+        session.commit()
 
     return run_id, allocation
 

@@ -17,6 +17,9 @@ services:
       POSTGRES_DB: ${GEMP_DB_NAME:-gemp}
       POSTGRES_USER: ${GEMP_DB_USER:-gemp}
       POSTGRES_PASSWORD: ${GEMP_DB_PASSWORD:?set GEMP_DB_PASSWORD in .env}
+      # Consumed by infra/initdb/01-roles.sh to create the Grafana read-only role.
+      GEMP_DB_RO_USER: ${GEMP_DB_RO_USER:-gemp_ro}
+      GEMP_DB_RO_PASSWORD: ${GEMP_DB_RO_PASSWORD:?set GEMP_DB_RO_PASSWORD in .env}
       # Sized for the target 4 vCPU / 8 GB host.
       TIMESCALEDB_TELEMETRY: "off"
     volumes:

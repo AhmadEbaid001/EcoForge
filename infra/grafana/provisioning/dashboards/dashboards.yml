@@ -1,0 +1,18 @@
+# Dashboards are provisioned from files in the repository, not clicked in through
+# the UI. Clicking is the kind of manual step that gets forgotten before a
+# demonstration and lost entirely when a volume is wiped - and `docker compose
+# down -v && up` is meant to be a reliable way back to a known state.
+
+apiVersion: 1
+
+providers:
+  - name: gemp
+    orgId: 1
+    folder: GEMP
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

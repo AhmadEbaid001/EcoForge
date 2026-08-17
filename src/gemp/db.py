@@ -31,9 +31,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    event,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.sql import Insert
 from sqlalchemy.sql import insert as generic_insert
@@ -53,6 +55,25 @@ AutoPK = BigInteger().with_variant(Integer(), "sqlite")
 
 class Base(DeclarativeBase):
     pass
+
+
+@event.listens_for(Engine, "connect")
+def _enforce_sqlite_foreign_keys(dbapi_connection, _record):
+    """Make SQLite enforce foreign keys, as PostgreSQL does.
+
+    SQLite ignores foreign-key constraints unless this pragma is set, which turns the
+    contract tests into a weaker check than the database they stand in for. That is
+    not hypothetical: a run row and its allocations were being inserted in the wrong
+    order, PostgreSQL rejected the transaction, and the API returned a run_id for a
+    run that never existed - while the SQLite-backed tests passed happily throughout.
+
+    A test suite that accepts what production rejects is worse than no suite, because
+    it converts an outage into a surprise.
+    """
+    if dbapi_connection.__class__.__module__.startswith("sqlite3"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 def insert_ignore(table, dialect_name: str) -> Insert:

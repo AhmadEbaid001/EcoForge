@@ -6,6 +6,7 @@ apiVersion: 1
 
 datasources:
   - name: GEMP
+    uid: gemp
     type: postgres
     access: proxy
     url: ${GEMP_DB_HOST}:5432
