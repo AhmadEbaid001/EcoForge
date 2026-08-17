@@ -21,6 +21,7 @@ decision or display it.
 | 3 — map UI, controls, Grafana | done (audited) |
 | 4 — evaluation harness, hardening, CI | done |
 | 5 — rehearsal, documentation | **next** |
+| — | identity, RBAC and in-app dashboards (added after Phase 4) |
 
 278 tests plus 15 integration tests that skip themselves without the stack, 83%
 coverage, lint clean. Six containers healthy.
@@ -61,7 +62,14 @@ built in Phase 1, documented nowhere, and referenced by no compose file — so t
 project's answer to "is any of this real data?" was sitting unused. The 133 MB file
 is gitignored; `scripts/` does not download it.
 
-Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/docs`.
+Application at `http://localhost:8080`, API docs at `/docs`. **There is no default
+account.** Create the first administrator:
+
+```bash
+python -m gemp.auth.bootstrap --username you      # prints a one-time password
+```
+
+Grafana is no longer part of the stack: its panels are views inside the application.
 
 **Host-side scripts need `GEMP_DB_HOST=127.0.0.1 GEMP_DB_PORT=5433`** plus the
 `GEMP_*` values from `.env`.
@@ -118,6 +126,15 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   disconnects the production ingester and stops ingestion for as long as it runs.
   Anything that consumes from a live broker needs its own id and `clean_session=True`,
   or it also leaves a durable subscription queueing messages after it exits.
+- **nginx does not merge `add_header` directives.** A location block that declares
+  even one of its own discards the ENTIRE inherited set for that location. A
+  `location = /index.html` setting nothing but Cache-Control left the page carrying the
+  whole application with no Content-Security-Policy, while every API response had one.
+  Anything location-specific must repeat the full set.
+- **FastAPI 0.141 does not flatten included routers into `app.routes`.** They appear as
+  a single `_IncludedRouter` whose children hang off `original_router`. Any code that
+  walks routes - the deny-by-default test, the UI/route drift test - has to descend, or
+  it reports that every auth and dashboard endpoint does not exist.
 - **`pytest` imports every test module before running any of them**, so
   `tests/test_api.py` setting `GEMP_HMAC_KEY` in the process environment applies to the
   whole session. Environment beats `.env` in pydantic-settings, so host-side code that
@@ -152,6 +169,11 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   on every call while it is unset.
 - **Concurrent solves are capped and excess requests get 429, not a queue.** During a
   demonstration the request that matters is the slider drag happening now.
+- **The dashboards live in the application, not in Grafana.** A second service meant a
+  second login, a second set of credentials, and panels querying the database with
+  their own SQL that could disagree with the application about what a number meant.
+  Charts are hand-drawn inline SVG because the CSP forbids script from any other
+  origin - a charting library from a CDN would be blocked, not merely unwise.
 - **Alerting is a row, a map marker, and an optional webhook — never SMTP** (F11).
   `GEMP_WEBHOOK_URL` is environment-only and unset by default. It posts from a worker
   thread behind a bounded queue and DROPS when full: the ingester is single-threaded,
@@ -229,6 +251,23 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   reporting 0.79 is drift, not a regression — re-run before treating it as one.
 - The claims harness reports two known-open findings (`DATA`, `F9-b`). They print
   `FAIL*` and do not fail the run.
+
+## Identity and access
+
+Sessions, not JWTs - a JWT cannot be revoked and localStorage hands it to any XSS. An
+opaque token lives in an `HttpOnly; SameSite=Lax` cookie and only its SHA-256 is
+stored, so a database dump yields nothing replayable. Sessions carry both an idle
+timeout (8 h) and an absolute lifetime (7 d). Passwords are scrypt from the standard
+library, parameters stored per row so the cost can be raised later.
+
+**Authentication is middleware, authorisation is per route.** A new route is protected
+the moment it exists; exposing one means adding its path to `PUBLIC_PATHS`
+deliberately. Two tests enforce that - one fails if a route declares no role, the other
+if the public list changes. Roles are `viewer` < `analyst` < `admin`.
+
+`GEMP_COOKIE_SECURE` defaults to false so the http://localhost demo works, and MUST be
+true anywhere reachable over a network. The Administration view reports it, so the two
+cannot silently disagree.
 
 ## The evaluation harness
 
