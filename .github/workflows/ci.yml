@@ -1,0 +1,62 @@
+# The same four gates as `python scripts/check.py`, which is what enforces them
+# today - this repository has no remote yet, so nothing here has ever run. It is
+# committed anyway: the moment the work is pushed the gates apply, and a reviewer can
+# see what "passing" is defined as without running anything.
+#
+# No database service. The suite runs against SQLite by design and the PostgreSQL
+# integration tests skip themselves when nothing is listening, so CI stays a
+# three-minute job. Running the container stack here would test Docker's networking,
+# not the platform.
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: python -m ruff check src tests scripts
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: Data contract
+        # Structure only. `--strict` additionally fails on uncited catalog rows, which
+        # is a known open item owned by a person, not a regression a build can fix.
+        run: python -m gemp.domain.catalog --validate
+
+      - name: Claims
+        # Re-measures every claim the paper makes and exits 1 if one has stopped
+        # holding. Known-open findings report FAIL and do not fail the run.
+        run: python -m gemp.evaluate --quick --no-figures
+
+      - name: Citation status
+        # Reported on every run so the uncited rows stay visible, without turning a
+        # permanently red gate into something everyone learns to ignore.
+        if: always()
+        continue-on-error: true
+        run: python -m gemp.domain.catalog --validate --strict
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evaluation
+          path: out/evaluation/
+          if-no-files-found: ignore
