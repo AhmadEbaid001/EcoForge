@@ -36,7 +36,13 @@ from sqlalchemy import func, select
 
 from gemp.db import ReadingRow
 from gemp.ingest.integrity import as_utc
-from gemp.ml.anomaly import FLATLINE_Z, MAD_TO_SIGMA, MIN_RELATIVE_SPREAD
+from gemp.ml.anomaly import (
+    CRITICAL_SEVERITY_MULTIPLE,
+    HIGH_SEVERITY_MULTIPLE,
+    MAD_TO_SIGMA,
+    MIN_RELATIVE_SPREAD,
+    flatline_z,
+)
 
 log = logging.getLogger("gemp.ingest.live")
 
@@ -165,8 +171,8 @@ class StreamingDetector:
 
         return LiveAnomaly(
             building_id=building_id, ts=ts, observed_kw=kw, expected_kw=kw,
-            residual=0.0, robust_z=FLATLINE_Z,
-            severity=self._severity(FLATLINE_Z), kind="flatline",
+            residual=0.0, robust_z=flatline_z(self.k),
+            severity=self._severity(flatline_z(self.k)), kind="flatline",
         )
 
     def _score_residual(self, state, building_id, ts, kw) -> LiveAnomaly | None:
@@ -203,8 +209,8 @@ class StreamingDetector:
 
     def _severity(self, z: float) -> str:
         magnitude = abs(z)
-        if magnitude >= 2.0 * self.k:
+        if magnitude >= CRITICAL_SEVERITY_MULTIPLE * self.k:
             return "critical"
-        if magnitude >= 1.4 * self.k:
+        if magnitude >= HIGH_SEVERITY_MULTIPLE * self.k:
             return "high"
         return "medium"

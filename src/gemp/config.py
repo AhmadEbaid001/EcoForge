@@ -55,6 +55,20 @@ class Settings(BaseSettings):
     ingest_batch_rows: int = Field(default=500, gt=0)
     ingest_batch_seconds: float = Field(default=2.0, gt=0)
 
+    # --- alerting (F11) ---
+    # The review's alerting fix is a row in the anomaly table, a marker on the map,
+    # and an optional outbound webhook. Unset means the path is inert, which is the
+    # demonstration default: nobody reads email or watches a chat channel during a
+    # presentation. Environment only, never settable through the API - a notification
+    # target that any caller could change is an exfiltration primitive.
+    webhook_url: str = ""
+    # "high" rather than "critical", so that a stuck meter is forwarded. A flatline is
+    # a CERTAIN fault - the meter is broken or the plant is jammed on - but its score
+    # is a sentinel graded to "high", not a measured excursion, so a critical-only
+    # filter would silently drop the entire fault class. Forwarded: extreme residual
+    # excursions and certain hardware faults. Suppressed: marginal residual blips.
+    webhook_min_severity: str = "high"
+
     @field_validator("hmac_key")
     @classmethod
     def _key_must_be_real(cls, value: SecretStr) -> SecretStr:

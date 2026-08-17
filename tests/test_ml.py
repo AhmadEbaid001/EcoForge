@@ -232,3 +232,40 @@ def test_detect_handles_an_empty_series():
 
 def test_mad_to_sigma_constant():
     assert pytest.approx(1.4826) == MAD_TO_SIGMA
+
+
+def test_a_stuck_meter_reads_as_high_at_any_threshold():
+    """The bug this pins: a sentinel score graded against a moving scale.
+
+    FLATLINE_Z was fixed at 6.0, chosen when the default k was 3.0 and 6.0 cleared the
+    high threshold of 4.2. Phase 2 tuning moved k to 8.0, the threshold to 11.2, and
+    every stuck meter had since been filed "medium" - the lowest tier, alongside a
+    marginal residual blip. A frozen meter is a certain fault and a quarter of the
+    injected ones; it also meant the outbound webhook's critical-only default would
+    never forward the entire class.
+    """
+    from gemp.ml.anomaly import Anomaly, flatline_z
+
+    for k in (3.0, 8.0, 12.0, 20.0):
+        anomaly = Anomaly(
+            building_id="b001", ts=pd.Timestamp("2026-05-01", tz=UTC),
+            observed_kw=99.0, expected_kw=99.0, residual=0.0,
+            robust_z=flatline_z(k), threshold_k=k,
+        )
+        assert anomaly.severity == "high", f"k={k} filed a stuck meter as {anomaly.severity}"
+
+
+def test_a_flatline_does_not_outrank_a_real_excursion():
+    """The reason the score is finite rather than infinite.
+
+    An infinity sorts ahead of every real detection and floods the "most severe" list
+    with frozen meters, which is the opposite of a useful triage order.
+    """
+    from gemp.ml.anomaly import Anomaly, flatline_z
+
+    def at(z, k=8.0):
+        return Anomaly("b001", pd.Timestamp("2026-05-01", tz=UTC), 1.0, 1.0, 0.0, z, k)
+
+    assert at(flatline_z(8.0)).severity == "high"
+    assert at(40.0).severity == "critical"
+    assert abs(at(40.0).robust_z) > abs(at(flatline_z(8.0)).robust_z)

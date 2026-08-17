@@ -48,7 +48,18 @@ python scripts/check.py                           # every CI gate, locally
 python -m gemp.evaluate                           # re-measure every claim, ~12 s
 python -m gemp.evaluate --with-db                 # adds forecasting and anomalies
 pytest -m integration                             # needs the stack; skips without it
+
+python -m gemp.sim.replay --stats-only            # real UCI meter data, fit report
+python -m gemp.sim.replay --building b001         # replay it over MQTT
+curl -X POST localhost:8080/api/v1/anomalies/acknowledge \
+     -H 'Content-Type: application/json' -d '{"building_id":"b010"}'
 ```
+
+**Real data exists and is easy to miss.** `sim/replay.py` replays the UCI household
+power dataset onto a building over the same MQTT topic the simulator uses. It was
+built in Phase 1, documented nowhere, and referenced by no compose file — so the
+project's answer to "is any of this real data?" was sitting unused. The 133 MB file
+is gitignored; `scripts/` does not download it.
 
 Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/docs`.
 
@@ -141,6 +152,16 @@ Map at `http://localhost:8080`, Grafana at `http://localhost:3000`, docs at `/do
   on every call while it is unset.
 - **Concurrent solves are capped and excess requests get 429, not a queue.** During a
   demonstration the request that matters is the slider drag happening now.
+- **Alerting is a row, a map marker, and an optional webhook — never SMTP** (F11).
+  `GEMP_WEBHOOK_URL` is environment-only and unset by default. It posts from a worker
+  thread behind a bounded queue and DROPS when full: the ingester is single-threaded,
+  so a black-holed endpoint must never stall the write path. Losing an alert is a
+  nuisance, losing readings is data loss, and the anomaly is in the database either
+  way. Never make the target settable through the API — a notification endpoint any
+  caller can change is an exfiltration primitive.
+- **Acknowledging is reversible and bulk acknowledgement requires a selector.** An
+  unfiltered call would close every alert in the portfolio, which should not be
+  reachable by forgetting a field.
 
 ## Findings that change the paper
 

@@ -10,10 +10,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from gemp.db import (
+    AnomalyRow,
     BuildingRow,
     CandidateRow,
     InterventionRow,
@@ -183,3 +184,55 @@ def read_chain(session: Session, building_id: str) -> list[dict]:
          "source": r.source, "seq": r.seq, "sig": r.sig}
         for r in rows
     ]
+
+
+def acknowledge_anomalies(
+    session: Session,
+    *,
+    ids: Sequence[int] | None = None,
+    building_id: str | None = None,
+    before: datetime | None = None,
+    severity: str | None = None,
+    acknowledged: bool = True,
+) -> int:
+    """Mark anomalies acknowledged (or un-acknowledge them). Returns rows changed.
+
+    The `acknowledged` column has existed since Phase 2 and two queries filter on it,
+    but until now nothing could set it: the map counted open anomalies and offered no
+    way to close one, so the "roughly 1.5 alerts per building" inbox only ever grew.
+    Sixteen months of replay had accumulated over eleven thousand critical alerts that
+    no one could clear.
+
+    Every selector is optional but at least one is required by the caller, not here -
+    see the API layer. Acknowledging is reversible by design (`acknowledged=False`),
+    which is what makes a bulk operation over thousands of rows a safe thing to
+    expose at all.
+    """
+    stmt = update(AnomalyRow).values(acknowledged=acknowledged)
+
+    if ids:
+        stmt = stmt.where(AnomalyRow.id.in_(list(ids)))
+    if building_id:
+        stmt = stmt.where(AnomalyRow.building_id == building_id)
+    if before is not None:
+        stmt = stmt.where(AnomalyRow.ts < before)
+    if severity:
+        stmt = stmt.where(AnomalyRow.severity == severity)
+
+    # Only touch rows that would actually change, so the reported count means "alerts
+    # this call closed" rather than "rows the WHERE clause happened to match".
+    stmt = stmt.where(AnomalyRow.acknowledged.is_(not acknowledged))
+
+    result = session.execute(stmt)
+    return int(result.rowcount or 0)
+
+
+def open_anomaly_count(session: Session, building_id: str | None = None) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(AnomalyRow)
+        .where(AnomalyRow.acknowledged.is_(False))
+    )
+    if building_id:
+        stmt = stmt.where(AnomalyRow.building_id == building_id)
+    return int(session.execute(stmt).scalar_one())

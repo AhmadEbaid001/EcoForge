@@ -43,6 +43,7 @@ from gemp.db import (
 from gemp.domain.catalog import load_params
 from gemp.ingest.integrity import GENESIS, as_utc, sign
 from gemp.ingest.live_anomaly import StreamingDetector
+from gemp.ingest.webhook import Notification, Webhook
 
 log = logging.getLogger("gemp.ingest")
 
@@ -63,7 +64,8 @@ class Ingester:
     def __init__(self, settings, batch_rows: int | None = None,
                  batch_seconds: float | None = None, session_factory=None,
                  anchor_path: Path | None = None,
-                 client_id: str = "gemp-ingest", clean_session: bool = False):
+                 client_id: str = "gemp-ingest", clean_session: bool = False,
+                 webhook=None):
         """`client_id` and `clean_session` are parameters for one specific reason.
 
         MQTT identities are exclusive: a second client connecting with an id that is
@@ -90,6 +92,9 @@ class Ingester:
         # a fault found the next morning has already burned a night of energy, and
         # during a demonstration nothing would appear on the map at all.
         self.detector = StreamingDetector(k=load_params().anomaly_k)
+        self.webhook = webhook or Webhook(
+            settings.webhook_url, settings.webhook_min_severity
+        )
 
         self.queue: deque[dict[str, Any]] = deque()
         self.chains: dict[str, ChainState] = {}
@@ -225,6 +230,20 @@ class Ingester:
                     for a in detected
                 ])
 
+        # After the commit, never before. A notification for a fault that then failed
+        # to store would send someone looking for a row that does not exist, and the
+        # webhook is fire-and-forget so there is no taking it back.
+        for anomaly in detected:
+            self.webhook.notify(Notification(
+                building_id=anomaly.building_id,
+                ts=anomaly.ts,
+                observed_kw=anomaly.observed_kw,
+                expected_kw=anomaly.expected_kw,
+                robust_z=anomaly.robust_z,
+                severity=anomaly.severity,
+                kind=anomaly.kind,
+            ))
+
         self.written += len(rows)
         self.anomalies += len(detected)
         return len(rows)
@@ -305,9 +324,14 @@ class Ingester:
         self.write_checkpoint()
         self.client.loop_stop()
         self.client.disconnect()
+        self.webhook.stop()
 
         log.info("wrote %d rows, flagged %d anomalies, dropped %d duplicates, %d malformed",
                  self.written, self.anomalies, self.duplicates, self.malformed)
+        if self.webhook.enabled:
+            log.info("webhook: %d sent, %d failed, %d dropped, %d below severity",
+                     self.webhook.sent, self.webhook.failed,
+                     self.webhook.dropped, self.webhook.suppressed)
         return self.written
 
 

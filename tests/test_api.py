@@ -621,3 +621,89 @@ def test_the_anchor_is_read_before_the_rows(client):
     assert order.index("anchor") < order.index("rows"), (
         f"anchor must be read before rows, got {order}"
     )
+
+
+# --- acknowledging alerts ---------------------------------------------------
+
+
+def seed_anomalies(client, building_id="b010", count=5, severity="critical"):
+    from gemp.db import AnomalyRow
+
+    with client.session_scope() as session:
+        for i in range(count):
+            session.add(AnomalyRow(
+                building_id=building_id,
+                ts=T0 + timedelta(hours=i),
+                observed_kw=150.0, expected_kw=100.0, residual=0.5,
+                robust_z=20.0, severity=severity, acknowledged=False,
+            ))
+
+
+def test_an_alert_can_be_acknowledged(client):
+    """Phase 2 shipped the column and the filters; nothing could set it.
+
+    The map counted open anomalies and offered no way to close one, so the count only
+    ever grew - sixteen months of replay reached eleven thousand criticals. A number
+    that cannot go down is a number nobody reads.
+    """
+    from gemp.db import AnomalyRow
+
+    seed_anomalies(client, "b011", 3)
+    with client.session_scope() as session:
+        first = session.query(AnomalyRow).filter_by(building_id="b011").first().id
+
+    body = client.post(f"/api/v1/anomalies/{first}/acknowledge").json()
+    assert body["changed"] == 1
+
+    # Already closed, so there is nothing left to do with it.
+    assert client.post(f"/api/v1/anomalies/{first}/acknowledge").status_code == 404
+
+
+def test_alerts_can_be_closed_in_bulk_and_reopened(client):
+    """Reversibility is what makes a bulk close over thousands of rows safe."""
+    seed_anomalies(client, "b012", 6)
+
+    closed = client.post("/api/v1/anomalies/acknowledge",
+                         json={"building_id": "b012"}).json()
+    assert closed["changed"] == 6
+    assert closed["open_remaining"] == 0
+
+    reopened = client.post("/api/v1/anomalies/acknowledge",
+                           json={"building_id": "b012", "acknowledged": False}).json()
+    assert reopened["changed"] == 6
+    assert reopened["open_remaining"] == 6
+
+
+def test_an_unfiltered_acknowledge_is_refused(client):
+    """Closing every alert in the portfolio must not be reachable by omission."""
+    response = client.post("/api/v1/anomalies/acknowledge", json={})
+    assert response.status_code == 422
+    assert "at least one" in response.json()["detail"]
+
+
+def test_acknowledging_by_age_uses_data_time(client):
+    """Under 720x replay the wall clock is months behind the data."""
+    seed_anomalies(client, "b013", 4)
+    cutoff = (T0 + timedelta(hours=2)).isoformat()
+
+    body = client.post("/api/v1/anomalies/acknowledge",
+                       json={"building_id": "b013", "before": cutoff}).json()
+
+    assert body["changed"] == 2            # hours 0 and 1, not 2 and 3
+    assert body["open_remaining"] == 2
+
+
+def test_the_count_only_reports_alerts_this_call_actually_closed(client):
+    """Otherwise "changed" means "rows the WHERE clause matched", which is not news."""
+    seed_anomalies(client, "b014", 3)
+    client.post("/api/v1/anomalies/acknowledge", json={"building_id": "b014"})
+
+    again = client.post("/api/v1/anomalies/acknowledge",
+                        json={"building_id": "b014"}).json()
+    assert again["changed"] == 0
+
+
+def test_an_unknown_severity_is_rejected_rather_than_matching_nothing(client):
+    response = client.post("/api/v1/anomalies/acknowledge",
+                           json={"building_id": "b015", "severity": "catastrophic"})
+    assert response.status_code == 422

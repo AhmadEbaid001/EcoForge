@@ -58,9 +58,26 @@ MIN_RELATIVE_SPREAD = 0.01
 # The natural answer is infinity - a constant series has no variance, so any reading
 # is infinitely improbable under it - but an infinity in a float column sorts ahead of
 # every real detection and floods any "most severe" list with frozen meters. A finite
-# value above the "high" threshold says the same thing operationally (this is
-# definitely a fault) without swamping the ranking.
-FLATLINE_Z = 6.0
+# value at the "high" threshold says the same thing operationally (this is definitely
+# a fault) without swamping the ranking.
+#
+# Derived from k rather than fixed, because a fixed one silently stopped meaning that.
+# It was 6.0, chosen when the default k was 3.0, where 6.0 clears the high threshold
+# of 1.4 x 3.0 = 4.2. Phase 2 tuning moved k to 8.0 and the threshold to 11.2, so
+# every stuck meter had since been filed "medium" - the lowest tier, alongside a
+# marginal residual blip. A frozen meter is a certain hardware or plant fault and a
+# quarter of the injected faults; filing it lowest is backwards, and it meant the
+# outbound webhook's sensible default of critical-only would never forward one.
+#
+# Certainty is not magnitude, which is why this lands at "high" and not "critical":
+# the fault is definite, its energy cost is not necessarily extreme.
+HIGH_SEVERITY_MULTIPLE = 1.4
+CRITICAL_SEVERITY_MULTIPLE = 2.0
+
+
+def flatline_z(threshold_k: float) -> float:
+    """Sentinel score for a stuck meter, graded so it always reads as "high"."""
+    return HIGH_SEVERITY_MULTIPLE * threshold_k
 
 
 @dataclass(frozen=True)
@@ -84,9 +101,9 @@ class Anomaly:
         needs.
         """
         magnitude = abs(self.robust_z)
-        if magnitude >= 2.0 * self.threshold_k:
+        if magnitude >= CRITICAL_SEVERITY_MULTIPLE * self.threshold_k:
             return "critical"
-        if magnitude >= 1.4 * self.threshold_k:
+        if magnitude >= HIGH_SEVERITY_MULTIPLE * self.threshold_k:
             return "high"
         return "medium"
 
@@ -242,7 +259,7 @@ def detect_flatlines(
                 observed_kw=float(value),
                 expected_kw=float(value),
                 residual=0.0,
-                robust_z=FLATLINE_Z,
+                robust_z=flatline_z(threshold_k),
                 threshold_k=threshold_k,
             )
             for ts, value in run.items()

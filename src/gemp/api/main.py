@@ -29,9 +29,11 @@ from gemp.domain.models import Allocation
 from gemp.optimize.objective import OBJECTIVES
 from gemp.optimize.runner import SOLVERS, improvement_pct
 from gemp.repository import (
+    acknowledge_anomalies,
     latest_reading_ts,
     load_building_rows,
     materialize_candidates,
+    open_anomaly_count,
     read_series,
 )
 from gemp.services import OptimizerContext, get_run, run_optimization, verify_building_chain
@@ -182,6 +184,10 @@ MAX_BUDGET_EGP = 1e12
 # than one that returns a good feasible answer and says so.
 DEFAULT_SOLVE_SECONDS = 10.0
 MAX_SOLVE_SECONDS = 60.0
+
+# Set by StreamingDetector._severity from the robust z score. Listed here so an
+# unknown value is a 422 rather than a filter that silently matches nothing.
+SEVERITIES = frozenset({"medium", "high", "critical"})
 
 # Solving is CPU-bound and CP-SAT already takes eight search workers. A handful of
 # concurrent requests will therefore saturate the machine and slow down the one
@@ -490,6 +496,82 @@ def anomaly_metrics(session: Session = Depends(get_session),
             for r in worst
         ],
     }
+
+
+class AcknowledgeRequest(BaseModel):
+    """Selectors for a bulk acknowledgement. At least one is required.
+
+    An unfiltered call would close every open alert in the portfolio, which is not a
+    thing anyone should be able to do by forgetting a field.
+    """
+
+    ids: list[int] | None = None
+    building_id: str | None = None
+    before: datetime | None = Field(
+        default=None,
+        description="Acknowledge anomalies older than this DATA timestamp. Under "
+                    "accelerated replay this is not the wall clock - use the value "
+                    "from /health.",
+    )
+    severity: str | None = None
+    acknowledged: bool = Field(
+        default=True,
+        description="False un-acknowledges, which is what makes a bulk close safe.",
+    )
+
+    def selectors(self) -> dict:
+        return {
+            "ids": self.ids,
+            "building_id": self.building_id,
+            "before": self.before,
+            "severity": self.severity,
+        }
+
+
+@app.post("/api/v1/anomalies/acknowledge", dependencies=[Depends(require_admin)])
+def acknowledge(
+    request: AcknowledgeRequest, session: Session = Depends(get_session)
+) -> dict:
+    """Close alerts in bulk. The inbox has to be emptiable or it is not an inbox.
+
+    `acknowledged` has been a column since Phase 2 and two queries filter on it, but
+    nothing could set it: the map counted open anomalies and offered no way to clear
+    one. Sixteen months of replay had accumulated eleven thousand critical alerts
+    that no operator could act on, which makes the alert count meaningless - the
+    number only ever goes up, so nobody reads it.
+    """
+    selectors = request.selectors()
+    if not any(value for value in selectors.values()):
+        raise HTTPException(
+            422,
+            "provide at least one of ids, building_id, before or severity; an "
+            "unfiltered acknowledge would close every alert in the portfolio",
+        )
+    if request.severity and request.severity not in SEVERITIES:
+        raise HTTPException(422, f"unknown severity; choose from {sorted(SEVERITIES)}")
+
+    changed = acknowledge_anomalies(
+        session, acknowledged=request.acknowledged, **selectors
+    )
+    session.commit()
+    return {
+        "changed": changed,
+        "acknowledged": request.acknowledged,
+        "open_remaining": open_anomaly_count(session, request.building_id),
+    }
+
+
+@app.post("/api/v1/anomalies/{anomaly_id}/acknowledge",
+          dependencies=[Depends(require_admin)])
+def acknowledge_one(anomaly_id: int, session: Session = Depends(get_session)) -> dict:
+    """Close one alert - what the map's popup calls when an operator dismisses it."""
+    changed = acknowledge_anomalies(session, ids=[anomaly_id])
+    if not changed:
+        # Either it does not exist or it was already closed. Both mean "nothing to do
+        # here", and distinguishing them would leak which ids exist.
+        raise HTTPException(404, f"no open anomaly {anomaly_id}")
+    session.commit()
+    return {"changed": changed, "anomaly_id": anomaly_id}
 
 
 @app.post("/api/v1/candidates/recompute", dependencies=[Depends(require_admin)])

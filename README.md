@@ -41,6 +41,8 @@ docker compose up -d && python -m gemp.seed --months 6
 | `python -m gemp.optimize.cli --budget 10000000` | Solve and print an allocation. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare` | Every solver on the same instance. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats every heuristic. |
+| `python -m gemp.sim.replay --stats-only` | Report what the real UCI meter dataset looks like against a building. |
+| `python -m gemp.sim.replay --building b001` | Replay that real dataset onto a building over MQTT. Needs the broker. |
 | `python -m gemp.evaluate` | Re-measure every claim below. Exits 1 if one has stopped holding. |
 | `python -m gemp.evaluate --with-db` | Adds the forecasting and anomaly claims. Needs the stack. |
 | `python scripts/check.py` | Every CI gate, locally: lint, tests with coverage, data contract, claims. |
@@ -170,6 +172,27 @@ multiplier, both of which live in `params.yaml`. → `domain/savings.py`
 
 **All money is EGP integers everywhere.** The division by 1000 that produces "per
 thousand EGP" happens only at the display layer, and a property test pins it.
+
+**Part of the demonstration runs on real measured data, not only on a generator we
+wrote.** `sim/replay.py` replays the UCI *Individual Household Electric Power
+Consumption* dataset — 2,075,259 minute-resolution readings from one French household,
+2006–2010 — onto a building over the same MQTT topic the simulator uses, so nothing
+downstream can tell the two apart. Amplitude is rescaled to the target building's mean
+load and shape is not: a household draws a few kW where a government building draws
+hundreds, and replaying raw values would put consumption two orders of magnitude below
+its profile and wreck every saving estimate derived from it. What the dataset is
+actually here for — the texture of real demand, its spikes, plateaux and missing runs
+— survives the rescaling. The 133 MB file is not versioned; `--stats-only` reports the
+fit without publishing anything. → `sim/replay.py`
+
+**Alerting is a row, a marker, and an optional webhook.** No SMTP service and no
+pager: an anomaly is a row in the `anomaly` table, a red marker on the map, and — if
+`GEMP_WEBHOOK_URL` is set — a JSON POST to that endpoint. The webhook posts from a
+worker thread behind a bounded queue and drops rather than buffers when the endpoint
+cannot keep up, because the ingester is a single-threaded loop and a slow notification
+target must never be able to stall the write path. Alerts are acknowledgeable in bulk
+and reversibly, which is what stops the open count from being a number that only ever
+grows. → `ingest/webhook.py`
 
 **Tamper evidence needs an anchor outside the database, and the anchor has to be
 read.** Each reading is HMAC-signed and chained to its predecessor, so a modified row
