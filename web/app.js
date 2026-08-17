@@ -330,7 +330,7 @@ async function selectBuilding(id) {
 async function compare() {
   const modal = $('compare-modal');
   modal.hidden = false;
-  $('compare-body').textContent = 'Solving all three…';
+  $('compare-body').textContent = 'Solving all four…';
 
   const res = await fetch(`${API}/compare`, {
     method: 'POST',

@@ -164,6 +164,12 @@ button.ghost:hover { background: rgba(74, 158, 255, .1); }
   position: fixed; inset: 0; z-index: 20;
   background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
 }
+/* Without this the `hidden` attribute does nothing here. `[hidden]` gets its
+   `display: none` from the browser's own stylesheet, and ANY author rule setting
+   display beats a user-agent rule - so `display: flex` above kept both modals on
+   screen from the moment the page loaded. The map opened behind a full-screen overlay
+   reading "Solving...", with nothing solving. */
+.modal[hidden] { display: none; }
 .modal-inner {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 22px; width: min(760px, 92vw); max-height: 86vh; overflow-y: auto; position: relative;

@@ -108,3 +108,31 @@ def test_the_zoom_ceiling_lets_a_footprint_be_read():
 
     # At least a 4x range past the switch, or the outlines never become legible.
     assert int(ceiling.group(1)) >= int(switch.group(1)) * 4
+
+
+def test_hidden_modals_are_actually_hidden():
+    """`hidden` on a flex element does nothing without an explicit rule.
+
+    `[hidden]` gets its `display: none` from the browser's own stylesheet, and any
+    author rule that sets display beats a user-agent rule. `.modal { display: flex }`
+    therefore left both modals on screen from the moment the page loaded: the map
+    opened behind a full-screen overlay reading "Solving...", with nothing solving.
+    """
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+
+    sets_display = re.search(r"\.modal\s*\{[^}]*display\s*:", css, re.S)
+    if not sets_display:
+        return                                   # no display rule, no conflict to fix
+
+    assert re.search(r"\.modal\[hidden\]\s*\{[^}]*display\s*:\s*none", css), (
+        ".modal sets display, so .modal[hidden] must set display:none or the hidden "
+        "attribute is silently ignored"
+    )
+
+
+def test_the_ui_does_not_claim_three_solvers():
+    """There are four. Stale copy in front of judges reads as a system nobody checked."""
+    for name in ("index.html", "app.js"):
+        text = (WEB / name).read_text(encoding="utf-8")
+        assert "three methods" not in text
+        assert "all three" not in text
