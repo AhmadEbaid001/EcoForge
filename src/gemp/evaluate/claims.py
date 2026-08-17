@@ -573,16 +573,17 @@ def db_claims(k_values: Sequence[float] | None = None) -> list[ClaimResult]:
     imports either.
     """
     from gemp.domain.catalog import load_params
-    from gemp.evaluate.measured import measure
+    from gemp.evaluate.measured import measure, measure_integrity
 
     params = load_params()
+    integrity = [_integrity_claim(measure_integrity)]
     ks = list(k_values) if k_values else [params.anomaly_k]
     try:
         measurement = measure(ks)
     except Exception as exc:  # noqa: BLE001 - the harness reports, it does not crash
         log.warning("measured claims skipped: %s", exc)
         reason = f"{type(exc).__name__}: {exc}"
-        return [
+        return integrity + [
             ClaimResult("F3", "The forecaster beats a seasonal-naive baseline",
                         Verdict.SKIP, reason),
             ClaimResult("F9-a", "Anomaly recall meets the 0.8 target", Verdict.SKIP, reason),
@@ -592,7 +593,7 @@ def db_claims(k_values: Sequence[float] | None = None) -> list[ClaimResult]:
     scores = measurement.scores_at(params.anomaly_k)
     improvement = measurement.baseline_median_mape - measurement.model_median_mape
 
-    return [
+    return integrity + [
         _result(
             "F3",
             "The forecaster beats a seasonal-naive baseline",
@@ -621,6 +622,41 @@ def db_claims(k_values: Sequence[float] | None = None) -> list[ClaimResult]:
             known_open=True,
         ),
     ]
+
+
+def _integrity_claim(measure_integrity) -> ClaimResult:
+    """F5, measured on stored data rather than asserted from the design.
+
+    The claim is not "the chain verifies" - a chain always verifies against itself,
+    including after its tail is deleted. It is that the chain still agrees with the
+    anchor written outside the database volume, which is the only evidence that
+    nothing was removed. That comparison was implemented in Phase 1 and called by
+    nothing until Phase 4.
+    """
+    try:
+        report = measure_integrity()
+    except Exception as exc:  # noqa: BLE001 - the harness reports, it does not crash
+        return ClaimResult(
+            "F5-b", "Stored chains still match the external integrity anchor",
+            Verdict.SKIP, f"{type(exc).__name__}: {exc}",
+        )
+
+    ok = (
+        report.buildings > 0
+        and report.chains_ok == report.buildings
+        and report.anchored == report.buildings
+        and report.checkpoints_ok == report.buildings
+    )
+    return _result(
+        "F5-b",
+        "Stored chains still match the external integrity anchor",
+        ok,
+        f"{report.chains_ok}/{report.buildings} chains verify, "
+        f"{report.checkpoints_ok}/{report.buildings} match the anchor, "
+        f"{report.anchor_agrees_with_database}/{report.buildings} agree with the "
+        f"database copy",
+        detail="; ".join(report.failures[:3]),
+    )
 
 
 def run_claims(

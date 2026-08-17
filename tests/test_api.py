@@ -10,6 +10,7 @@ import json
 import os
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -413,6 +414,109 @@ def test_the_wrong_signing_key_is_not_reported_as_tampering(client):
     assert "GEMP_HMAC_KEY" in body["hint"]
 
 
+@pytest.fixture(autouse=True)
+def isolated_anchor(tmp_path):
+    """Every test in this module gets its own empty anchor file.
+
+    Without this the integrity tests read the REAL `anchor/integrity_anchor.jsonl`
+    from the checkout - the live stack's, six megabytes of it - and a building that
+    is empty in the SQLite fixture but anchored at sequence 40,000 in production
+    correctly reports as truncated. Two tests failed exactly that way.
+
+    Same shape as the GEMP_HMAC_KEY problem: process-wide state that one module sets
+    and every other module inherits. The fix is the same - never let a test read
+    something the deployment wrote.
+    """
+    path = tmp_path / "integrity_anchor.jsonl"
+    path.write_text("", encoding="utf-8")
+    os.environ["GEMP_ANCHOR_PATH"] = str(path)
+    yield path
+    os.environ.pop("GEMP_ANCHOR_PATH", None)
+
+
+def write_anchor(records) -> None:
+    """Record anchored chain heads in the isolated anchor file."""
+    path = Path(os.environ["GEMP_ANCHOR_PATH"])
+    with path.open("w", encoding="utf-8") as fh:
+        for building_id, last_seq, head_sig in records:
+            fh.write(json.dumps({
+                "building_id": building_id,
+                "ts": T0.isoformat(),
+                "last_seq": last_seq,
+                "head_sig": head_sig.hex(),
+            }) + "\n")
+
+
+def test_a_truncated_tail_is_caught_by_the_external_anchor(client):
+    """The one form of tampering a chain walk cannot see.
+
+    Delete the last rows and what remains still verifies - there is nothing after
+    them to break. Only the anchor written outside the database volume can catch it.
+    Before Phase 4 nothing loaded that anchor, so `checkpoint_ok` was null on every
+    response and this attack succeeded silently against the demonstration.
+    """
+    seed_readings(client, "b007", 12)
+
+    with client.session_scope() as session:
+        rows = session.query(ReadingRow).filter_by(building_id="b007").order_by(
+            ReadingRow.seq).all()
+        head_seq, head_sig = rows[-1].seq, rows[-1].sig
+
+    write_anchor([("b007", head_seq, head_sig)])
+
+    intact = client.get("/api/v1/integrity/verify/b007").json()
+    assert intact["chain_ok"] and intact["checkpoint_ok"]
+    assert intact["anchored"]
+
+    with client.session_scope() as session:
+        for row in session.query(ReadingRow).filter(
+            ReadingRow.building_id == "b007", ReadingRow.seq >= 9
+        ).all():
+            session.delete(row)
+
+    truncated = client.get("/api/v1/integrity/verify/b007").json()
+
+    # The walk is still clean - that is the whole point of the attack.
+    assert truncated["chain_ok"]
+    assert truncated["checkpoint_ok"] is False
+    assert "tail has been deleted" in truncated["hint"]
+
+
+def test_deleting_every_row_is_not_reported_as_a_healthy_empty_chain(client):
+    """The most complete deletion possible must not be the easiest to get away with."""
+    seed_readings(client, "b008", 10)
+
+    with client.session_scope() as session:
+        rows = session.query(ReadingRow).filter_by(building_id="b008").order_by(
+            ReadingRow.seq).all()
+        head_seq, head_sig = rows[-1].seq, rows[-1].sig
+
+    write_anchor([("b008", head_seq, head_sig)])
+
+    with client.session_scope() as session:
+        session.query(ReadingRow).filter_by(building_id="b008").delete()
+    body = client.get("/api/v1/integrity/verify/b008").json()
+
+    assert body["rows"] == 0
+    assert body["chain_ok"] is False
+    assert body["checkpoint_ok"] is False
+    assert "truncated" in body["hint"]
+
+
+def test_an_unanchored_building_says_so_rather_than_claiming_verification(client):
+    """`checkpoint_ok: null` is honest only when it is accompanied by `anchored: false`.
+
+    Otherwise a reader cannot tell "nothing was anchored" from "the anchor passed".
+    """
+    seed_readings(client, "b009", 8)
+    write_anchor([("b001", 5, b"\x11" * 32)])          # a different building
+    body = client.get("/api/v1/integrity/verify/b009").json()
+
+    assert body["chain_ok"]
+    assert body["anchored"] is False
+    assert body["checkpoint_ok"] is None
+
+
 def test_integrity_endpoint_detects_a_deleted_row(client):
     seed_readings(client, "b004", 12)
 
@@ -424,3 +528,56 @@ def test_integrity_endpoint_detects_a_deleted_row(client):
     body = client.get("/api/v1/integrity/verify/b004").json()
     assert not body["chain_ok"]
     assert body["break"]["reason"] == "deleted"
+
+
+# --- state-changing endpoints and load shedding -----------------------------
+
+
+def test_recompute_is_open_when_no_admin_token_is_configured(client):
+    """The offline demonstration must not need one more thing set correctly."""
+    os.environ.pop("GEMP_ADMIN_TOKEN", None)
+    assert client.post("/api/v1/candidates/recompute").status_code == 200
+
+
+def test_recompute_is_gated_once_an_admin_token_is_configured(client):
+    """It rebuilds the cached optimizer context for every user of the process."""
+    os.environ["GEMP_ADMIN_TOKEN"] = "s3cret-token"
+    try:
+        assert client.post("/api/v1/candidates/recompute").status_code == 401
+        assert client.post(
+            "/api/v1/candidates/recompute",
+            headers={"X-GEMP-Admin-Token": "wrong"},
+        ).status_code == 401
+        assert client.post(
+            "/api/v1/candidates/recompute",
+            headers={"X-GEMP-Admin-Token": "s3cret-token"},
+        ).status_code == 200
+    finally:
+        os.environ.pop("GEMP_ADMIN_TOKEN", None)
+
+
+def test_a_saturated_solver_sheds_load_instead_of_queueing(client):
+    """A 429 arriving now beats a correct answer arriving after the moment has passed.
+
+    Solving is CPU-bound and CP-SAT already runs eight search workers, so a handful
+    of concurrent requests would slow down the one that matters - the person dragging
+    the budget slider in front of judges.
+    """
+    from gemp.api import main
+
+    held = [main._solve_slots.acquire(blocking=False)
+            for _ in range(main.MAX_CONCURRENT_SOLVES)]
+    try:
+        assert all(held)
+        response = client.post("/api/v1/optimize",
+                               json={"budget_egp": 1e6, "persist": False})
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "2"
+    finally:
+        for acquired in held:
+            if acquired:
+                main._solve_slots.release()
+
+    # Slots are returned, so the next request succeeds.
+    assert client.post("/api/v1/optimize",
+                       json={"budget_egp": 1e6, "persist": False}).status_code == 200

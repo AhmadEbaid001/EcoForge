@@ -14,10 +14,11 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from gemp.db import AllocationRow, OptimizationRunRow
+from gemp.db import AllocationRow, IntegrityCheckpointRow, OptimizationRunRow
 from gemp.domain.candidates import expand_portfolio
 from gemp.domain.catalog import Params, load_catalog, load_params
 from gemp.domain.models import Allocation, Building, Candidate, Intervention
+from gemp.ingest.anchor import latest_checkpoint
 from gemp.ingest.integrity import verify_against_checkpoint, verify_chain
 from gemp.optimize.runner import solve
 from gemp.repository import load_buildings, read_chain
@@ -164,20 +165,73 @@ def get_run(session: Session, run_id: str) -> tuple[OptimizationRunRow, list[All
     return run, items
 
 
+def _database_checkpoint(session: Session, building_id: str):
+    """Newest anchored head according to the database's own copy.
+
+    Not trusted on its own. It lives in the same volume as the data it vouches for,
+    so anyone who can truncate `reading` can truncate this too. It is read in order
+    to be COMPARED against the external file: a disagreement between the two is
+    itself evidence, and neither copy can produce that signal alone.
+    """
+    return session.execute(
+        select(IntegrityCheckpointRow)
+        .where(IntegrityCheckpointRow.building_id == building_id)
+        .order_by(IntegrityCheckpointRow.last_seq.desc())
+        .limit(1)
+    ).scalars().first()
+
+
 def verify_building_chain(session: Session, building_id: str, key: bytes,
                           checkpoint_seq: int | None = None,
                           checkpoint_sig: bytes | None = None) -> dict:
-    """Full integrity report for one building."""
-    rows = read_chain(session, building_id)
-    if not rows:
-        return {"building_id": building_id, "rows": 0, "chain_ok": True,
-                "checkpoint_ok": None, "break": None}
+    """Full integrity report for one building: the walk AND the anchor.
 
-    walk = verify_chain(key, rows, expect_first_seq=rows[0]["seq"])
+    The walk catches modified and reordered rows. It cannot catch a truncated tail -
+    delete the last thousand rows and what remains still verifies, because there is
+    nothing after them to break. Only the anchor written outside the database volume
+    can catch that, which is why it is loaded here rather than left to a caller that
+    never passed it. Until Phase 4 nothing did, and `checkpoint_ok` was null on every
+    response the demonstration ever produced.
+    """
+    rows = read_chain(session, building_id)
+
+    anchor = None
+    if checkpoint_seq is None or checkpoint_sig is None:
+        anchor = latest_checkpoint(building_id)
+        if anchor is not None:
+            checkpoint_seq, checkpoint_sig = anchor.last_seq, anchor.head_sig
+
+    stored = _database_checkpoint(session, building_id)
+    anchor_matches_database = None
+    if anchor is not None and stored is not None:
+        anchor_matches_database = (
+            anchor.last_seq == stored.last_seq
+            and bytes(anchor.head_sig) == bytes(stored.head_sig)
+        )
 
     checkpoint_ok = None
     if checkpoint_seq is not None and checkpoint_sig is not None:
         checkpoint_ok = verify_against_checkpoint(rows, checkpoint_seq, checkpoint_sig).ok
+
+    if not rows:
+        return {
+            "building_id": building_id, "rows": 0,
+            # No rows and an anchor claiming there were some is a truncated chain, not
+            # an empty one. `verify_against_checkpoint` makes that call; a bare True
+            # here would report the most complete deletion possible as healthy.
+            "chain_ok": True if checkpoint_ok is None else checkpoint_ok,
+            "checkpoint_ok": checkpoint_ok,
+            "checkpoint_seq": checkpoint_seq,
+            "anchored": anchor is not None,
+            "anchor_matches_database": anchor_matches_database,
+            "break": None,
+            "hint": None if checkpoint_ok is not False else (
+                "the chain is empty but the external anchor recorded "
+                f"{checkpoint_seq} rows - the table has been truncated"
+            ),
+        }
+
+    walk = verify_chain(key, rows, expect_first_seq=rows[0]["seq"])
 
     # A break at the very first row means every signature after it would fail too, and
     # by far the most likely cause is the wrong key rather than a modified row: an
@@ -197,14 +251,39 @@ def verify_building_chain(session: Session, building_id: str, key: bytes,
         "rows": len(rows),
         "chain_ok": walk.ok,
         "checkpoint_ok": checkpoint_ok,
+        "checkpoint_seq": checkpoint_seq,
+        "anchored": anchor is not None,
+        "anchor_matches_database": anchor_matches_database,
         "break": None if walk.first_break is None else {
             "reason": walk.first_break.reason,
             "seq": walk.first_break.seq,
             "ts": walk.first_break.ts,
         },
-        "hint": (
+        "hint": _hint(first_row_failed, checkpoint_ok, anchor_matches_database),
+    }
+
+
+def _hint(first_row_failed: bool, checkpoint_ok: bool | None,
+          anchor_matches_database: bool | None) -> str | None:
+    """One sentence naming the most likely cause, or nothing.
+
+    Ordered by how badly a wrong guess wastes someone's time mid-demonstration.
+    """
+    if first_row_failed:
+        return (
             "the first row itself does not verify, so the signing key is probably "
             "not the one these rows were written with - check GEMP_HMAC_KEY before "
             "concluding the data was modified"
-        ) if first_row_failed else None,
-    }
+        )
+    if checkpoint_ok is False:
+        return (
+            "the chain walk is clean but the stored rows do not reach the head "
+            "recorded in the external anchor - the tail has been deleted, which is "
+            "the one form of tampering a chain walk alone cannot see"
+        )
+    if anchor_matches_database is False:
+        return (
+            "the external anchor and the database's own checkpoint table disagree, "
+            "so one of the two has been altered"
+        )
+    return None
