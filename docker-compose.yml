@@ -96,6 +96,12 @@ services:
       GEMP_DATA_DIR: /app/data
     volumes:
       - ./data:/app/data:ro
+      # The node records every fault it injects to anchor/live_anomalies.jsonl. Without
+      # this mount that file is written inside the container and dies with it, so the
+      # live stream has no ground truth and the evaluation scores every correctly
+      # detected live fault as a false alarm. Measured: episode precision read 0.26
+      # instead of 0.50 once the simulator had run past the seeded window.
+      - ./anchor:/app/anchor
     depends_on:
       mosquitto:
         condition: service_healthy

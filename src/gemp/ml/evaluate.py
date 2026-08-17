@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import logging
 import sys
 from dataclasses import dataclass
@@ -81,6 +82,10 @@ class Scores:
     events_found: int
     true_positives: int
     flag_rate: float
+    # Alerts raised where no ground truth exists to judge them. Reported rather than
+    # folded into precision: they are neither correct nor incorrect, and counting
+    # them either way would be a claim the data cannot support.
+    episodes_unscorable: int = 0
 
     @property
     def recall(self) -> float:
@@ -99,6 +104,7 @@ class Scores:
     def row(self) -> str:
         return (
             f"  {self.k:>4.1f}  {self.flagged:>8,}  {self.episodes:>8,}  "
+            f"{self.episodes_unscorable:>8,}  "
             f"{self.flag_rate:>7.2%}  {self.precision:>9.3f}  {self.recall:>7.3f}  "
             f"{self.f1:>6.3f}  {self.events_found:>4}/{self.events}"
         )
@@ -134,8 +140,21 @@ def to_episodes(building_id: str, anomalies: list) -> list[Episode]:
     return episodes
 
 
-def load_ground_truth(path=None) -> pd.DataFrame:
-    """Anomalies the simulator injected, written during seeding."""
+def _live_truth_path():
+    """Faults injected by the running simulator node, appended as they happen."""
+    return data_dir().parent / "anchor" / "live_anomalies.jsonl"
+
+
+def load_ground_truth(path=None, live_path=None) -> pd.DataFrame:
+    """Every injected fault: the seeded history plus whatever the live node added.
+
+    Both sources are needed. `data/ground_truth.csv` covers only the seeded window,
+    and the simulator keeps running past it at 720x - two hours of wall time is two
+    months of data. Scoring the whole series against the seeded truth alone counts
+    every correctly detected LIVE fault as a false alarm, which is not a small
+    effect: measured on this stack it read episode precision as 0.26 where the
+    detector's actual precision was 0.50.
+    """
     path = path or (data_dir() / "ground_truth.csv")
     if not path.exists():
         raise FileNotFoundError(
@@ -144,22 +163,86 @@ def load_ground_truth(path=None) -> pd.DataFrame:
         )
 
     with path.open(encoding="utf-8", newline="") as fh:
-        rows = list(csv.DictReader(fh))
+        rows = [
+            {
+                "building_id": r["building_id"],
+                "kind": r["kind"],
+                "start": datetime.fromisoformat(r["start"]),
+                "end": datetime.fromisoformat(r["end"]),
+                "source": "seed",
+            }
+            for r in csv.DictReader(fh)
+        ]
 
-    return pd.DataFrame([
-        {
-            "building_id": r["building_id"],
-            "kind": r["kind"],
-            "start": datetime.fromisoformat(r["start"]),
-            "end": datetime.fromisoformat(r["end"]),
-        }
-        for r in rows
-    ])
+    live_path = live_path or _live_truth_path()
+    if live_path.exists():
+        with live_path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                rows.append({
+                    "building_id": record["building_id"],
+                    "kind": record["kind"],
+                    "start": datetime.fromisoformat(record["start"]),
+                    "end": datetime.fromisoformat(record["end"]),
+                    "source": "live",
+                })
+        log.info("ground truth: %d events (seed + live)", len(rows))
+    else:
+        log.warning(
+            "%s not found - only the seeded window has ground truth. Detections after "
+            "it will be excluded from scoring rather than counted as false alarms.",
+            live_path,
+        )
+
+    return pd.DataFrame(rows)
 
 
-def score(detections: dict[str, list], truth: pd.DataFrame) -> Scores:
-    """Episode-level precision, recall and F1 - consistent units on both sides."""
+def truth_windows(truth: pd.DataFrame) -> list[tuple[datetime, datetime]]:
+    """The intervals the ground truth actually covers, one per source.
+
+    Outside them, an unflagged hour proves nothing and a flagged hour is unjudgeable -
+    there is no record of whether a fault was injected. Scoring beyond them does not
+    measure the detector, it measures how much data was collected after the last
+    truth file was written.
+
+    Per source, not one span from the earliest start to the latest end. The seeded
+    window and the live window are separated by however long the simulator ran while
+    its ground-truth file was going nowhere - a gap of seven months of data time on
+    this stack, because the `sim` container had no mount for `anchor/`. A single
+    min-to-max span would swallow that gap and quietly resume counting correct
+    detections in it as false alarms, which is the exact bug this function exists to
+    remove.
+    """
+    windows = []
+    for _source, group in truth.groupby("source"):
+        windows.append((group["start"].min(), group["end"].max()))
+    return sorted(windows)
+
+
+def score(
+    detections: dict[str, list],
+    truth: pd.DataFrame,
+    *,
+    min_episode_hours: int = 1,
+    min_peak_z: float = 0.0,
+) -> Scores:
+    """Episode-level precision, recall and F1 - consistent units on both sides.
+
+    Episodes outside the ground-truth window are DISCARDED, not counted against
+    precision. That is the difference between reporting what the detector does and
+    reporting how far the simulator has run since the truth file was last written.
+    """
     tolerance = timedelta(hours=OVERLAP_TOLERANCE_HOURS)
+    covered = truth_windows(truth)
+
+    def is_judgeable(episode: Episode) -> bool:
+        return any(
+            episode.start >= start - tolerance and episode.end <= end + tolerance
+            for start, end in covered
+        )
 
     by_building: dict[str, list[tuple[datetime, datetime]]] = {}
     for row in truth.itertuples():
@@ -170,10 +253,33 @@ def score(detections: dict[str, list], truth: pd.DataFrame) -> Scores:
     for building_id, anomalies in detections.items():
         episodes.extend(to_episodes(building_id, anomalies))
 
+    # Episode-level suppression, applied before anything is judged. `k` alone only
+    # moves a point ALONG one precision/recall curve; these two knobs were an attempt
+    # to move the curve, by asking whether an alert looks like a fault rather than
+    # only whether one hour looked extreme.
+    #
+    # They are off by default because the attempt failed, and they are kept so the
+    # failure is reproducible rather than folklore. Over 64 combinations of k,
+    # duration and peak z: duration trades recall for precision at roughly the same
+    # rate as k itself, and a higher peak-z floor makes precision WORSE (0.607 to
+    # 0.535 at k=8, 2-hour minimum). A frozen meter barely deviates while the largest
+    # residuals are legitimate load the forecaster missed, so residual magnitude does
+    # not separate real faults from misses on this data.
+    surviving = [
+        e for e in episodes
+        if e.hours >= min_episode_hours and e.peak_z >= min_peak_z
+    ]
+    scorable = [e for e in surviving if is_judgeable(e)]
+    if len(scorable) != len(surviving):
+        log.info(
+            "%d of %d episodes fall outside the ground-truth window and are not scored",
+            len(surviving) - len(scorable), len(surviving),
+        )
+
     true_positives = 0
     found: set[tuple[str, datetime]] = set()
 
-    for episode in episodes:
+    for episode in scorable:
         matched = False
         for start, end in by_building.get(episode.building_id, []):
             # Interval overlap, widened by the tolerance on both sides.
@@ -186,7 +292,8 @@ def score(detections: dict[str, list], truth: pd.DataFrame) -> Scores:
     return Scores(
         k=0.0,
         flagged=flagged,
-        episodes=len(episodes),
+        episodes=len(scorable),
+        episodes_unscorable=len(episodes) - len(scorable),
         events=len(truth),
         events_found=len(found),
         true_positives=true_positives,
@@ -194,17 +301,26 @@ def score(detections: dict[str, list], truth: pd.DataFrame) -> Scores:
     )
 
 
-def sweep(k_values: list[float], test_hours: int = 24 * 14) -> list[Scores]:
-    """Fit once, then score the detector at each threshold.
+@dataclass
+class Fitted:
+    """One fit pass over the whole portfolio.
 
-    Fitting is the expensive part and does not depend on `k`, so it happens once and
-    the residuals are reused across the sweep.
+    Fitting is the expensive part - minutes, against milliseconds to score - and it
+    does not depend on `k`. Keeping the forecast results alongside the residual
+    series is what lets the evaluation harness report forecast accuracy and anomaly
+    accuracy from the same pass rather than fitting the portfolio twice.
     """
-    params = load_params()
-    truth = load_ground_truth()
+
+    series: dict[str, tuple[pd.Series, pd.Series]]      # building -> (actual, expected)
+    results: list                                       # list[ForecastResult]
+    total_points: int
+
+
+def fit_all(test_hours: int = 24 * 14) -> Fitted:
     series = load_hourly_all(get_engine())
 
-    fitted = {}
+    fitted: dict[str, tuple[pd.Series, pd.Series]] = {}
+    results = []
     total_points = 0
     for building_id, frame in series.items():
         try:
@@ -214,9 +330,17 @@ def sweep(k_values: list[float], test_hours: int = 24 * 14) -> list[Scores]:
         actual = frame.set_index("ts")["kw"]
         expected = result.full_predictions.reindex(pd.DatetimeIndex(frame["ts"]))
         fitted[building_id] = (actual, expected)
+        results.append(result)
         total_points += len(actual)
 
     log.info("fitted %d buildings, %d hourly points", len(fitted), total_points)
+    return Fitted(series=fitted, results=results, total_points=total_points)
+
+
+def score_sweep(fitted: Fitted, k_values: list[float]) -> list[Scores]:
+    """Score an existing fit at each threshold."""
+    params = load_params()
+    truth = load_ground_truth()
 
     out: list[Scores] = []
     for k in k_values:
@@ -225,15 +349,21 @@ def sweep(k_values: list[float], test_hours: int = 24 * 14) -> list[Scores]:
                 actual, expected, building_id,
                 k=k, window_days=params.anomaly_window_days,
             )
-            for building_id, (actual, expected) in fitted.items()
+            for building_id, (actual, expected) in fitted.series.items()
         }
         scores = score(detections, truth)
         scores.k = k
-        scores.flag_rate = scores.flagged / total_points if total_points else 0.0
+        scores.flag_rate = scores.flagged / fitted.total_points if fitted.total_points else 0.0
         out.append(scores)
         log.info("k=%.1f -> precision %.3f recall %.3f", k, scores.precision, scores.recall)
 
     return out
+
+
+def sweep(k_values: list[float], test_hours: int = 24 * 14) -> list[Scores]:
+    """Fit once, then score the detector at each threshold."""
+    load_ground_truth()          # fail before spending minutes on a fit we cannot score
+    return score_sweep(fit_all(test_hours), k_values)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -252,8 +382,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAIL  {exc}", file=sys.stderr)
         return 1
 
-    print("\n     k   flagged  flag-rate  precision   recall      F1  events found")
-    print(f"  {'-' * 76}")
+    print("\n     k   flagged  episodes  unjudged  flag-rate  precision   recall"
+          "      F1  events found")
+    print(f"  {'-' * 96}")
     for scores in results:
         print(scores.row())
 

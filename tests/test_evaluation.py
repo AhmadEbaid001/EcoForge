@@ -131,10 +131,11 @@ def test_no_anomalies_means_no_episodes():
 # --- scoring ----------------------------------------------------------------
 
 
-def truth_frame(rows) -> pd.DataFrame:
-    return pd.DataFrame(
-        [{"building_id": b, "kind": "stuck_on", "start": s, "end": e} for b, s, e in rows]
-    )
+def truth_frame(rows, source: str = "seed") -> pd.DataFrame:
+    return pd.DataFrame([
+        {"building_id": b, "kind": "stuck_on", "start": s, "end": e, "source": source}
+        for b, s, e in rows
+    ])
 
 
 def test_precision_and_recall_use_the_same_unit():
@@ -171,6 +172,81 @@ def test_a_flag_just_after_an_event_counts_as_a_late_alert():
 def test_missing_every_event_gives_zero_recall():
     truth = truth_frame([("b001", T0, T0 + timedelta(hours=4))])
     assert score({}, truth).recall == 0.0
+
+
+# --- what the ground truth can and cannot judge ------------------------------
+
+
+def test_alerts_past_the_end_of_the_ground_truth_are_not_false_alarms():
+    """The bug this pins cost 24 points of reported precision.
+
+    The simulator keeps running at 720x after the seeded window, and the faults it
+    injects there were not being recorded - the `sim` container had no mount for the
+    file it writes them to. Scoring the whole series against the seeded truth alone
+    counted every correctly detected live fault as a false alarm and reported episode
+    precision as 0.26 where it was 0.50.
+    """
+    truth = truth_frame([("b001", T0, T0 + timedelta(hours=4))])
+    detections = {"b001": [anomaly_at(1), anomaly_at(5000)]}
+
+    scores = score(detections, truth)
+
+    assert scores.episodes == 1                 # only the judgeable one
+    assert scores.episodes_unscorable == 1
+    assert scores.precision == pytest.approx(1.0)
+
+
+def test_the_gap_between_two_recorded_windows_is_not_judged():
+    """Coverage is per source, not one span from earliest start to latest end.
+
+    Once the live file is being written again, a single min-to-max window would
+    swallow the months in which nothing was recorded and silently resume counting
+    correct detections there as false alarms.
+    """
+    seeded = truth_frame([("b001", T0, T0 + timedelta(hours=4))], source="seed")
+    live = truth_frame(
+        [("b001", T0 + timedelta(days=200), T0 + timedelta(days=200, hours=4))],
+        source="live",
+    )
+    truth = pd.concat([seeded, live], ignore_index=True)
+
+    # Squarely inside the unrecorded gap between the two windows.
+    detections = {"b001": [anomaly_at(24 * 100)]}
+    scores = score(detections, truth)
+
+    assert scores.episodes == 0
+    assert scores.episodes_unscorable == 1
+
+
+def test_episode_suppression_drops_alerts_before_they_are_judged():
+    """The knobs Phase 4 used to show that suppression does not move the curve.
+
+    Kept working, and off by default, so the negative result stays reproducible
+    instead of becoming folklore that someone re-derives from scratch.
+    """
+    truth = truth_frame([("b001", T0, T0 + timedelta(hours=10))])
+    detections = {"b001": [anomaly_at(h, z=5.0) for h in range(2)]}
+
+    assert score(detections, truth).episodes == 1
+    assert score(detections, truth, min_episode_hours=3).episodes == 0
+    assert score(detections, truth, min_peak_z=9.0).episodes == 0
+    assert score(detections, truth, min_peak_z=4.0).episodes == 1
+
+
+def test_an_alert_inside_the_live_window_is_still_judged():
+    truth = pd.concat([
+        truth_frame([("b001", T0, T0 + timedelta(hours=4))], source="seed"),
+        truth_frame(
+            [("b001", T0 + timedelta(days=200), T0 + timedelta(days=200, hours=4))],
+            source="live",
+        ),
+    ], ignore_index=True)
+
+    detections = {"b001": [anomaly_at(24 * 200 + 1)]}
+    scores = score(detections, truth)
+
+    assert scores.episodes == 1
+    assert scores.true_positives == 1
 
 
 # --- combined detector ------------------------------------------------------

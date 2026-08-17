@@ -42,21 +42,39 @@ electricity_tariff_egp_per_kwh: 1.85
 # the simulator injected and reports EPISODE-level precision and recall - one alert
 # per incident, which is the unit an operator actually receives.
 #
-# On the seeded portfolio (450 injected faults, 50 buildings, 6 months):
+# Re-measured in Phase 4 after two scoring defects were fixed. Alerts raised outside
+# the window the ground truth covers are now excluded rather than counted as false
+# alarms, and the live simulator's own injected faults are included in that truth -
+# they had been going to a file inside a container with no mount, so the platform was
+# scoring its own correct detections against a record that did not exist.
 #
-#     k      episodes   precision   recall     F1
-#     4        1,917       0.375     0.913    0.532
-#     6        1,189       0.474     0.853    0.610
-#     8          878       0.502     0.818    0.622   <- set
-#    10          702       0.533     0.762    0.627
-#    12          590       0.541     0.700    0.610
+#     k      alerts   precision   recall     F1
+#     4       1,664      0.376     0.910    0.532
+#     6       1,050      0.455     0.828    0.588
+#     8         798      0.515     0.795    0.625   <- set
+#    10         634      0.563     0.738    0.639
+#    12         523      0.591     0.678    0.632
+#    15         389      0.640     0.562    0.598
 #
 # k=8 is chosen over the marginally higher F1 at k=10 because recall matters more
 # than precision here: a missed fault burns energy every hour it runs, while a false
-# alert costs one look at a chart. At k=8 the false-alert rate is about 1.5 per
-# building per six months, which is a manageable inbox.
+# alert costs one look at a chart. The flag rate at k=8 is 1.1%.
 #
-# Precision of 0.50 does NOT meet the 0.6 target set in the review. Recall does.
+# **Precision of 0.52 does not meet the 0.6 target, and tuning cannot reach it.**
+# k only slides a point along one precision/recall curve. Phase 4 tested whether
+# episode-level suppression moves the curve itself, over 64 combinations of k,
+# minimum episode duration and minimum peak z:
+#
+#   * Requiring an episode to last longer buys precision by spending recall at about
+#     the same rate as raising k. k=8 with a 3-hour minimum reads 0.645 precision at
+#     0.438 recall - the target met on one axis by failing the other.
+#   * Requiring a higher peak z is WORSE than useless: at k=8 with a 2-hour minimum
+#     it moves precision from 0.607 down to 0.535. A large residual does not indicate
+#     a real fault here, which makes sense - a frozen meter barely deviates at all,
+#     while the largest residuals come from legitimate load the forecaster missed.
+#
+# The best precision available at recall >= 0.8 is 0.519, at k=8 with no suppression
+# at all. Reaching 0.6 needs a better expected-load model, not a better threshold.
 anomaly_k: 8.0
 anomaly_window_days: 30          # evaluated in DATA time, never wall time
 
