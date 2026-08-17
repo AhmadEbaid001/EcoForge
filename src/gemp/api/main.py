@@ -8,22 +8,32 @@ command line with no web server involved.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
-import secrets
 import threading
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from gemp.api import auth_routes
+from gemp.api.deps import get_session
+from gemp.auth.deps import (
+    ADMIN,
+    ANALYST,
+    VIEWER,
+    check_csrf,
+    is_public,
+    require,
+    resolve_principal,
+)
 from gemp.config import get_settings
-from gemp.db import get_sessionmaker
 from gemp.domain.catalog import load_params
 from gemp.domain.models import Allocation
 from gemp.optimize.objective import OBJECTIVES
@@ -41,18 +51,6 @@ from gemp.services import OptimizerContext, get_run, run_optimization, verify_bu
 log = logging.getLogger("gemp.api")
 
 _context: OptimizerContext | None = None
-
-
-def get_session() -> Iterator[Session]:
-    session = get_sessionmaker()()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 
 def get_context(session: Session = Depends(get_session)) -> OptimizerContext:
@@ -142,6 +140,98 @@ app = FastAPI(
 )
 
 
+app.include_router(auth_routes.router)
+
+
+# Sent on every response. Each one closes a class of attack that a single-origin app
+# is otherwise still exposed to.
+SECURITY_HEADERS = {
+    # No inline scripts, no external anything. This is also the offline guarantee
+    # (F13) expressed as a policy the browser enforces rather than a habit the team
+    # remembers: a CDN link added "just for one icon" stops working immediately.
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; "
+        "form-action 'self'; frame-ancestors 'none'"
+    ),
+    # Clickjacking. `frame-ancestors` above covers modern browsers; this covers the
+    # rest.
+    "X-Frame-Options": "DENY",
+    # Stops a browser from deciding that a JSON response is really HTML and running it.
+    "X-Content-Type-Options": "nosniff",
+    # Do not leak the page someone came from - map URLs carry run ids.
+    "Referrer-Policy": "same-origin",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    # Caching a page rendered for one user and serving it to the next is a data leak
+    # that looks like a performance optimisation.
+    "Cache-Control": "no-store",
+}
+
+
+@app.middleware("http")
+async def security_middleware(request, call_next):
+    """Authenticate first, then authorise per route. Deny by default.
+
+    Authentication lives here rather than in a dependency because a dependency has to
+    be remembered. A route added next month by someone who has not read this file is
+    protected the moment it exists, and the only way to expose one is to add its path
+    to `PUBLIC_PATHS` deliberately.
+    """
+    path = request.url.path
+    request.state.principal = None
+
+    needs_auth = path.startswith("/api/") and not is_public(path)
+
+    # Resolve the session through the SAME provider the routes use, honouring any
+    # override the application is configured with. Middleware sits outside FastAPI's
+    # dependency injection, so calling `get_sessionmaker()` directly here would open a
+    # second connection per request and - worse - ignore the override entirely, which
+    # is how a test suite pointed at SQLite ends up trying to reach the production
+    # database to check a cookie.
+    provider = app.dependency_overrides.get(get_session, get_session)
+    generator = provider()
+    session = next(generator)
+    try:
+        try:
+            request.state.principal = resolve_principal(session, request)
+        except Exception:  # noqa: BLE001 - a broken session must not 500 the request
+            log.exception("failed to resolve session")
+            request.state.principal = None
+
+        if needs_auth and request.state.principal is None:
+            return _json_error(401, "authentication required")
+
+        try:
+            check_csrf(request)
+        except HTTPException as exc:
+            return _json_error(exc.status_code, exc.detail)
+    finally:
+        # Drive the generator to completion so it commits and closes exactly as it
+        # would at the end of a request.
+        with contextlib.suppress(StopIteration):
+            next(generator, None)
+
+    response = await call_next(request)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    if get_settings().cookie_secure:
+        # Only over TLS. Sending HSTS from a plaintext origin is ignored by browsers
+        # and, if it were not, would strand a demonstration on http.
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
+def _json_error(status: int, detail: str) -> JSONResponse:
+    response = JSONResponse({"error": "unauthorized" if status == 401 else "forbidden",
+                             "detail": detail}, status_code=status)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    return response
+
+
 @app.exception_handler(ValueError)
 async def _value_error_is_a_bad_request(_request, exc: ValueError) -> JSONResponse:
     """A rejected input is the caller's problem, not a server fault.
@@ -211,29 +301,6 @@ def solve_slot() -> Iterator[None]:
         yield
     finally:
         _solve_slots.release()
-
-
-def require_admin(x_gemp_admin_token: str | None = Header(default=None)) -> None:
-    """Gate the endpoints that change shared server state.
-
-    `/candidates/recompute` rebuilds the cached optimizer context for every user of
-    the process. On the air-gapped demonstration network that is nobody's problem,
-    and requiring a token there would mean one more thing to get wrong on the day -
-    so when GEMP_ADMIN_TOKEN is unset the endpoint stays open and says so in the log.
-
-    Set the variable and it is enforced. That ordering is deliberate: the deployment
-    that needs protection is the one someone exposes beyond loopback, and that is
-    exactly the deployment where an operator is already setting environment.
-    """
-    expected = os.environ.get("GEMP_ADMIN_TOKEN")
-    if not expected:
-        log.warning(
-            "GEMP_ADMIN_TOKEN is unset - state-changing endpoints are unauthenticated"
-        )
-        return
-
-    if not x_gemp_admin_token or not secrets.compare_digest(x_gemp_admin_token, expected):
-        raise HTTPException(401, "missing or invalid X-GEMP-Admin-Token")
 
 
 class OptimizeRequest(BaseModel):
@@ -334,7 +401,7 @@ def health(session: Session = Depends(get_session)) -> JSONResponse:
     return JSONResponse(status, status_code=code)
 
 
-@app.get("/api/v1/meta")
+@app.get("/api/v1/meta", dependencies=[Depends(require(VIEWER))])
 def meta(context: OptimizerContext = Depends(get_context)) -> dict:
     params = context.params
     return {
@@ -356,7 +423,7 @@ def meta(context: OptimizerContext = Depends(get_context)) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/v1/buildings")
+@app.get("/api/v1/buildings", dependencies=[Depends(require(VIEWER))])
 def list_buildings(session: Session = Depends(get_session)) -> list[dict]:
     return [
         {
@@ -372,7 +439,7 @@ def list_buildings(session: Session = Depends(get_session)) -> list[dict]:
     ]
 
 
-@app.get("/api/v1/map/geojson")
+@app.get("/api/v1/map/geojson", dependencies=[Depends(require(VIEWER))])
 def map_geojson(session: Session = Depends(get_session),
                 run_id: str | None = Query(default=None)) -> dict:
     """Footprints, optionally annotated with an allocation for colouring."""
@@ -438,7 +505,7 @@ def map_geojson(session: Session = Depends(get_session),
     return {"type": "FeatureCollection", "features": features}
 
 
-@app.get("/api/v1/metrics/forecast")
+@app.get("/api/v1/metrics/forecast", dependencies=[Depends(require(VIEWER))])
 def forecast_metrics(session: Session = Depends(get_session)) -> dict:
     """Which forecaster is in use per building, and how much history it has.
 
@@ -465,7 +532,7 @@ def forecast_metrics(session: Session = Depends(get_session)) -> dict:
     }
 
 
-@app.get("/api/v1/metrics/anomaly")
+@app.get("/api/v1/metrics/anomaly", dependencies=[Depends(require(VIEWER))])
 def anomaly_metrics(session: Session = Depends(get_session),
                     limit: int = Query(default=20, le=200)) -> dict:
     """Current anomaly load, and the most severe open items."""
@@ -528,7 +595,7 @@ class AcknowledgeRequest(BaseModel):
         }
 
 
-@app.post("/api/v1/anomalies/acknowledge", dependencies=[Depends(require_admin)])
+@app.post("/api/v1/anomalies/acknowledge", dependencies=[Depends(require(ANALYST))])
 def acknowledge(
     request: AcknowledgeRequest, session: Session = Depends(get_session)
 ) -> dict:
@@ -562,7 +629,7 @@ def acknowledge(
 
 
 @app.post("/api/v1/anomalies/{anomaly_id}/acknowledge",
-          dependencies=[Depends(require_admin)])
+          dependencies=[Depends(require(ANALYST))])
 def acknowledge_one(anomaly_id: int, session: Session = Depends(get_session)) -> dict:
     """Close one alert - what the map's popup calls when an operator dismisses it."""
     changed = acknowledge_anomalies(session, ids=[anomaly_id])
@@ -574,7 +641,7 @@ def acknowledge_one(anomaly_id: int, session: Session = Depends(get_session)) ->
     return {"changed": changed, "anomaly_id": anomaly_id}
 
 
-@app.post("/api/v1/candidates/recompute", dependencies=[Depends(require_admin)])
+@app.post("/api/v1/candidates/recompute", dependencies=[Depends(require(ADMIN))])
 def recompute_candidates(session: Session = Depends(get_session)) -> dict:
     """Rebuild the candidate set from the current portfolio, catalog and parameters.
 
@@ -598,7 +665,7 @@ def recompute_candidates(session: Session = Depends(get_session)) -> dict:
     }
 
 
-@app.get("/api/v1/narrative/building-specific")
+@app.get("/api/v1/narrative/building-specific", dependencies=[Depends(require(VIEWER))])
 def building_specific_narrative(
     context: OptimizerContext = Depends(get_context),
 ) -> dict:
@@ -672,7 +739,7 @@ def building_specific_narrative(
     }
 
 
-@app.get("/api/v1/buildings/{building_id}/candidates")
+@app.get("/api/v1/buildings/{building_id}/candidates", dependencies=[Depends(require(VIEWER))])
 def building_candidates(
     building_id: str,
     session: Session = Depends(get_session),
@@ -734,7 +801,7 @@ def building_candidates(
     }
 
 
-@app.get("/api/v1/buildings/{building_id}/series")
+@app.get("/api/v1/buildings/{building_id}/series", dependencies=[Depends(require(VIEWER))])
 def building_series(
     building_id: str,
     session: Session = Depends(get_session),
@@ -754,7 +821,7 @@ def building_series(
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/v1/optimize", response_model=OptimizeResponse)
+@app.post("/api/v1/optimize", response_model=OptimizeResponse, dependencies=[Depends(require(ANALYST))])
 def optimize(
     request: OptimizeRequest,
     session: Session = Depends(get_session),
@@ -776,7 +843,7 @@ def optimize(
     return OptimizeResponse.build(run_id if request.persist else None, allocation)
 
 
-@app.post("/api/v1/compare")
+@app.post("/api/v1/compare", dependencies=[Depends(require(ANALYST))])
 def compare_solvers(
     request: OptimizeRequest,
     session: Session = Depends(get_session),
@@ -833,7 +900,7 @@ def compare_solvers(
     }
 
 
-@app.get("/api/v1/runs/{run_id}")
+@app.get("/api/v1/runs/{run_id}", dependencies=[Depends(require(VIEWER))])
 def read_run(run_id: str, session: Session = Depends(get_session)) -> dict:
     try:
         run, items = get_run(session, run_id)
@@ -865,7 +932,7 @@ def read_run(run_id: str, session: Session = Depends(get_session)) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/v1/integrity/verify/{building_id}")
+@app.get("/api/v1/integrity/verify/{building_id}", dependencies=[Depends(require(VIEWER))])
 def verify(building_id: str, session: Session = Depends(get_session)) -> dict:
     """Walk one building's hash chain and report the first break.
 

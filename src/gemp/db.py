@@ -296,6 +296,124 @@ class AllocationRow(Base):
 
 
 # ---------------------------------------------------------------------------
+# identity, access and audit
+# ---------------------------------------------------------------------------
+
+
+class OrganizationRow(Base):
+    """The tenancy seam, occupied by exactly one row today.
+
+    Full multi-tenancy means an org_id on every table and a filter on every query,
+    and the failure mode of getting one query wrong is showing one customer another
+    customer's portfolio. That is not a change to rush. What this buys instead is the
+    ability to add it without a user-table migration: users already belong somewhere,
+    so scoping the portfolio later is additive rather than structural.
+    """
+
+    __tablename__ = "organization"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class UserRow(Base):
+    """An account. `password_hash` is self-describing scrypt - see auth/passwords.py.
+
+    Not called `user`: that is a reserved word in PostgreSQL, and while quoting makes
+    it work, every hand-written query against it then needs quoting too, forever.
+    """
+
+    __tablename__ = "app_user"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organization.id", ondelete="CASCADE"), index=True
+    )
+
+    # Case-insensitive by storing the normalised form. Two accounts differing only in
+    # capitalisation are an impersonation waiting to happen.
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    display_name: Mapped[str] = mapped_column(String(128))
+    role: Mapped[str] = mapped_column(String(16))
+
+    password_hash: Mapped[str] = mapped_column(Text)
+    # Forces a change at next login. Set on every admin-issued password, so a
+    # temporary credential cannot quietly become permanent.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class SessionRow(Base):
+    """A logged-in session.
+
+    `token_hash`, never the token. A database dump, a stray backup or a SQL injection
+    that reads this table gets values that cannot be replayed as a cookie - the same
+    reason passwords are not stored either. The hash is SHA-256 rather than scrypt
+    because the input is 32 bytes of CSPRNG output, not a guessable secret: there is
+    nothing to brute force, and a login-rate KDF on every single request would be a
+    self-inflicted denial of service.
+    """
+
+    __tablename__ = "user_session"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("app_user.id", ondelete="CASCADE"), index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    # Absolute expiry, independent of activity. An idle timeout alone lets a stolen
+    # cookie live forever as long as it is used.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Recorded for the "where am I signed in" view and for after-the-fact questions.
+    # Deliberately not used to VALIDATE the session: IPs change mid-session on mobile
+    # networks and user agents change on browser update, so binding to them logs
+    # people out at random and buys very little.
+    ip: Mapped[str] = mapped_column(String(45), default="")
+    user_agent: Mapped[str] = mapped_column(String(256), default="")
+
+
+class AuditRow(Base):
+    """Who did what, when, and to what.
+
+    Append-only by convention and by the absence of any code that updates or deletes
+    a row. An action that changes shared state without leaving a trace is one nobody
+    can answer questions about afterwards, and "the optimizer suddenly funds different
+    buildings" is exactly the question that gets asked during a demonstration.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(AutoPK, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    # Nullable: a failed login has no authenticated user by definition, and those are
+    # precisely the events worth keeping.
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    username: Mapped[str] = mapped_column(String(64), default="")
+
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    target: Mapped[str] = mapped_column(String(128), default="")
+    outcome: Mapped[str] = mapped_column(String(16), default="ok")
+    ip: Mapped[str] = mapped_column(String(45), default="")
+    detail: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # engine / session
 # ---------------------------------------------------------------------------
 

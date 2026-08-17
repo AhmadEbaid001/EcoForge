@@ -55,6 +55,18 @@ class Settings(BaseSettings):
     ingest_batch_rows: int = Field(default=500, gt=0)
     ingest_batch_seconds: float = Field(default=2.0, gt=0)
 
+    # --- sessions ---
+    # `Secure` keeps the session cookie off plaintext connections. It defaults to
+    # FALSE because the offline demonstration is served over http on localhost and a
+    # Secure cookie is simply never sent there - the login would appear to succeed and
+    # then every request would come back anonymous, which is a miserable thing to
+    # debug ten minutes before a presentation.
+    #
+    # Any deployment reachable over a network must set this true and terminate TLS.
+    # `/health` reports the current value so the mistake is visible rather than
+    # silent.
+    cookie_secure: bool = False
+
     # --- alerting (F11) ---
     # The review's alerting fix is a row in the anomaly table, a marker on the map,
     # and an optional outbound webhook. Unset means the path is inert, which is the

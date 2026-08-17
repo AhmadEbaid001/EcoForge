@@ -96,4 +96,12 @@ ignore = ["E501"]
 # B008 flags function calls in argument defaults. For FastAPI these ARE the idiom -
 # Depends() and Query() in a default is how the framework declares injection - so the
 # rule is a false positive here rather than a finding worth suppressing line by line.
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body"]
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body", "fastapi.Header",
+    # `require(role)` is a dependency FACTORY: it is called once when the module is
+    # imported and returns the callable FastAPI will invoke per request. That is the
+    # same shape as Depends() itself, and rewriting it to satisfy the rule would mean
+    # losing the declaration of what each route requires - which is the thing the
+    # deny-by-default test reads.
+    "gemp.auth.deps.require",
+]

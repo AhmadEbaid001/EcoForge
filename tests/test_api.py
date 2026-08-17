@@ -18,11 +18,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 KEY_HEX = "cd" * 32
+TEST_PASSWORD = "contract-tests-passphrase"
 os.environ.setdefault("GEMP_HMAC_KEY", KEY_HEX)
 # The API starts the MQTT ingester in its lifespan; these tests have no broker.
 os.environ["GEMP_INGEST_ENABLED"] = "0"
 
 from gemp.api import main as api_main  # noqa: E402
+from gemp.api.deps import get_session  # noqa: E402
+from gemp.auth import service as auth_service  # noqa: E402
+from gemp.auth.service import CSRF_HEADER  # noqa: E402
 from gemp.db import Base, ReadingRow  # noqa: E402
 from gemp.ingest.integrity import GENESIS, sign  # noqa: E402
 from gemp.repository import import_portfolio, stored_candidate_count  # noqa: E402
@@ -48,6 +52,12 @@ def client(tmp_path_factory):
 
     with scope() as session:
         import_portfolio(session)
+        # These tests are about the API contract, not about who may call it - that is
+        # tests/test_auth.py. They run as an administrator so every route is
+        # reachable, which keeps a permissions change from showing up as fifty
+        # unrelated failures here.
+        auth_service.create_user(session, username="contract-tests",
+                                 password=TEST_PASSWORD, role="admin")
 
     def override_session():
         session = maker()
@@ -60,11 +70,18 @@ def client(tmp_path_factory):
         finally:
             session.close()
 
-    api_main.app.dependency_overrides[api_main.get_session] = override_session
+    api_main.app.dependency_overrides[get_session] = override_session
     api_main.reset_context()
+    auth_service.reset_throttle()
 
     with TestClient(api_main.app) as test_client:
         test_client.session_scope = scope
+        login = test_client.post("/api/v1/auth/login", json={
+            "username": "contract-tests", "password": TEST_PASSWORD,
+        })
+        assert login.status_code == 200, login.text
+        # A browser echoes the CSRF cookie in a header automatically; httpx does not.
+        test_client.headers[CSRF_HEADER] = login.json()["csrf_token"]
         yield test_client
 
     api_main.app.dependency_overrides.clear()
@@ -199,6 +216,9 @@ def test_an_unhandled_error_names_its_type_and_leaks_nothing_else(client):
     main.load_building_rows = explode
     try:
         with TestClient(main.app, raise_server_exceptions=False) as quiet:
+            # Carry the session over: a fresh client is anonymous, and the middleware
+            # would refuse the request at 401 before the route could fail at all.
+            quiet.cookies.update(client.cookies)
             response = quiet.get("/api/v1/buildings")
     finally:
         main.load_building_rows = original
@@ -530,30 +550,7 @@ def test_integrity_endpoint_detects_a_deleted_row(client):
     assert body["break"]["reason"] == "deleted"
 
 
-# --- state-changing endpoints and load shedding -----------------------------
-
-
-def test_recompute_is_open_when_no_admin_token_is_configured(client):
-    """The offline demonstration must not need one more thing set correctly."""
-    os.environ.pop("GEMP_ADMIN_TOKEN", None)
-    assert client.post("/api/v1/candidates/recompute").status_code == 200
-
-
-def test_recompute_is_gated_once_an_admin_token_is_configured(client):
-    """It rebuilds the cached optimizer context for every user of the process."""
-    os.environ["GEMP_ADMIN_TOKEN"] = "s3cret-token"
-    try:
-        assert client.post("/api/v1/candidates/recompute").status_code == 401
-        assert client.post(
-            "/api/v1/candidates/recompute",
-            headers={"X-GEMP-Admin-Token": "wrong"},
-        ).status_code == 401
-        assert client.post(
-            "/api/v1/candidates/recompute",
-            headers={"X-GEMP-Admin-Token": "s3cret-token"},
-        ).status_code == 200
-    finally:
-        os.environ.pop("GEMP_ADMIN_TOKEN", None)
+# --- load shedding ----------------------------------------------------------
 
 
 def test_a_saturated_solver_sheds_load_instead_of_queueing(client):
