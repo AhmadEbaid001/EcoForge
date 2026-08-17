@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import threading
 from collections.abc import Iterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -181,6 +182,52 @@ MAX_BUDGET_EGP = 1e12
 # than one that returns a good feasible answer and says so.
 DEFAULT_SOLVE_SECONDS = 10.0
 MAX_SOLVE_SECONDS = 60.0
+
+# Solving is CPU-bound and CP-SAT already takes eight search workers. A handful of
+# concurrent requests will therefore saturate the machine and slow down the one
+# request that matters - the person dragging the budget slider in front of judges.
+# Excess requests are refused immediately rather than queued: a 429 arriving now is
+# more useful than a correct answer arriving after the moment has passed.
+MAX_CONCURRENT_SOLVES = max(1, min(4, (os.cpu_count() or 4) // 2))
+_solve_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SOLVES)
+
+
+@contextmanager
+def solve_slot() -> Iterator[None]:
+    """Hold one of the solver slots, or refuse the request."""
+    if not _solve_slots.acquire(blocking=False):
+        raise HTTPException(
+            429,
+            f"all {MAX_CONCURRENT_SOLVES} solver slots are busy; retry shortly",
+            headers={"Retry-After": "2"},
+        )
+    try:
+        yield
+    finally:
+        _solve_slots.release()
+
+
+def require_admin(x_gemp_admin_token: str | None = Header(default=None)) -> None:
+    """Gate the endpoints that change shared server state.
+
+    `/candidates/recompute` rebuilds the cached optimizer context for every user of
+    the process. On the air-gapped demonstration network that is nobody's problem,
+    and requiring a token there would mean one more thing to get wrong on the day -
+    so when GEMP_ADMIN_TOKEN is unset the endpoint stays open and says so in the log.
+
+    Set the variable and it is enforced. That ordering is deliberate: the deployment
+    that needs protection is the one someone exposes beyond loopback, and that is
+    exactly the deployment where an operator is already setting environment.
+    """
+    expected = os.environ.get("GEMP_ADMIN_TOKEN")
+    if not expected:
+        log.warning(
+            "GEMP_ADMIN_TOKEN is unset - state-changing endpoints are unauthenticated"
+        )
+        return
+
+    if not x_gemp_admin_token or not secrets.compare_digest(x_gemp_admin_token, expected):
+        raise HTTPException(401, "missing or invalid X-GEMP-Admin-Token")
 
 
 class OptimizeRequest(BaseModel):
@@ -445,7 +492,7 @@ def anomaly_metrics(session: Session = Depends(get_session),
     }
 
 
-@app.post("/api/v1/candidates/recompute")
+@app.post("/api/v1/candidates/recompute", dependencies=[Depends(require_admin)])
 def recompute_candidates(session: Session = Depends(get_session)) -> dict:
     """Rebuild the candidate set from the current portfolio, catalog and parameters.
 
@@ -636,13 +683,14 @@ def optimize(
     if request.solver not in SOLVERS:
         raise HTTPException(422, f"unknown solver; choose from {sorted(SOLVERS)}")
 
-    run_id, allocation = run_optimization(
-        session, context, request.budget_egp,
-        objective=request.objective, solver=request.solver,
-        max_funded_per_district=request.max_funded_per_district,
-        persist=request.persist,
-        max_seconds=request.max_seconds,
-    )
+    with solve_slot():
+        run_id, allocation = run_optimization(
+            session, context, request.budget_egp,
+            objective=request.objective, solver=request.solver,
+            max_funded_per_district=request.max_funded_per_district,
+            persist=request.persist,
+            max_seconds=request.max_seconds,
+        )
     return OptimizeResponse.build(run_id if request.persist else None, allocation)
 
 
@@ -657,15 +705,18 @@ def compare_solvers(
         raise HTTPException(422, f"unknown objective; choose from {sorted(OBJECTIVES)}")
 
     results = {}
-    for solver in SOLVERS:
-        _run_id, allocation = run_optimization(
-            session, context, request.budget_egp,
-            objective=request.objective, solver=solver,
-            max_funded_per_district=request.max_funded_per_district,
-            persist=False,
-            max_seconds=request.max_seconds,
-        )
-        results[solver] = allocation
+    # One slot for the whole comparison, not one per solver: this endpoint runs every
+    # solver on the instance, so it is the most expensive request the API serves.
+    with solve_slot():
+        for solver in SOLVERS:
+            _run_id, allocation = run_optimization(
+                session, context, request.budget_egp,
+                objective=request.objective, solver=solver,
+                max_funded_per_district=request.max_funded_per_district,
+                persist=False,
+                max_seconds=request.max_seconds,
+            )
+            results[solver] = allocation
 
     baseline = results["equal_split"]
     return {

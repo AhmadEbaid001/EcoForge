@@ -1,4 +1,4 @@
-"""F3 - the model that turns a whole-building meter reading into per-intervention savings.
+r"""F3 - the model that turns a whole-building meter reading into per-intervention savings.
 
 This is the bridge the proposal left unspecified. A meter reports one aggregate
 number; the optimizer needs "an HVAC replacement at this building saves X kWh/yr".

@@ -22,6 +22,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Measured at 83% without the container stack and 84% with it, over everything except
+# the command-line entry points and the simulator (see the omit list in pyproject).
+# The floor sits below both so that a normal run passes on a laptop with nothing
+# running, and far enough below to survive a refactor that moves code around - it is
+# there to catch a module losing its tests, not to be a target anyone optimises.
+COVERAGE_FLOOR = 80
+
 # (name, argv, why it is a gate). Kept as data because CI reads the same list, and a
 # gate that exists in one place and not the other is worse than no gate.
 GATES: list[tuple[str, list[str], str]] = [
@@ -32,7 +39,7 @@ GATES: list[tuple[str, list[str], str]] = [
     ),
     (
         "tests",
-        [sys.executable, "-m", "pytest", "-q"],
+        [sys.executable, "-m", "pytest", "-q", "--cov", f"--cov-fail-under={COVERAGE_FLOOR}"],
         "the contract suite; integration tests skip themselves without a database",
     ),
     (

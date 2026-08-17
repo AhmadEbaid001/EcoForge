@@ -35,7 +35,9 @@ jobs:
         run: python -m ruff check src tests scripts
 
       - name: Tests
-        run: python -m pytest -q
+        # Floor measured at 83% locally; see COVERAGE_FLOOR in scripts/check.py for
+        # what the number is and is not for.
+        run: python -m pytest -q --cov --cov-fail-under=80
 
       - name: Data contract
         # Structure only. `--strict` additionally fails on uncited catalog rows, which

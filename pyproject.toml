@@ -61,6 +61,28 @@ markers = [
     "integration: needs the running PostgreSQL/TimescaleDB stack",
 ]
 
+[tool.coverage.run]
+source = ["gemp"]
+omit = [
+    # Command-line entry points and the simulator. These are exercised by running
+    # the stack, not by the suite, and writing tests that assert on their argparse
+    # wiring would raise the number without raising the confidence.
+    "*/cli.py",
+    "*/__main__.py",
+    "*/seed.py",
+    "*/timescale.py",
+    "*/sim/node.py",
+    "*/ml/jobs.py",
+    "*/evaluate/figures.py",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
