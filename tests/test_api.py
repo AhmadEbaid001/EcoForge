@@ -581,3 +581,43 @@ def test_a_saturated_solver_sheds_load_instead_of_queueing(client):
     # Slots are returned, so the next request succeeds.
     assert client.post("/api/v1/optimize",
                        json={"budget_egp": 1e6, "persist": False}).status_code == 200
+
+
+def test_the_anchor_is_read_before_the_rows(client):
+    """Ordering that prevents a false tamper alarm on a live system.
+
+    Ingestion never stops. Read the rows first and the ingester can flush new
+    readings and checkpoint past the head that snapshot contains, so the anchor claims
+    a sequence the rows legitimately do not reach and an intact chain reports as
+    truncated. The claims harness produced exactly that false positive against the
+    live stack, on a building nobody had touched.
+
+    Reading the anchor first makes the check one-sided in the safe direction: later
+    writes only extend the chain, and a chain longer than its anchor is healthy.
+    """
+    from gemp import services
+
+    order = []
+
+    real_anchor = services.latest_checkpoint
+    real_chain = services.read_chain
+
+    def traced_anchor(*args, **kwargs):
+        order.append("anchor")
+        return real_anchor(*args, **kwargs)
+
+    def traced_chain(*args, **kwargs):
+        order.append("rows")
+        return real_chain(*args, **kwargs)
+
+    services.latest_checkpoint = traced_anchor
+    services.read_chain = traced_chain
+    try:
+        client.get("/api/v1/integrity/verify/b001")
+    finally:
+        services.latest_checkpoint = real_anchor
+        services.read_chain = real_chain
+
+    assert order.index("anchor") < order.index("rows"), (
+        f"anchor must be read before rows, got {order}"
+    )

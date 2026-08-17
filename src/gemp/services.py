@@ -192,9 +192,21 @@ def verify_building_chain(session: Session, building_id: str, key: bytes,
     can catch that, which is why it is loaded here rather than left to a caller that
     never passed it. Until Phase 4 nothing did, and `checkpoint_ok` was null on every
     response the demonstration ever produced.
-    """
-    rows = read_chain(session, building_id)
 
+    **The anchor is read BEFORE the rows, and the order is load-bearing.** Ingestion
+    continues while this runs. Reading rows first leaves a window in which the
+    ingester flushes new readings and then checkpoints past the head this snapshot
+    contains - so the anchor claims a sequence the rows legitimately do not reach, and
+    an intact chain is reported as truncated. That is not hypothetical: the claims
+    harness reported exactly one such false positive against the live stack the first
+    time it ran, on a building nobody had touched.
+
+    Reading the anchor first makes the check one-sided in the safe direction. Rows
+    written afterwards only ever extend the chain, and a chain longer than its anchor
+    is what healthy looks like. A false alarm about tampering is worse than no alarm:
+    it burns the demonstration on a hunt for an attack that never happened, and it
+    teaches whoever is watching to discount the next one.
+    """
     anchor = None
     if checkpoint_seq is None or checkpoint_sig is None:
         anchor = latest_checkpoint(building_id)
@@ -202,6 +214,7 @@ def verify_building_chain(session: Session, building_id: str, key: bytes,
             checkpoint_seq, checkpoint_sig = anchor.last_seq, anchor.head_sig
 
     stored = _database_checkpoint(session, building_id)
+    rows = read_chain(session, building_id)
     anchor_matches_database = None
     if anchor is not None and stored is not None:
         anchor_matches_database = (
