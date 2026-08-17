@@ -86,6 +86,19 @@ const PAD = 60;
 /* Zoom at which real footprints replace the consumption-sized squares. */
 const FOOTPRINT_ZOOM = 3;
 
+// The old ceiling was 8, which was set before anyone had measured what a footprint
+// is worth at that zoom. Measured in the browser: at k = 3.5 the median outline is
+// 6.4 screen pixels across and at k = 8 it is 10.4 - correct geometry that nobody can
+// actually read, which makes "real OpenStreetMap footprints" a claim again rather
+// than something a reviewer can see. At 24 the median reaches about 31 pixels and an
+// L-shaped building is unmistakably L-shaped.
+//
+// The squares do not shrink at the switch by accident: a square is a SYMBOL sized by
+// annual consumption, while a footprint is drawn at true scale, so the building
+// necessarily gets smaller when the real outline takes over. That is the intended
+// trade and it is why the ceiling, not the switch point, is what needed raising.
+const MAX_ZOOM = 24;
+
 function buildGeometry() {
   const svg = $('map');
   const W = svg.clientWidth, H = svg.clientHeight;
@@ -216,7 +229,7 @@ function attachPanZoom() {
   svg.addEventListener('wheel', (e) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const next = Math.min(8, Math.max(0.4, state.view.k * factor));
+    const next = Math.min(MAX_ZOOM, Math.max(0.4, state.view.k * factor));
     const rect = svg.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     // Keep the point under the cursor fixed while zooming.
@@ -326,8 +339,13 @@ async function compare() {
   });
   const data = await res.json();
 
-  const names = { equal_split: 'Equal split (status quo)', greedy: 'Greedy heuristic', cpsat: 'Exact optimization' };
-  const order = ['equal_split', 'greedy', 'cpsat'];
+  const names = {
+    equal_split: 'Equal split (status quo)',
+    greedy: 'Greedy heuristic',
+    greedy_upgrade: 'Greedy + upgrade pass',
+    cpsat: 'Exact optimization',
+  };
+  const order = ['equal_split', 'greedy', 'greedy_upgrade', 'cpsat'];
   const best = Math.max(...order.map((n) => data.results[n].total_benefit_kgco2e));
 
   const rows = order.map((n) => {
@@ -342,8 +360,12 @@ async function compare() {
       <td>${Math.round(r.solve_ms)} ms</td></tr>`;
   }).join('');
 
-  const gap = data.cpsat_vs_greedy_pct;
+  // Quoted against greedy + upgrade, never against plain greedy. Plain greedy never
+  // revisits a funded building, so above roughly 16 M EGP it stops spending and the
+  // gap against it measures its ceiling rather than the value of exact optimization.
+  const gap = data.cpsat_vs_greedy_upgrade_pct;
   const capped = data.max_funded_per_district;
+  const plainStalled = data.results.greedy.total_cost_egp < data.results.greedy_upgrade.total_cost_egp * 0.9;
 
   $('compare-body').innerHTML = `
     <table>
@@ -352,14 +374,19 @@ async function compare() {
       <tbody>${rows}</tbody>
     </table>
     <p class="caption">
-      Exact optimization beats the greedy heuristic by
+      Exact optimization beats the strongest heuristic by
       <strong>${gap > 0 ? '+' : ''}${gap.toFixed(1)}%</strong> here.
       ${capped
-        ? `That gap is large because a per-district cap is active: greedy commits its
-           slots to cheap high-density options and then cannot spend the rest.`
+        ? `That gap is large because a per-district cap is active: no greedy variant
+           can plan around a constraint that couples buildings across the portfolio.`
         : `Unconstrained, that gap is small and is reported rather than hidden — a
-           density-ordered heuristic is near-optimal on a plain knapsack. Set a
-           per-district cap to see where exact optimization earns its place.`}
+           good heuristic is near-optimal on a plain knapsack. Set a per-district cap
+           to see where exact optimization earns its place.`}
+      ${plainStalled
+        ? `The plain greedy row is spending less than the others: it never revisits a
+           funded building, so once each holds an option it stops, whatever budget is
+           left. The comparison above is quoted against the upgrade pass instead.`
+        : ''}
     </p>`;
 }
 

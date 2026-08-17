@@ -78,6 +78,7 @@ def run_optimization(
     solver: str = "cpsat",
     max_funded_per_district: int | None = None,
     persist: bool = True,
+    max_seconds: float | None = None,
 ) -> tuple[str, Allocation]:
     """Solve, optionally store the run, and return (run_id, allocation)."""
     if max_funded_per_district is None:
@@ -90,6 +91,7 @@ def run_optimization(
         solver=solver,
         objective=objective,
         max_funded_per_district=max_funded_per_district,
+        max_seconds=max_seconds,
     )
 
     run_id = str(uuid.uuid4())
@@ -177,6 +179,19 @@ def verify_building_chain(session: Session, building_id: str, key: bytes,
     if checkpoint_seq is not None and checkpoint_sig is not None:
         checkpoint_ok = verify_against_checkpoint(rows, checkpoint_seq, checkpoint_sig).ok
 
+    # A break at the very first row means every signature after it would fail too, and
+    # by far the most likely cause is the wrong key rather than a modified row: an
+    # attacker who can edit the database has no reason to start at row zero. Saying
+    # "modified" there sends whoever is debugging to look for tampering that is not
+    # in the data. This happened during Phase 4 - the integration test picked up the
+    # SQLite suite's test key from the process environment and reported a clean chain
+    # as modified at seq 0.
+    first_row_failed = (
+        walk.first_break is not None
+        and walk.first_break.index == 0
+        and walk.first_break.reason == "modified"
+    )
+
     return {
         "building_id": building_id,
         "rows": len(rows),
@@ -187,4 +202,9 @@ def verify_building_chain(session: Session, building_id: str, key: bytes,
             "seq": walk.first_break.seq,
             "ts": walk.first_break.ts,
         },
+        "hint": (
+            "the first row itself does not verify, so the signing key is probably "
+            "not the one these rows were written with - check GEMP_HMAC_KEY before "
+            "concluding the data was modified"
+        ) if first_row_failed else None,
     }

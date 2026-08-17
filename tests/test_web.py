@@ -89,3 +89,22 @@ def test_api_paths_used_by_the_ui_are_the_ones_the_server_serves():
         # Template segments in the script become path parameters on the server.
         concrete = path.split("${")[0].rstrip("/")
         assert any(s.startswith(concrete) for s in served), f"UI calls unknown route {path}"
+
+
+def test_the_zoom_ceiling_lets_a_footprint_be_read():
+    """Measured in the browser, not assumed.
+
+    Real footprints switch in at k = 3, where the median outline is 6.4 screen pixels
+    across; at the old ceiling of 8 it was still only 10.4. Correct geometry nobody
+    can read makes "real OpenStreetMap footprints" a claim rather than something a
+    reviewer can see. The ceiling has to leave room for the outline to get big enough
+    to recognise.
+    """
+    source = (WEB / "app.js").read_text(encoding="utf-8")
+
+    ceiling = re.search(r"const MAX_ZOOM = (\d+)", source)
+    switch = re.search(r"const FOOTPRINT_ZOOM = (\d+)", source)
+    assert ceiling and switch
+
+    # At least a 4x range past the switch, or the outlines never become legible.
+    assert int(ceiling.group(1)) >= int(switch.group(1)) * 4

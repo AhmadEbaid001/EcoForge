@@ -139,17 +139,64 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(ValueError)
+async def _value_error_is_a_bad_request(_request, exc: ValueError) -> JSONResponse:
+    """A rejected input is the caller's problem, not a server fault.
+
+    The domain layer raises ValueError for an unknown solver, a negative budget or a
+    non-finite one. Without this it surfaces as a bare 500 and the caller cannot tell
+    a typo from an outage - which is exactly what happened with `budget_egp:
+    Infinity`, where `int(round(inf))` inside the CP-SAT model build produced an
+    opaque Internal Server Error.
+    """
+    return JSONResponse({"error": "invalid_request", "detail": str(exc)}, status_code=422)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_errors_are_named(_request, exc: Exception) -> JSONResponse:
+    """Log the traceback, return the exception TYPE and nothing else.
+
+    A stack trace in the response body is a gift to anyone probing the service, and
+    an empty body is useless to whoever is trying to fix it during a demonstration.
+    The type is the compromise: enough to say what broke, not enough to describe how
+    the process is put together.
+    """
+    log.exception("unhandled error: %s", type(exc).__name__)
+    return JSONResponse(
+        {"error": "internal_error", "detail": type(exc).__name__}, status_code=500
+    )
+
+
 # ---------------------------------------------------------------------------
 # schemas
 # ---------------------------------------------------------------------------
 
 
+# Funding the entire portfolio costs about 40 M EGP. A trillion is far past any
+# defensible input and still leaves CP-SAT's integer coefficients well inside range;
+# the point of the bound is to turn nonsense into a 422 rather than a 500.
+MAX_BUDGET_EGP = 1e12
+
+# CP-SAT's own limit. Exposed per request because a demonstration that hangs is worse
+# than one that returns a good feasible answer and says so.
+DEFAULT_SOLVE_SECONDS = 10.0
+MAX_SOLVE_SECONDS = 60.0
+
+
 class OptimizeRequest(BaseModel):
-    budget_egp: float = Field(gt=0, description="Capital available now, EGP")
+    budget_egp: float = Field(
+        gt=0, le=MAX_BUDGET_EGP, allow_inf_nan=False,
+        description="Capital available now, EGP",
+    )
     objective: str = Field(default="lca_carbon")
     solver: str = Field(default="cpsat")
     max_funded_per_district: int | None = Field(default=None, ge=1)
     persist: bool = True
+    max_seconds: float = Field(
+        default=DEFAULT_SOLVE_SECONDS, gt=0, le=MAX_SOLVE_SECONDS, allow_inf_nan=False,
+        description="Solver time limit. CP-SAT returns its best feasible solution "
+                    "if it expires, and the response says so in `status`.",
+    )
 
 
 class AllocationItemOut(BaseModel):
@@ -594,6 +641,7 @@ def optimize(
         objective=request.objective, solver=request.solver,
         max_funded_per_district=request.max_funded_per_district,
         persist=request.persist,
+        max_seconds=request.max_seconds,
     )
     return OptimizeResponse.build(run_id if request.persist else None, allocation)
 
@@ -604,7 +652,10 @@ def compare_solvers(
     session: Session = Depends(get_session),
     context: OptimizerContext = Depends(get_context),
 ) -> dict:
-    """All three solvers on one instance - the headline comparison, in one call."""
+    """Every solver on one instance - the headline comparison, in one call."""
+    if request.objective not in OBJECTIVES:
+        raise HTTPException(422, f"unknown objective; choose from {sorted(OBJECTIVES)}")
+
     results = {}
     for solver in SOLVERS:
         _run_id, allocation = run_optimization(
@@ -612,6 +663,7 @@ def compare_solvers(
             objective=request.objective, solver=solver,
             max_funded_per_district=request.max_funded_per_district,
             persist=False,
+            max_seconds=request.max_seconds,
         )
         results[solver] = allocation
 
@@ -635,6 +687,13 @@ def compare_solvers(
             }
             for name, allocation in results.items()
         },
+        # The honest headline. Plain greedy never revisits a funded building, so above
+        # roughly 16 M EGP it stops spending and any gap measured against it is its
+        # saturation rather than the value of exact optimization. Both are returned so
+        # the difference is visible instead of a matter of which key was chosen.
+        "cpsat_vs_greedy_upgrade_pct": improvement_pct(
+            results["cpsat"], results["greedy_upgrade"], request.objective
+        ),
         "cpsat_vs_greedy_pct": improvement_pct(
             results["cpsat"], results["greedy"], request.objective
         ),

@@ -6,6 +6,7 @@ server, a broker or a container runtime.
 
 from __future__ import annotations
 
+import json
 import os
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -101,7 +102,7 @@ def test_meta_exposes_the_data_contract_state(client):
     assert body["buildings"] == 50
     assert body["candidates"] > 50
     assert set(body["objectives"]) == {"lca_carbon", "raw_kwh", "egp_saved"}
-    assert set(body["solvers"]) == {"cpsat", "greedy", "equal_split"}
+    assert set(body["solvers"]) == {"cpsat", "greedy", "greedy_upgrade", "equal_split"}
     # Placeholder catalog rows are surfaced, not hidden - they gate submission.
     assert body["uncited_catalog_rows"]
 
@@ -157,15 +158,66 @@ def test_zero_budget_is_rejected_rather_than_silently_empty(client):
     assert client.post("/api/v1/optimize", json={"budget_egp": 0}).status_code == 422
 
 
-def test_compare_returns_all_three_solvers_and_the_headline_delta(client):
+@pytest.mark.parametrize("budget", [float("inf"), float("nan"), 1e308])
+def test_a_nonsense_budget_is_a_422_not_a_500(client, budget):
+    """Measured against the running stack before this was fixed: all three returned
+    Internal Server Error. `int(round(inf))` raises inside the CP-SAT model build,
+    which is nowhere near where a caller would look for the cause."""
+    response = client.post(
+        "/api/v1/optimize",
+        content=json.dumps({"budget_egp": budget, "persist": False}),
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+
+
+def test_the_solver_time_limit_is_bounded(client):
+    """An unbounded limit is a request that never returns, held open by a stranger."""
+    assert client.post("/api/v1/optimize",
+                       json={"budget_egp": 1e6, "max_seconds": 0}).status_code == 422
+    assert client.post("/api/v1/optimize",
+                       json={"budget_egp": 1e6, "max_seconds": 600}).status_code == 422
+    assert client.post("/api/v1/optimize", json={
+        "budget_egp": 1e6, "max_seconds": 5, "persist": False,
+    }).status_code == 200
+
+
+def test_an_unhandled_error_names_its_type_and_leaks_nothing_else(client):
+    """The body must be useful to whoever is fixing it and useless to anyone probing.
+
+    A second client, because the shared one re-raises server exceptions so that a
+    genuine bug in another test surfaces as that bug rather than as a 500. Here the
+    500 IS the behaviour under test.
+    """
+    from gemp.api import main
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("secret internal detail: connection string here")
+
+    original = main.load_building_rows
+    main.load_building_rows = explode
+    try:
+        with TestClient(main.app, raise_server_exceptions=False) as quiet:
+            response = quiet.get("/api/v1/buildings")
+    finally:
+        main.load_building_rows = original
+
+    assert response.status_code == 500
+    body = response.json()
+    assert body == {"error": "internal_error", "detail": "RuntimeError"}
+    assert "secret internal detail" not in response.text
+
+
+def test_compare_returns_every_solver_and_the_headline_delta(client):
     body = client.post("/api/v1/compare", json={"budget_egp": 10_000_000}).json()
 
-    assert set(body["results"]) == {"cpsat", "greedy", "equal_split"}
+    assert set(body["results"]) == {"cpsat", "greedy", "greedy_upgrade", "equal_split"}
     assert body["results"]["equal_split"]["improvement_vs_equal_split_pct"] is None
     assert body["results"]["cpsat"]["improvement_vs_equal_split_pct"] > 0
-    assert body["results"]["cpsat"]["total_benefit_kgco2e"] >= (
-        body["results"]["greedy"]["total_benefit_kgco2e"]
-    )
+    for baseline in ("greedy", "greedy_upgrade", "equal_split"):
+        assert body["results"]["cpsat"]["total_benefit_kgco2e"] >= (
+            body["results"][baseline]["total_benefit_kgco2e"]
+        )
 
 
 def test_district_cap_makes_exact_optimization_pull_away(client):
@@ -315,6 +367,50 @@ def test_integrity_endpoint_names_the_tampered_row(client):
     assert not body["chain_ok"]
     assert body["break"]["reason"] == "modified"
     assert body["break"]["seq"] == 4
+
+
+def test_a_tampered_row_carries_no_wrong_key_hint(client):
+    """The hint must not appear where the data really was modified.
+
+    Otherwise it trains whoever is on the demonstration to dismiss a genuine break as
+    a configuration problem, which is the opposite of what the chain is for.
+    """
+    seed_readings(client, "b006", 12)
+
+    with client.session_scope() as session:
+        row = session.get(ReadingRow, {"building_id": "b006",
+                                       "ts": T0 + timedelta(minutes=15 * 5)})
+        row.kw = 0.5
+
+    body = client.get("/api/v1/integrity/verify/b006").json()
+    assert not body["chain_ok"]
+    assert body["hint"] is None
+
+
+def test_the_wrong_signing_key_is_not_reported_as_tampering(client):
+    """A break at row zero is far more likely a key mismatch than an edit.
+
+    An attacker with write access has no reason to start at the first row, and every
+    later row fails too. The Phase 4 integration test hit exactly this: it picked up
+    this suite's test key from the process environment and reported an intact
+    production chain as "modified at seq 0".
+    """
+    from gemp.api import main
+    from gemp.config import Settings
+
+    seed_readings(client, "b005", 12)
+
+    wrong = Settings(hmac_key="ab" * 32)
+    original = main.get_settings
+    main.get_settings = lambda: wrong
+    try:
+        body = client.get("/api/v1/integrity/verify/b005").json()
+    finally:
+        main.get_settings = original
+
+    assert not body["chain_ok"]
+    assert body["break"]["seq"] == 0
+    assert "GEMP_HMAC_KEY" in body["hint"]
 
 
 def test_integrity_endpoint_detects_a_deleted_row(client):
