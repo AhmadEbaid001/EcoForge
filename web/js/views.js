@@ -18,7 +18,9 @@
 'use strict';
 
 import { api, ApiError } from './api.js';
-import { compact, escapeHtml, lineChart, proportionBar, stackedBars, statTile } from './charts.js';
+import {
+  compact, escapeHtml, lineChart, proportionBar, stackedBars, statTile,
+} from './charts.js';
 import {
   clearStatus, confirmAction, dataTable, emptyState, freshness, openDialog,
   pageHead, picker, pickerValue, selectWrap, setStatus, skeletonChart,
@@ -62,10 +64,66 @@ function wireRefresh(root, reload) {
 const buildingOptions = (buildings) =>
   buildings.map((b) => ({ value: b.id, label: b.code }));
 
+/* One filter row, above everything it scopes.
+ *
+ * Not a control per panel: two windows on one screen is how a demonstration ends
+ * up comparing a fortnight of demand against a month of alerts and drawing a
+ * conclusion from the mismatch. One window, stated once, and every number under it
+ * moves together.
+ *
+ * Presets rather than a date picker, because the data clock runs at 720x and no
+ * one in the room knows today's date in data time. "Last 30 days" is a question a
+ * reader can ask; "2027-08-11 to 2027-09-10" is one they would have to work out.
+ */
+const RANGES = [
+  { days: 7, label: '7 days' },
+  { days: 14, label: '14 days' },
+  { days: 30, label: '30 days' },
+  { days: 90, label: '90 days' },
+];
+
+function rangeControl(selected) {
+  const buttons = RANGES.map((r) =>
+    `<button type="button" class="seg-btn" data-days="${r.days}"
+       aria-pressed="${r.days === selected}">${escapeHtml(r.label)}</button>`).join('');
+  return `<div class="chart-filters">
+    <span class="filter-label" id="range-label">Window</span>
+    <div class="segmented" role="group" aria-labelledby="range-label">${buttons}</div>
+  </div>`;
+}
+
+/* Delegated, so the buttons can be replaced by a redraw without the listener
+ * going with them. */
+function wireRange(root, onChange) {
+  const group = root.querySelector('.chart-filters .segmented');
+  group?.addEventListener('click', (event) => {
+    const button = event.target.closest('.seg-btn');
+    if (!button || button.getAttribute('aria-pressed') === 'true') return;
+    group.querySelectorAll('.seg-btn').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b === button)));
+    onChange(Number(button.dataset.days));
+  });
+}
+
+/* Movement over the window, as a percentage: the second half against the first.
+ * Null rather than zero when there is nothing to compare against - a tile that
+ * says "0%" is claiming it measured something. */
+function halfOverHalf(values) {
+  if (values.length < 4) return null;
+  const half = Math.floor(values.length / 2);
+  const before = values.slice(0, half).reduce((a, b) => a + b, 0);
+  const after = values.slice(half).reduce((a, b) => a + b, 0);
+  if (!before) return null;
+  return ((after - before) / before) * 100;
+}
+
 /* ------------------------------------------------------------------ overview */
 
 export const overview = {
   title: 'Overview',
+  /* Kept on the view rather than inside render(), so leaving the screen and
+   * coming back does not silently reset the window the reader chose. */
+  state: { days: 30 },
   async render(root, ctx) {
     root.innerHTML = `
       ${pageHead({
@@ -74,28 +132,29 @@ export const overview = {
       })}
       ${skeletonTiles(4)}${skeletonChart()}`;
 
+    const state = overview.state;
+
     await guard(root, async () => {
       const [summary, load, daily] = await Promise.all([
-        api.summary(), api.load(14), api.anomaliesDaily(30),
+        api.summary(), api.load(state.days), api.anomaliesDaily(state.days),
       ]);
 
       const measured = summary.annual_kwh_source || {};
       const fromForecast = measured.forecast || 0;
       const run = summary.latest_run;
 
-      root.innerHTML = `
-        ${pageHead({
-          title: 'Portfolio overview',
-          description: 'What the platform is measuring, and the allocation it last recommended.',
-          meta: freshness(summary.data_clock),
-        })}
+      const dailyTotals = (days) => days.map((d) =>
+        (d.critical || 0) + (d.high || 0) + (d.medium || 0));
 
+      const panels = (loadData, dailyData) => `
         <div class="stat-row">
           ${statTile('Buildings', compact(summary.buildings))}
           ${statTile('Readings stored', compact(summary.readings))}
           ${statTile('Open alerts', compact(summary.open_anomalies),
                      Object.entries(summary.open_by_severity || {})
-                       .map(([k, v]) => `${k} ${v}`).join(' · '))}
+                       .map(([k, v]) => `${k} ${v}`).join(' · '),
+                     { spark: dailyTotals(dailyData.days),
+                       trend: halfOverHalf(dailyTotals(dailyData.days)) })}
           ${statTile('Costed on measurement', `${fromForecast}/${summary.buildings}`,
                      'F3: buildings whose annual kWh comes from the forecast')}
         </div>
@@ -103,9 +162,9 @@ export const overview = {
         <section class="panel">
           <header>
             <h3>Portfolio demand</h3>
-            <span class="muted small">last 14 days of data time</span>
+            <span class="muted small">point at the chart, or focus it and use the arrow keys</span>
           </header>
-          ${lineChart([{ label: 'Portfolio kW', points: load.points }], { unit: 'kW' })}
+          ${lineChart([{ label: 'Portfolio demand', points: loadData.points }], { unit: 'kW' })}
           <p class="caption">The simulator runs at 720&times;, so data time runs ahead of
           the wall clock — every window in the platform is measured in data time for
           that reason, and the clock above says which moment this was read at.</p>
@@ -114,10 +173,20 @@ export const overview = {
         <section class="panel">
           <header>
             <h3>Alerts per day</h3>
-            <span class="muted small">last 30 days of data time</span>
+            <span class="muted small">stacked critical, high, medium</span>
           </header>
-          ${stackedBars(daily.days, ['critical', 'high', 'medium'])}
-        </section>
+          ${stackedBars(dailyData.days, ['critical', 'high', 'medium'])}
+        </section>`;
+
+      root.innerHTML = `
+        ${pageHead({
+          title: 'Portfolio overview',
+          description: 'What the platform is measuring, and the allocation it last recommended.',
+          meta: freshness(summary.data_clock),
+        })}
+
+        ${rangeControl(state.days)}
+        <div id="ov-panels">${panels(load, daily)}</div>
 
         <section class="panel">
           <header><h3>Most recent allocation</h3></header>
@@ -138,6 +207,22 @@ export const overview = {
         </section>`;
 
       wireRefresh(root, () => overview.render(root, ctx));
+
+      wireRange(root, async (days) => {
+        state.days = days;
+        const target = root.querySelector('#ov-panels');
+        /* The frame is kept and dimmed rather than replaced with a skeleton: a
+         * reader who has just changed the window is looking at the chart, and
+         * swapping it for grey boxes makes the screen jump under them. */
+        target.classList.add('is-loading');
+        await guard(root, async () => {
+          const [nextLoad, nextDaily] = await Promise.all([
+            api.load(days), api.anomaliesDaily(days),
+          ]);
+          target.innerHTML = panels(nextLoad, nextDaily);
+        });
+        target.classList.remove('is-loading');
+      });
     });
   },
 };

@@ -508,10 +508,6 @@ main {
    around the entire content column. */
 #view:focus { outline: none; }
 
-/* The chart redraws itself at the width it is actually given, so it must not be
-   handed a width that depends on its own content. */
-.chart-host { display: block; width: 100%; min-width: 0; }
-
 .badge {
   display: inline-block; padding: 1px var(--s-xs); border-radius: var(--radius);
   font-size: var(--fs-label-sm); font-weight: 600; letter-spacing: .02em;
@@ -850,27 +846,177 @@ label.check {
 }
 .stat-hint { color: var(--ink-3); font-size: var(--fs-label-sm); margin-top: var(--s-xs); }
 
+/* The direction is stated with an arrow AND a signed number, never with colour
+   alone: up is not always good here - these tiles count faults as often as they
+   count savings - so the tile reports the movement and the reader decides. */
+.stat-trend {
+  font-size: var(--fs-label-md); font-weight: 600; letter-spacing: .02em;
+  margin-left: var(--s-sm); vertical-align: middle; white-space: nowrap;
+  color: var(--ink-2);
+}
+.stat-trend.up { color: var(--sev-high); }
+.stat-trend.down { color: var(--accent-bright); }
+
+/* No axis and no labels: it answers "which way, and how steadily". The figure
+   above it is the value; this is only its shape. */
+.stat-spark { margin-top: var(--s-xs); }
+.spark { display: block; width: 100%; height: 28px; overflow: visible; }
+.spark-line { stroke: var(--series-0); stroke-width: 1.5; stroke-linejoin: round; }
+.spark-end { fill: var(--series-0); }
+
 /* =====================================================================
    8. Charts
    ===================================================================== */
+
+/* The host stacks three things: the plot, the readout that floats over it, and
+   the table that unfolds under it. Positioned, because the readout is placed
+   against it. It must not be handed a width that depends on its own content -
+   the chart redraws itself at the width it is actually given. */
+.chart-host { display: block; position: relative; width: 100%; min-width: 0; }
+.chart-plot { position: relative; }
 
 .chart { width: 100%; height: auto; display: block; }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 .chart .axis { fill: var(--ink-2); font-size: 11px; font-family: var(--font); }
 .chart .axis.unit { fill: var(--ink-3); font-size: 10px; }
-.chart .series { stroke-width: 1.6; fill: none; }
+.chart.empty .axis { font-size: 13px; fill: var(--ink-3); }
+.chart.proportion { height: 22px; }
+
+/* The chart is focusable, so it gets the same ring every other control has -
+   offset outwards, because an inset ring on an SVG clips against the viewBox. */
+.chart:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
+
+/* --- lines ------------------------------------------------------------ */
+
+.chart .series { stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .chart .series.s0 { stroke: var(--series-0); }
 /* Dashed, not merely a second colour: two lines that differ only in hue are
    one line to a reader who cannot separate blue from amber. */
 .chart .series.s1 { stroke: var(--series-1); stroke-dasharray: 5 3; }
-.chart.empty .axis { font-size: 13px; fill: var(--ink-3); }
-.chart.proportion { height: 18px; border-radius: 2px; overflow: hidden; }
 
-.bar, .seg { stroke: var(--surface); stroke-width: .75; }
+/* Only ever under a single series - see the note in charts.js. Flat with an
+   opacity rather than a gradient, so it needs no paint server and no id. */
+.chart .area { fill: var(--series-0); opacity: .1; stroke: none; }
+
+/* The last value of each line, labelled where the eye already is. */
+.chart .end-label circle { fill: var(--series-0); }
+.chart .end-label.s1 circle { fill: var(--series-1); }
+.chart .end-label text {
+  fill: var(--ink-1); font-size: 11px; font-weight: 600;
+  font-family: var(--font); font-variant-numeric: tabular-nums;
+}
+
+/* --- the cursor ------------------------------------------------------- */
+
+/* Hidden until the pointer or the keyboard puts it somewhere. `visibility`
+   rather than `display`, so the geometry set on it survives being hidden. */
+.chart .cursor { visibility: hidden; }
+.chart.is-cursored .cursor { visibility: visible; }
+.chart .crosshair { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart .cursor-dot {
+  fill: var(--surface); stroke: var(--series-0); stroke-width: 2;
+}
+.chart .cursor-dot.s1 { stroke: var(--series-1); }
+/* A series with no reading at this hour has nothing to point at, and a dot left
+   at its last position would claim one. */
+.chart .cursor-dot.is-void { visibility: hidden; }
+
+/* --- bars and segments ------------------------------------------------- */
+
+/* No stroke: the 2px gap between segments is geometric now, cut out of the
+   marks themselves, so a stroke on top would eat into the mark instead. */
+.bar, .seg { stroke: none; }
 .bar.b0, .seg.b0 { fill: var(--sev-critical); }
 .bar.b1, .seg.b1 { fill: var(--sev-high); }
 .bar.b2, .seg.b2 { fill: var(--sev-medium); }
 .bar.b3, .seg.b3 { fill: var(--accent-bright); }
+
+.col-hit { fill: transparent; }
+/* The whole column responds, not the segment under the pointer: the reader is
+   asking about a day, and the readout answers for the whole day. */
+.col .bar { transition: opacity 120ms ease; }
+.chart.is-cursored .col:not(.is-active) .bar { opacity: .45; }
+.col.is-active .bar { opacity: 1; }
+
+/* --- texture ----------------------------------------------------------- */
+
+/* Painted in the surface colour, so a hatch reads as the surface showing
+   through the mark rather than as a second ink laid over it. See charts.js for
+   why the severity palette needs this at all. */
+.hatch-line { stroke: var(--surface); stroke-width: 1.6; }
+.texture { pointer-events: none; }
+
+/* A proportion is an identity question - which model, which district - so it is
+   painted from the categorical ramp. Severity red on a bar that means "all fifty
+   buildings are on the current model" reads as an alarm about good news. */
+.chart.proportion .seg.b0 { fill: var(--series-0); }
+.chart.proportion .seg.b1 { fill: var(--series-1); }
+.chart.proportion .seg.b2 { fill: var(--accent-bright); }
+.chart.proportion .seg.b3 { fill: var(--ink-3); }
+.chart-legend.proportion .key.b0::before { background: var(--series-0); }
+.chart-legend.proportion .key.b1::before {
+  background:
+    repeating-linear-gradient(45deg, transparent 0 2px, var(--surface) 2px 3px),
+    var(--series-1);
+}
+.chart-legend.proportion .key.b2::before {
+  background:
+    repeating-linear-gradient(135deg, transparent 0 2px, var(--surface) 2px 3px),
+    var(--accent-bright);
+}
+.chart-legend.proportion .key.b3::before {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, var(--surface) 2px 3px),
+    var(--ink-3);
+}
+
+.seg-label {
+  fill: var(--surface); font-size: 11px; font-weight: 600;
+  font-family: var(--font); font-variant-numeric: tabular-nums;
+}
+
+/* --- the readout ------------------------------------------------------- */
+
+/* Placed from `--tip-x`, which is the only thing JavaScript writes. Everything
+   about how it looks is here. */
+.chart-tip {
+  position: absolute; top: var(--s-sm); left: var(--tip-x, 0);
+  transform: translateX(12px);
+  z-index: 2; pointer-events: none;
+  min-width: 8.5rem; max-width: 16rem;
+  padding: var(--s-sm) var(--s-md);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow-3);
+  font-size: var(--fs-body-sm);
+}
+.chart-tip.flip { transform: translateX(calc(-100% - 12px)); }
+.chart-tip[data-empty] { display: none; }
+
+.tip-head {
+  color: var(--ink-2); font-size: var(--fs-label-sm);
+  letter-spacing: .02em; margin-bottom: var(--s-xs);
+  font-variant-numeric: tabular-nums;
+}
+.tip-row { display: flex; align-items: baseline; gap: var(--s-xs); }
+/* A short stroke, not a filled box: at this density a box is data-weight ink
+   doing a label's job. The legend keeps its box, because there it mirrors the
+   mark. */
+.tip-key {
+  flex: none; width: 12px; height: 2px; border-radius: 1px;
+  transform: translateY(-3px);
+}
+.tip-key.s0 { background: var(--series-0); }
+.tip-key.s1 { background: var(--series-1); }
+.tip-key.b0 { background: var(--sev-critical); }
+.tip-key.b1 { background: var(--sev-high); }
+.tip-key.b2 { background: var(--sev-medium); }
+.tip-key.b3 { background: var(--accent-bright); }
+/* The value leads and the label follows: the reader already knows which series
+   they are pointing at and came for the number. */
+.tip-value { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink-1); }
+.tip-label { color: var(--ink-2); font-size: var(--fs-label-sm); }
+
+/* --- legend ------------------------------------------------------------ */
 
 .chart-legend {
   display: flex; gap: var(--s-md); flex-wrap: wrap;
@@ -885,10 +1031,78 @@ label.check {
 .chart-legend .key.s1::before {
   background: repeating-linear-gradient(90deg, var(--series-1) 0 3px, transparent 3px 5px);
 }
+/* The keys carry the same texture as the marks, or the legend would be the one
+   place the reader still has to separate the bands by hue alone. */
 .chart-legend .key.b0::before { background: var(--sev-critical); }
-.chart-legend .key.b1::before { background: var(--sev-high); }
-.chart-legend .key.b2::before { background: var(--sev-medium); }
-.chart-legend .key.b3::before { background: var(--accent-bright); }
+.chart-legend .key.b1::before {
+  background:
+    repeating-linear-gradient(45deg, transparent 0 2px, var(--surface) 2px 3px),
+    var(--sev-high);
+}
+.chart-legend .key.b2::before {
+  background:
+    repeating-linear-gradient(135deg, transparent 0 2px, var(--surface) 2px 3px),
+    var(--sev-medium);
+}
+.chart-legend .key.b3::before {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, var(--surface) 2px 3px),
+    var(--accent-bright);
+}
+
+/* --- the filter row ----------------------------------------------------- */
+
+/* One row, above everything it scopes. Never inside a panel: a control that sits
+   in a card looks like it belongs to that card, and this one moves every number
+   on the screen. */
+.chart-filters {
+  display: flex; align-items: center; gap: var(--s-md);
+  margin-bottom: var(--s-md); flex-wrap: wrap;
+}
+.filter-label {
+  color: var(--ink-2); font-size: var(--fs-label-sm);
+  letter-spacing: .02em; text-transform: uppercase; font-weight: 500;
+}
+
+.segmented {
+  display: inline-flex; border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden; background: var(--surface);
+}
+.segmented .seg-btn {
+  background: none; border: none; border-right: 1px solid var(--line);
+  color: var(--ink-2); min-height: 28px; padding: 0 var(--s-md);
+  border-radius: 0;
+}
+.segmented .seg-btn:last-child { border-right: none; }
+.segmented .seg-btn:hover { background: var(--surface-hover); color: var(--ink-1); }
+/* Selection is a filled state, not merely a heavier weight - at this size a bold
+   label beside a regular one is not a difference anyone spots across a room. */
+.segmented .seg-btn[aria-pressed="true"] {
+  background: var(--accent); color: var(--on-accent);
+}
+.segmented .seg-btn:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: -2px; }
+
+/* A refetch holds the previous render at reduced opacity: no skeleton, no layout
+   jump, nothing moving under the reader who just asked the question. */
+#ov-panels { transition: opacity var(--dur) var(--ease); }
+#ov-panels.is-loading { opacity: .45; pointer-events: none; }
+
+/* --- the table under every chart --------------------------------------- */
+
+.chart-table { margin-top: var(--s-sm); border-top: 1px solid var(--line); }
+.chart-table > summary {
+  display: flex; align-items: center; gap: var(--s-xs);
+  padding: var(--s-sm) 0; cursor: pointer;
+  color: var(--ink-2); font-size: var(--fs-label-md); font-weight: 500;
+  list-style: none;
+}
+.chart-table > summary::-webkit-details-marker { display: none; }
+.chart-table > summary:hover { color: var(--ink-1); }
+.chart-table > summary:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
+.chart-table > summary .icon { width: 14px; height: 14px; }
+.chart-table-wrap { max-height: 18rem; overflow: auto; }
+.chart-table-wrap table { font-size: var(--fs-body-sm); }
+.chart-table-wrap th, .chart-table-wrap td { padding: var(--s-xs) var(--s-sm); }
 
 /* =====================================================================
    9. Tables — the core of the system
