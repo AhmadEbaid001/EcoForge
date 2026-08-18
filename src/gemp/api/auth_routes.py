@@ -93,8 +93,17 @@ def _set_session_cookies(response: Response, token: str, csrf: str) -> None:
 
 
 def _clear_session_cookies(response: Response) -> None:
+    """Deleted with the same attributes they were set with.
+
+    A browser matches a deletion on name, domain and path, so this worked - but
+    `secure` and `samesite` were being dropped, which meant the expiring Set-Cookie
+    did not describe the same cookie the login had issued. That is the kind of
+    mismatch a stricter browser is entitled to reject, leaving a signed-out user
+    holding a cookie for a session the server has already revoked.
+    """
+    secure = get_settings().cookie_secure
     for name in (SESSION_COOKIE, CSRF_COOKIE):
-        response.delete_cookie(name, path="/")
+        response.delete_cookie(name, path="/", secure=secure, samesite="lax")
 
 
 # --- session ----------------------------------------------------------------

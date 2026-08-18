@@ -395,3 +395,24 @@ def test_a_reading_for_an_unknown_building_does_not_wedge_ingestion(ingester, se
     publish(ingester, 3)
     assert ingester.flush() == 3
     assert [r["seq"] for r in stored_rows(session_factory)] == [0, 1, 2]
+
+
+def test_one_unknown_building_does_not_cost_the_whole_batch(ingester, session_factory):
+    """Isolate the culprit, do not discard its neighbours.
+
+    A batch is up to 500 readings. Dropping all of them to be rid of one would throw
+    away 499 good ones, and would keep doing it for as long as whatever is publishing
+    the unknown id carries on.
+    """
+    publish(ingester, 4)                       # b001, which exists
+    ingester._on_message(None, None, FakeMessage({
+        "building_id": "ghost",
+        "ts": T0.isoformat(),
+        "kw": 40.0,
+        "source": "sim",
+    }))
+    publish(ingester, 2, start_index=4)        # more b001 behind the bad one
+
+    assert ingester.flush() == 6, "the good readings should survive the bad one"
+    assert ingester.rejected == 1
+    assert [r["seq"] for r in stored_rows(session_factory)] == [0, 1, 2, 3, 4, 5]

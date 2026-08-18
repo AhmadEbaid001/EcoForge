@@ -66,6 +66,10 @@ _context: OptimizerContext | None = None
 # outside, from a portfolio that has gone quiet.
 _ingester: object | None = None
 
+# Rejected-reading count at the previous /health call, so the endpoint can report
+# that readings are being refused right now rather than that they once were.
+_rejected_seen = 0
+
 
 def get_context(session: Session = Depends(get_session)) -> OptimizerContext:
     """Cached candidate set, rebuilt when the portfolio or catalog changes."""
@@ -435,7 +439,16 @@ def _ingest_status() -> str:
     """
     if _ingester is None:
         return "disabled"
-    return "stalled" if getattr(_ingester, "write_failures", 0) else "ok"
+    if getattr(_ingester, "write_failures", 0):
+        return "stalled"
+    # Rejections are counted for the life of the process, so reporting on the total
+    # would pin this to "rejecting" forever after one bad reading. What matters is
+    # whether it is happening NOW, which is what the delta since the last check says.
+    global _rejected_seen
+    rejected = getattr(_ingester, "rejected", 0)
+    recent = rejected > _rejected_seen
+    _rejected_seen = rejected
+    return "rejecting" if recent else "ok"
 
 
 @app.get("/api/v1/meta", dependencies=[Depends(require(VIEWER))])

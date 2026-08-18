@@ -894,8 +894,14 @@ export const admin = {
           <div id="audit-body"></div>
         </section>`;
 
+      /* Rejections have to land somewhere. `guard` covers the work inside render,
+       * but a throw between building the markup and writing it would escape into an
+       * unhandled rejection - a screen that silently stops responding to its own
+       * buttons, with the reason only in the console. */
       const reload = (message) => admin.render(root, ctx).then(() => {
         if (message) setStatus(root, { kind: 'ok', message });
+      }).catch((error) => {
+        setStatus(root, { kind: 'error', message: error?.detail || String(error) });
       });
 
       const paintAudit = () => {

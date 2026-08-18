@@ -27,7 +27,7 @@ building is a few hundred kilobytes across fifty buildings.
 from __future__ import annotations
 
 import logging
-from collections import defaultdict, deque
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -56,6 +56,20 @@ MIN_RESIDUALS = 200             # before this, the reference statistic is noise
 
 # A meter reporting the identical value this many times running is stuck.
 FLATLINE_RUN = 12               # three hours at 15-minute resolution
+
+# How many buildings the detector will hold state for at once.
+#
+# Each BuildingState is bounded by construction, but the DICTIONARY holding them was
+# not, and its keys come straight out of an MQTT payload. A publisher on the broker
+# sending readings for invented building ids would grow it for the life of the
+# process - and the ingester scores a reading BEFORE the database gets a chance to
+# reject it, so the foreign key does not help here.
+#
+# The portfolio is fifty. The cap is well clear of any real deployment, and when it
+# is reached the least recently scored building is evicted rather than the oldest
+# added - a real building that reports every fifteen minutes must never be dropped in
+# favour of junk that arrived once.
+MAX_TRACKED_BUILDINGS = 512
 
 
 @dataclass
@@ -92,9 +106,31 @@ class StreamingDetector:
 
     def __init__(self, k: float = 8.0):
         self.k = k
-        self.state: dict[str, BuildingState] = defaultdict(BuildingState)
+        # Insertion-ordered and used as an LRU: `_state_for` moves a building to the
+        # end each time it is touched, so popping the front evicts the least recently
+        # scored. A defaultdict cannot do that, and it also created an entry for every
+        # id anyone ever published.
+        self.state: dict[str, BuildingState] = {}
+        self.evicted = 0
         self.flagged = 0
         self.scored = 0
+
+    def _state_for(self, building_id: str) -> BuildingState:
+        state = self.state.pop(building_id, None)
+        if state is None:
+            state = BuildingState()
+            if len(self.state) >= MAX_TRACKED_BUILDINGS:
+                stale, _ = next(iter(self.state.items()))
+                del self.state[stale]
+                self.evicted += 1
+                if self.evicted == 1 or self.evicted % 1000 == 0:
+                    log.warning(
+                        "tracking more than %d buildings; evicted %r (%d so far). "
+                        "Something is publishing ids the portfolio does not contain.",
+                        MAX_TRACKED_BUILDINGS, stale, self.evicted,
+                    )
+        self.state[building_id] = state
+        return state
 
     # -- warm start ----------------------------------------------------------
 
@@ -135,8 +171,7 @@ class StreamingDetector:
         ).all()
 
         for building_id, ts, kw in rows:
-            state = self.state[building_id]
-            state.remember(as_utc(ts), float(kw))
+            self._state_for(building_id).remember(as_utc(ts), float(kw))
 
         log.info("warmed %d buildings from %d readings since %s",
                  len(self.state), len(rows), cutoff.isoformat())
@@ -145,7 +180,7 @@ class StreamingDetector:
     # -- scoring -------------------------------------------------------------
 
     def score(self, building_id: str, ts: datetime, kw: float) -> LiveAnomaly | None:
-        state = self.state[building_id]
+        state = self._state_for(building_id)
 
         anomaly = self._score_flatline(state, building_id, ts, kw)
         if anomaly is None:

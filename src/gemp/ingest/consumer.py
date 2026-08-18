@@ -36,6 +36,7 @@ from sqlalchemy.exc import IntegrityError
 from gemp.config import get_settings
 from gemp.db import (
     AnomalyRow,
+    BuildingRow,
     IntegrityCheckpointRow,
     ReadingRow,
     insert_ignore,
@@ -223,17 +224,13 @@ class Ingester:
             # retried on every pass, blocking every valid reading behind it. Ingestion
             # would be permanently dead while the thread stayed alive.
             #
-            # So this batch is dropped rather than requeued, and the ids are named:
-            # the operator needs to know WHICH building the platform does not know
-            # about, because the fix is to add it, not to restart anything.
-            self.rejected += len(pending)
-            unknown = sorted({r["building_id"] for r in pending})[:5]
-            log.error(
-                "database refused a batch of %d readings and it has been dropped "
-                "(%d total). Buildings in the batch: %s. %s",
-                len(pending), self.rejected, ", ".join(unknown), exc.orig or exc,
-            )
-            return 0
+            # The offending readings are isolated rather than the batch discarded: at
+            # 500 rows a batch, dropping all of them to be rid of one would throw away
+            # 499 good readings, and would keep doing it for as long as whatever is
+            # publishing the unknown id carries on.
+            written, detected, duplicates = self._write_without_unknown(pending, exc)
+            if written == 0 and not detected:
+                return 0
         except Exception:
             # Anything else is treated as transient - a dropped connection, a
             # restarting database. The batch has already left the queue, so putting it
@@ -262,6 +259,63 @@ class Ingester:
         self.written += written
         self.anomalies += len(detected)
         return written
+
+    def _write_without_unknown(
+        self, pending: list[dict[str, Any]], exc: IntegrityError
+    ) -> tuple[int, list, int]:
+        """Retry a refused batch with the readings the portfolio cannot accept removed.
+
+        Only foreign-key failures can be isolated this way, because only they have an
+        identifiable culprit: a building_id with no row in `building`. Asking which
+        ids exist costs one query on a path that is already exceptional.
+
+        Anything still failing after that is genuinely undiagnosable from here, so the
+        batch is dropped rather than retried forever - which is the behaviour this
+        whole branch exists to prevent.
+        """
+        try:
+            with self.session_factory() as session:
+                known = {
+                    row[0] for row in session.execute(
+                        select(BuildingRow.id).where(
+                            BuildingRow.id.in_({r["building_id"] for r in pending})
+                        )
+                    ).all()
+                }
+        except Exception:  # noqa: BLE001 - fall back to dropping the batch
+            known = set()
+
+        usable = [r for r in pending if r["building_id"] in known]
+        unknown_ids = sorted({r["building_id"] for r in pending} - known)
+        refused = len(pending) - len(usable)
+
+        if refused:
+            self.rejected += refused
+            log.error(
+                "%d reading(s) refer to buildings the portfolio does not contain and "
+                "have been dropped (%d total). Unknown ids: %s. Add the building rows; "
+                "restarting will not help.",
+                refused, self.rejected, ", ".join(unknown_ids[:5]),
+            )
+
+        if not usable:
+            if not refused:
+                # The violation was something other than an unknown building, so there
+                # is nothing here to isolate.
+                self.rejected += len(pending)
+                log.error("database refused a batch of %d readings and it has been "
+                          "dropped (%d total): %s",
+                          len(pending), self.rejected, exc.orig or exc)
+            return 0, [], 0
+
+        try:
+            return self._write(usable)
+        except IntegrityError as second:
+            self.rejected += len(usable)
+            log.error("batch still refused after removing %d unknown-building "
+                      "reading(s); dropped %d more (%d total): %s",
+                      refused, len(usable), self.rejected, second.orig or second)
+            return 0, [], 0
 
     def _write(self, pending: list[dict[str, Any]]) -> tuple[int, list, int]:
         """Sign and store one batch. Chain state advances only if the commit lands.
