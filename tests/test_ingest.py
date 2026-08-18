@@ -292,3 +292,80 @@ def test_checkpoint_is_mirrored_outside_the_database(ingester, session_factory):
     assert records[-1]["building_id"] == "b001"
     assert records[-1]["last_seq"] == 5
     assert len(bytes.fromhex(records[-1]["head_sig"])) == 32
+
+
+# --- the chain survives a discarded row and a failed write -------------------
+
+
+def test_a_row_already_stored_does_not_punch_a_hole_in_the_chain(ingester, session_factory, settings):
+    """ON CONFLICT DO NOTHING is silent, and the chain used to pay for that.
+
+    A reading whose (building_id, ts) is already on disk is discarded by the write.
+    If a sequence had already been consumed for it, the next reading chains onto a
+    signature that was never stored - seq 0, 2, 3 - and verify_chain reports tampering
+    on data nobody touched.
+    """
+    publish(ingester, 1)
+    assert ingester.flush() == 1
+
+    # The same reading arrives again, ahead of one the ingester has not seen. The
+    # in-memory head is rewound first so the last-timestamp guard cannot be what saves
+    # it: only asking the database can.
+    ingester.chains["b001"].last_ts = None
+    publish(ingester, 1, start_index=0)
+    publish(ingester, 1, start_index=1)
+    assert ingester.flush() == 1, "the already-stored reading should not be rewritten"
+
+    rows = stored_rows(session_factory)
+    assert [r["seq"] for r in rows] == list(range(len(rows))), \
+        f"gap in the chain: {[r['seq'] for r in rows]}"
+    assert verify_chain(settings.key_bytes, rows, expect_first_seq=0).ok
+
+
+def test_a_failed_write_requeues_the_batch_and_leaves_the_chain_alone(ingester, session_factory):
+    """A transient database error must cost nothing but time.
+
+    The batch has left the queue by the time the write runs, and the chain head used
+    to be advanced while the rows were being built - so a failure lost the readings
+    AND left last_seq describing rows that do not exist, with every later reading
+    chaining onto a phantom.
+    """
+    publish(ingester, 1)
+    assert ingester.flush() == 1
+
+    head = ingester.chains["b001"]
+    before = (head.last_seq, head.last_sig, head.last_ts)
+
+    publish(ingester, 1, start_index=1)
+
+    def explode():
+        raise RuntimeError("database went away")
+
+    working = ingester.session_factory
+    ingester.session_factory = explode
+    try:
+        with pytest.raises(RuntimeError):
+            ingester.flush()
+    finally:
+        ingester.session_factory = working
+
+    head = ingester.chains["b001"]
+    assert (head.last_seq, head.last_sig, head.last_ts) == before, \
+        "the chain advanced for a batch that was never written"
+    assert len(ingester.queue) == 1, "the batch was dropped instead of requeued"
+
+    # The retry writes it, contiguously.
+    assert ingester.flush() == 1
+    assert [r["seq"] for r in stored_rows(session_factory)] == [0, 1]
+
+
+def test_the_queue_is_bounded(ingester):
+    """An unbounded queue behind a retrying writer is a memory leak with a schedule.
+
+    Before the writer retried, an outage killed the ingester and the queue died with
+    it. Now the readings wait, so something has to say how many.
+    """
+    from gemp.ingest.consumer import MAX_QUEUED_READINGS
+
+    assert ingester.queue.maxlen == MAX_QUEUED_READINGS
+    assert ingester.overflowed == 0

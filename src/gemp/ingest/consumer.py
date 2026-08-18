@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import paho.mqtt.client as mqtt
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from gemp.config import get_settings
 from gemp.db import (
@@ -49,6 +49,20 @@ log = logging.getLogger("gemp.ingest")
 
 ANCHOR_PATH = Path("anchor") / "integrity_anchor.jsonl"
 CHECKPOINT_EVERY_S = 60.0
+
+# How many readings may wait in memory for the database to come back.
+#
+# The queue used to be unbounded, which was survivable only because a failing write
+# killed the ingester outright. Now that a write failure is retried, an outage means
+# readings accumulate for its whole duration - fifty buildings at 720x replay is
+# roughly 200 readings a second, so an hour down is three quarters of a million dicts.
+#
+# At the cap the OLDEST readings are discarded rather than the newest. Both lose data
+# and there is no third option; keeping the newest means that when the database
+# returns, the dashboard and the detector resume from the present rather than
+# replaying an hour of history nobody is waiting for. Discards are counted, and the
+# gap is visible in the stored timestamps either way.
+MAX_QUEUED_READINGS = 100_000
 
 
 @dataclass
@@ -96,7 +110,7 @@ class Ingester:
             settings.webhook_url, settings.webhook_min_severity
         )
 
-        self.queue: deque[dict[str, Any]] = deque()
+        self.queue: deque[dict[str, Any]] = deque(maxlen=MAX_QUEUED_READINGS)
         self.chains: dict[str, ChainState] = {}
         self.running = True
         self.written = 0
@@ -108,6 +122,8 @@ class Ingester:
         # once did.
         self.write_failures = 0
         self.last_error = ""
+        # Readings discarded because the queue was full while the database was away.
+        self.overflowed = 0
         self._last_checkpoint = time.monotonic()
 
         self.client = mqtt.Client(
@@ -132,6 +148,14 @@ class Ingester:
     def _on_message(self, client, userdata, message):
         try:
             payload = json.loads(message.payload)
+            # A full deque evicts silently on append, so count the loss here - a
+            # reading that vanished without a number attached to it is the kind of
+            # gap that gets explained away as "the simulator must have paused".
+            if len(self.queue) == MAX_QUEUED_READINGS:
+                self.overflowed += 1
+                if self.overflowed == 1 or self.overflowed % 10_000 == 0:
+                    log.error("ingest queue full at %d readings; discarding the "
+                              "oldest (%d so far)", MAX_QUEUED_READINGS, self.overflowed)
             self.queue.append({
                 "building_id": str(payload["building_id"]),
                 "ts": as_utc(payload["ts"]),
@@ -185,37 +209,102 @@ class Ingester:
         while self.queue and len(pending) < self.batch_rows:
             pending.append(self.queue.popleft())
 
-        rows = []
-        for reading in pending:
-            state = self.chains.setdefault(reading["building_id"], ChainState())
+        try:
+            written, detected, duplicates = self._write(pending)
+        except Exception:
+            # The batch has already left the queue, so putting it back is the whole
+            # difference between "retried on the next pass" and "silently lost".
+            # Chain state was not touched - see `_write` - so the retry re-signs from
+            # the same head and produces the same rows.
+            self.queue.extendleft(reversed(pending))
+            raise
 
-            # Drop redelivered or out-of-order readings before allocating a sequence.
-            if state.last_ts is not None and reading["ts"] <= state.last_ts:
-                self.duplicates += 1
-                continue
+        self.duplicates += duplicates
 
-            seq = state.last_seq + 1
-            signed = {**reading, "seq": seq}
-            signature = sign(self.key, signed, state.last_sig)
+        # After the commit, never before. A notification for a fault that then failed
+        # to store would send someone looking for a row that does not exist, and the
+        # webhook is fire-and-forget so there is no taking it back.
+        for anomaly in detected:
+            self.webhook.notify(Notification(
+                building_id=anomaly.building_id,
+                ts=anomaly.ts,
+                observed_kw=anomaly.observed_kw,
+                expected_kw=anomaly.expected_kw,
+                robust_z=anomaly.robust_z,
+                severity=anomaly.severity,
+                kind=anomaly.kind,
+            ))
 
-            rows.append({**signed, "sig": signature})
-            state.last_seq = seq
-            state.last_sig = signature
-            state.last_ts = reading["ts"]
+        self.written += written
+        self.anomalies += len(detected)
+        return written
 
-        if not rows:
-            return 0
+    def _write(self, pending: list[dict[str, Any]]) -> tuple[int, list, int]:
+        """Sign and store one batch. Chain state advances only if the commit lands.
 
-        detected = [
-            found
-            for found in (
-                self.detector.score(r["building_id"], r["ts"], r["kw"]) for r in rows
-            )
-            if found is not None
-        ]
+        Two things had to move for the chain to be safe, and both are about the gap
+        between deciding a sequence number and the row actually existing.
+
+        **Signing happens inside the write transaction, after asking what is stored.**
+        The insert is ON CONFLICT DO NOTHING, so a row whose (building_id, ts) already
+        exists is discarded by the database without complaint - while the in-memory
+        chain had already consumed a sequence for it and signed the NEXT reading
+        against its signature. One discarded row left a permanent hole: seq 10, 12,
+        13, with 12 chained to a signature that was never stored, which `verify_chain`
+        reports as tampering. That is the worst possible false alarm for the one
+        feature whose entire purpose is to be believed. The last-timestamp check
+        catches redelivery; only the database catches a row already sitting ahead of
+        this ingester's head, left by a second writer or by a restart that read its
+        heads mid-commit.
+
+        **Chain state is advanced only after the commit returns.** It used to be
+        mutated while building the batch, so a failed write left `last_seq` and
+        `last_sig` describing rows that do not exist - and every later reading chained
+        onto a phantom. Now the new heads are held aside and applied at the end, which
+        is also what makes requeueing the batch in `flush` correct rather than a way
+        to write it twice.
+        """
+        duplicates = 0
+        heads: dict[str, tuple[int, bytes, datetime]] = {}
+        rows: list[dict[str, Any]] = []
 
         with self.session_factory() as session:
             dialect = session.bind.dialect.name
+            stored = self._already_stored(session, pending)
+
+            for reading in pending:
+                building_id = reading["building_id"]
+                state = self.chains.setdefault(building_id, ChainState())
+                last_seq, last_sig, last_ts = heads.get(
+                    building_id, (state.last_seq, state.last_sig, state.last_ts)
+                )
+
+                # Redelivered, out of order, or already on disk.
+                if last_ts is not None and reading["ts"] <= last_ts:
+                    duplicates += 1
+                    continue
+                if (building_id, reading["ts"]) in stored:
+                    duplicates += 1
+                    continue
+
+                seq = last_seq + 1
+                signed = {**reading, "seq": seq}
+                signature = sign(self.key, signed, last_sig)
+
+                rows.append({**signed, "sig": signature})
+                heads[building_id] = (seq, signature, reading["ts"])
+
+            if not rows:
+                return 0, [], duplicates
+
+            detected = [
+                found
+                for found in (
+                    self.detector.score(r["building_id"], r["ts"], r["kw"]) for r in rows
+                )
+                if found is not None
+            ]
+
             session.execute(insert_ignore(ReadingRow, dialect), rows)
 
             if detected:
@@ -235,23 +324,34 @@ class Ingester:
                     for a in detected
                 ])
 
-        # After the commit, never before. A notification for a fault that then failed
-        # to store would send someone looking for a row that does not exist, and the
-        # webhook is fire-and-forget so there is no taking it back.
-        for anomaly in detected:
-            self.webhook.notify(Notification(
-                building_id=anomaly.building_id,
-                ts=anomaly.ts,
-                observed_kw=anomaly.observed_kw,
-                expected_kw=anomaly.expected_kw,
-                robust_z=anomaly.robust_z,
-                severity=anomaly.severity,
-                kind=anomaly.kind,
-            ))
+        # Committed. Only now is it true that these rows exist.
+        for building_id, (seq, signature, ts) in heads.items():
+            state = self.chains[building_id]
+            state.last_seq, state.last_sig, state.last_ts = seq, signature, ts
 
-        self.written += len(rows)
-        self.anomalies += len(detected)
-        return len(rows)
+        return len(rows), detected, duplicates
+
+    def _already_stored(self, session, pending: list[dict[str, Any]]) -> set:
+        """Which (building_id, ts) pairs in this batch the table already holds.
+
+        Filtered by building and by timestamp separately rather than by tuple: row
+        comparisons are supported unevenly across dialects, and this write path is
+        integration-tested on SQLite as well as PostgreSQL. The batch is bounded by
+        `ingest_batch_rows`, so the over-broad WHERE reads a handful of rows more
+        than strictly needed and stays one round trip.
+        """
+        if not pending:
+            return set()
+
+        buildings = {r["building_id"] for r in pending}
+        stamps = {r["ts"] for r in pending}
+        rows = session.execute(
+            select(ReadingRow.building_id, ReadingRow.ts).where(
+                ReadingRow.building_id.in_(buildings),
+                ReadingRow.ts.in_(stamps),
+            )
+        ).all()
+        return {(building_id, as_utc(ts)) for building_id, ts in rows}
 
     def write_checkpoint(self) -> None:
         """Anchor every chain head, in the database AND outside its volume.

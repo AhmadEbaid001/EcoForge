@@ -13,6 +13,7 @@ feature builder cheap.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
@@ -421,17 +422,41 @@ _engine = None
 _SessionLocal = None
 
 
+# Both lazy globals are built on first use, and first use is not single-threaded:
+# the ingester runs in its own thread inside the API process and the scheduler in
+# another, so two of them can reach an unset `_engine` at the same moment during
+# start-up. Without the lock both would call create_engine and one would be
+# discarded - along with its connection pool, which is not garbage a long-lived
+# process should be quietly accumulating. Double-checked so the lock is paid for
+# once rather than on every session.
+#
+# REENTRANT, and that is not a detail: get_sessionmaker holds this lock while it
+# calls get_engine, which takes it again. A plain Lock deadlocks the first thread
+# that builds both - which is every start-up, since the sessionmaker is what asks
+# for the engine. The API came up, logged "application startup complete", and then
+# hung on the first request that touched the database.
+_init_lock = threading.RLock()
+
+
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_engine(get_settings().dsn, pool_pre_ping=True, future=True)
+        with _init_lock:
+            if _engine is None:
+                _engine = create_engine(
+                    get_settings().dsn, pool_pre_ping=True, future=True
+                )
     return _engine
 
 
 def get_sessionmaker() -> sessionmaker[Session]:
     global _SessionLocal
     if _SessionLocal is None:
-        _SessionLocal = sessionmaker(bind=get_engine(), expire_on_commit=False)
+        with _init_lock:
+            if _SessionLocal is None:
+                _SessionLocal = sessionmaker(
+                    bind=get_engine(), expire_on_commit=False
+                )
     return _SessionLocal
 
 

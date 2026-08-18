@@ -43,6 +43,7 @@ integrity_anchor.log
 # serves web/, so none of them ever reached a container. Untracking them keeps the
 # published repository to the platform itself.
 CLAUDE.md
+CLAUDE-DESIGN-BRIEF.md
 HANDOFF.md
 HANDOFF-UI-UX.md
 STITCH-PROMPT.md

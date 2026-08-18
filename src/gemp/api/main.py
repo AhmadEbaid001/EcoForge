@@ -61,6 +61,11 @@ log = logging.getLogger("gemp.api")
 
 _context: OptimizerContext | None = None
 
+# Set by the lifespan. /health reads it, which is the only reason it exists at module
+# scope: a thread that has stopped writing is otherwise indistinguishable, from
+# outside, from a portfolio that has gone quiet.
+_ingester: object | None = None
+
 
 def get_context(session: Session = Depends(get_session)) -> OptimizerContext:
     """Cached candidate set, rebuilt when the portfolio or catalog changes."""
@@ -127,6 +132,9 @@ async def lifespan(app: FastAPI):
     log.info("gemp api starting")
     ingester, thread = _start_ingester()
 
+    global _ingester
+    _ingester = ingester
+
     from gemp.scheduler import start_scheduler
 
     scheduler = start_scheduler()
@@ -138,6 +146,7 @@ async def lifespan(app: FastAPI):
         if ingester is not None:
             ingester.stop()
             thread.join(timeout=10)
+        _ingester = None
         log.info("gemp api stopping")
 
 
@@ -398,7 +407,8 @@ class OptimizeResponse(BaseModel):
 @app.get("/health")
 def health(session: Session = Depends(get_session)) -> JSONResponse:
     """Per-dependency status, so a failing container says which dependency failed."""
-    status = {"api": "ok", "database": "unknown", "readings": None}
+    status = {"api": "ok", "database": "unknown", "readings": None,
+              "ingest": _ingest_status()}
     code = 200
     try:
         session.execute(text("SELECT 1"))
@@ -409,6 +419,23 @@ def health(session: Session = Depends(get_session)) -> JSONResponse:
         status["database"] = f"error: {type(exc).__name__}"
         code = 503
     return JSONResponse(status, status_code=code)
+
+
+def _ingest_status() -> str:
+    """Whether readings are actually being written, in one word.
+
+    Everything else on this endpoint can be green while ingestion is dead: the API
+    answers, the database answers, and `readings` simply stops advancing - which
+    nothing watches, and which the simulator reads to decide where to resume. A
+    failing write path now says so here rather than only in the log.
+
+    Coarse on purpose. /health is public, and the count of consecutive failures and
+    the driver's error text are operator detail, not something to hand an anonymous
+    caller.
+    """
+    if _ingester is None:
+        return "disabled"
+    return "stalled" if getattr(_ingester, "write_failures", 0) else "ok"
 
 
 @app.get("/api/v1/meta", dependencies=[Depends(require(VIEWER))])
