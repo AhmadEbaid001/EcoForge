@@ -37,7 +37,7 @@ docker compose up -d && python -m gemp.seed --months 6
 |---|---|
 | `python -m gemp.domain.catalog --validate` | Check the data contract. Add `--strict` to fail on uncited catalog rows. |
 | `python scripts/fetch_osm_buildings.py` | Build the portfolio from **real** OpenStreetMap footprints (New Cairo). Needs network. |
-| `python scripts/gen_buildings.py` | Offline fallback: synthetic square footprints, same schema. |
+| `python scripts/gen_buildings.py` | Offline fallback: synthetic square footprints, same schema. It produces a *different portfolio* from the versioned one, so the published numbers will not reproduce against it. |
 | `python -m gemp.optimize.cli --budget 10000000` | Solve and print an allocation. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare` | Every solver on the same instance. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats every heuristic. |

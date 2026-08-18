@@ -16,8 +16,15 @@ secrets/
 
 # --- generated data (regenerate with scripts/, do not version) ---
 data/ground_truth.csv
-data/buildings.geojson
 data/*.parquet
+
+# data/buildings.geojson is deliberately NOT ignored, and the reason took a CI run
+# to find. There are two generators: fetch_osm_buildings.py uses real OpenStreetMap
+# footprints, gen_buildings.py draws synthetic squares offline. They produce
+# different portfolios, and every number in the paper was measured on the OSM one.
+# While the fixture was unversioned, a fresh clone regenerated the synthetic
+# portfolio and the claims harness then re-measured the paper's claims against a
+# system the paper does not describe - silently, and passing. It is 76 KB.
 artifacts/
 models/
 out/

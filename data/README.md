@@ -9,7 +9,7 @@ than silently producing wrong recommendations.
 |---|---|---|
 | `catalog.csv` | Nada | One row per retrofit intervention: cost model, saving fraction, service life, embodied carbon, applicability rule, **source citation** |
 | `params.yaml` | Nada | Grid factor, analysis horizon, discount rate, end-use shares, condition multipliers, solar physics, anomaly threshold |
-| `buildings.geojson` | generated | Portfolio fixture. Regenerate with `python scripts/gen_buildings.py`. Not versioned. |
+| `buildings.geojson` | versioned | The 50-building portfolio every published number was measured on. Real OpenStreetMap footprints, from `scripts/fetch_osm_buildings.py`. **Do not regenerate it casually** — `scripts/gen_buildings.py` is an offline fallback that draws synthetic squares, and swapping one for the other changes the answer. |
 
 Validate an edit before committing:
 
