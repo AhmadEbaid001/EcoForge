@@ -362,7 +362,7 @@ body.nav-collapsed .sidebar { width: 64px; }
 
 .sidebar-brand {
   display: flex; align-items: center; gap: var(--s-sm);
-  padding: 0 var(--s-md) var(--s-xl); min-width: 0;
+  padding: 0 var(--s-md) var(--s-lg); min-width: 0;
 }
 .sidebar-brand-text { min-width: 0; }
 .sidebar-brand h1 {
@@ -371,13 +371,14 @@ body.nav-collapsed .sidebar { width: 64px; }
 }
 .sub { margin: var(--s-xs) 0 0; font-size: var(--fs-label-sm); color: var(--ink-2); }
 
-/* The reference's 32px rounded tile. Drawn, not fetched. */
-.mark {
-  width: 32px; height: 32px; border-radius: var(--radius); flex: none;
-  background: var(--accent-bright);
-  display: grid; place-items: center; color: var(--accent-soft);
-}
-.mark .icon { width: 20px; height: 20px; }
+/* The compact mark: the wordmark cropped to its G, shown only on the collapsed
+   rail. Hidden the rest of the time, because the full wordmark is right there and
+   two brand marks side by side is one too many. */
+.brand-mark { display: none; flex: none; }
+.brand-mark-svg { display: block; height: 26px; width: auto; }
+.brand-mark-svg .wm-ink { fill: var(--brand-ink); }
+.brand-mark-svg .wm-accent { fill: var(--brand-accent); }
+body.nav-collapsed .brand-mark { display: block; }
 
 .nav { display: flex; flex-direction: column; gap: var(--s-xs); flex: 1; }
 .sidebar-foot {

@@ -63,8 +63,6 @@ const ICONS = {
   signout: '<path d="M14.5 8V5.5a1.5 1.5 0 0 0-1.5-1.5H6a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 6 20h7a1.5 1.5 0 0 0 1.5-1.5V16"/>' +
            '<path d="M9.5 12h10m0 0-3-3m3 3-3 3"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
-  /* The reference's brand glyph was Material's `electric_bolt`. */
-  bolt: '<path class="filled" d="M13 2 4.5 13.2H11l-1.2 8.8L19.5 10.8H13z"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   refresh: '<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/>',
   table: '<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/>' +
