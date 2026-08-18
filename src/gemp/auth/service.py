@@ -97,14 +97,36 @@ class Principal:
 
 _failures: dict[str, deque[float]] = defaultdict(deque)
 
+# The keys are attacker-chosen - `user:<whatever was typed at the login form>` - and
+# nothing here ever removed one. A login flood with a fresh username each time grew
+# this dictionary for the life of the process, and a window was only ever trimmed if
+# that exact key came back. The sweep below is what bounds it: keys whose window has
+# aged out are dropped, not merely emptied. Sweeping is O(keys), so it is deferred
+# until there are enough keys for that to be worth doing - an honest deployment never
+# reaches the threshold.
+_SWEEP_ABOVE_KEYS = 512
 
-def _record_failure(key: str) -> None:
-    window = _failures[key]
-    now = time.monotonic()
-    window.append(now)
+
+def _trim(window: deque[float], now: float) -> deque[float]:
+    """Drop attempts that have fallen out of the window. Returns the same deque."""
     cutoff = now - FAILURE_WINDOW.total_seconds()
     while window and window[0] < cutoff:
         window.popleft()
+    return window
+
+
+def _sweep(now: float) -> None:
+    """Forget every key whose window is now empty."""
+    stale = [key for key, window in _failures.items() if not _trim(window, now)]
+    for key in stale:
+        _failures.pop(key, None)
+
+
+def _record_failure(key: str) -> None:
+    now = time.monotonic()
+    if len(_failures) > _SWEEP_ABOVE_KEYS:
+        _sweep(now)
+    _trim(_failures[key], now).append(now)
 
 
 def _retry_after(key: str) -> int:
@@ -112,9 +134,10 @@ def _retry_after(key: str) -> int:
     if not window:
         return 0
     now = time.monotonic()
-    cutoff = now - FAILURE_WINDOW.total_seconds()
-    while window and window[0] < cutoff:
-        window.popleft()
+    if not _trim(window, now):
+        # Nothing left in the window, so stop holding the key open.
+        _failures.pop(key, None)
+        return 0
     if len(window) < MAX_FAILURES:
         return 0
     return max(1, int(LOCKOUT.total_seconds() - (now - window[-1])))

@@ -103,6 +103,11 @@ class Ingester:
         self.anomalies = 0
         self.duplicates = 0
         self.malformed = 0
+        # Consecutive failures of the write path. Reset by the first success, so a
+        # non-zero value means ingestion is failing RIGHT NOW rather than that it
+        # once did.
+        self.write_failures = 0
+        self.last_error = ""
         self._last_checkpoint = time.monotonic()
 
         self.client = mqtt.Client(
@@ -307,21 +312,52 @@ class Ingester:
             time.sleep(0.2)
             now = time.monotonic()
 
-            if len(self.queue) >= self.batch_rows or (now - last_flush) >= self.batch_seconds:
-                written = self.flush()
-                last_flush = now
-                if written:
-                    log.debug("wrote %d rows (total %d)", written, self.written)
+            # Every database touch below is wrapped, and the reason is worth stating
+            # because the failure it prevents is invisible.
+            #
+            # This runs as a DAEMON THREAD inside the API process. An exception that
+            # escapes here does not crash anything: it kills this thread and leaves
+            # the API serving normally. /health goes on reporting `api: ok` and
+            # `database: ok`, the container healthcheck goes on passing, and the only
+            # symptom is that `readings` stops advancing - which also freezes the
+            # simulator, since resume_point() reads that field. Ingestion would be
+            # dead until somebody restarted the process, with nothing anywhere saying
+            # so. One dropped connection while TimescaleDB restarts is enough.
+            #
+            # A failed flush leaves the batch in the queue, so the next pass retries
+            # it. The chain is unharmed: `flush` advances chain state only for rows it
+            # is about to write, inside the same call that writes them.
+            try:
+                if len(self.queue) >= self.batch_rows or (now - last_flush) >= self.batch_seconds:
+                    written = self.flush()
+                    last_flush = now
+                    self.write_failures = 0
+                    if written:
+                        log.debug("wrote %d rows (total %d)", written, self.written)
 
-            if now - self._last_checkpoint >= CHECKPOINT_EVERY_S:
-                self.write_checkpoint()
-                self._last_checkpoint = now
+                if now - self._last_checkpoint >= CHECKPOINT_EVERY_S:
+                    self.write_checkpoint()
+                    self._last_checkpoint = now
+            except Exception as exc:  # noqa: BLE001 - a dead ingester is worse
+                self.write_failures += 1
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                last_flush = now
+                # Loud on the first failure and then every fiftieth, so a database
+                # that stays down does not bury everything else in the log.
+                if self.write_failures == 1 or self.write_failures % 50 == 0:
+                    log.error("ingest write failed (%d in a row), %d readings queued: %s",
+                              self.write_failures, len(self.queue), exc)
 
             if max_seconds is not None and now - started >= max_seconds:
                 self.running = False
 
-        self.flush()
-        self.write_checkpoint()
+        # Shutdown: still best-effort, for the same reason. A failure here must not
+        # stop the broker being disconnected or the webhook worker being joined.
+        for final in (self.flush, self.write_checkpoint):
+            try:
+                final()
+            except Exception as exc:  # noqa: BLE001
+                log.error("%s failed during shutdown: %s", final.__name__, exc)
         self.client.loop_stop()
         self.client.disconnect()
         self.webhook.stop()

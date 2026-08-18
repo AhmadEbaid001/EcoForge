@@ -17,7 +17,7 @@ import { api, setPasswordChangeHandler, setUnauthenticatedHandler } from './api.
 import { mark, wordmark } from './brand.js';
 import { escapeHtml, hydrateCharts, icon } from './charts.js';
 
-import { mapView } from './map.js';
+import { checkHealth, mapView } from './map.js';
 import { account, admin, alerts, forecasts, integrity, overview, runs } from './views.js';
 
 const VIEWS = {
@@ -362,6 +362,12 @@ async function showApp() {
   try {
     applyCollapse(window.localStorage.getItem(NAV_KEY) === 'collapsed');
   } catch { applyCollapse(false); }
+
+  /* The status light belongs to the shell, so the shell asks. It used to be the map
+   * view's job, which meant every other screen showed "connecting" indefinitely on a
+   * system that had connected. Not awaited: the shell must not wait on a health probe
+   * before showing the view somebody asked for. */
+  checkHealth();
 
   await navigate(fromHash() || 'overview');
 }

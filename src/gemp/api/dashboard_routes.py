@@ -155,10 +155,24 @@ def anomalies_daily(
         if not acknowledged:
             by_day[key]["open"] += 1
 
+    # Every day in the window, including the quiet ones.
+    #
+    # Emitting only the days that HAVE alerts looks equivalent and is not: the chart
+    # places bars by their index in this array, so a missing day does not leave a gap
+    # - it pulls every later bar one slot to the left while the axis goes on claiming
+    # the full span. Six alerts spread over three weeks would draw as six adjacent
+    # days. A day with nothing to report is still a day, and saying so is also the
+    # only way the trend reads as a rate.
+    span = (newest.date() - cutoff.date()).days
+    calendar = [cutoff.date() + timedelta(days=offset) for offset in range(span + 1)]
+
     return {
         "days": [
-            {"date": day, **{k: int(v) for k, v in counts.items()}}
-            for day, counts in sorted(by_day.items())
+            {
+                "date": day.isoformat(),
+                **{k: int(v) for k, v in by_day.get(day.isoformat(), Counter()).items()},
+            }
+            for day in calendar
         ]
     }
 

@@ -821,11 +821,17 @@ function setStatus(text, kind) {
   $('health-dot').className = 'dot ' + (kind || '');
 }
 
-async function checkHealth() {
+/* Exported because the sidebar it writes into belongs to the SHELL, not to this
+ * view. It used to be called only when the map mounted, and it wrote only when
+ * something was wrong - so on every other screen the indicator sat on its initial
+ * "connecting" forever, on a system that had connected long ago. Reporting success
+ * is the whole point of a status light. */
+export async function checkHealth() {
   try {
     const res = await fetch('/health');
     const body = await res.json();
     if (body.database !== 'ok') throw new Error('database ' + body.database);
+    setStatus('connected', 'ok');
   } catch (err) {
     setStatus(err.message, 'bad');
   }
