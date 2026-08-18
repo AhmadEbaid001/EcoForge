@@ -1,4 +1,10 @@
-"""Feature construction for per-building load forecasting.
+"""F10 - feature construction for per-building load forecasting.
+
+F10 rejected Prophet and prescribed lag plus calendar features on
+`HistGradientBoostingRegressor` instead. This is that feature set, and it has grown
+past what the finding listed: the Egyptian weekend, the holiday and Ramadan flags,
+and day-of-year are all additions measured to matter here. See `gemp.ml.forecast`
+for the dependency decision itself.
 
 Three families, in descending order of how much they actually explain building load:
 
@@ -11,6 +17,8 @@ Three families, in descending order of how much they actually explain building l
    the public-holiday and Ramadan flags from `gemp.calendar_eg`.
 3. **Rolling statistics.** Recent mean and spread, which carry season and weather
    without needing a weather feed the project does not have.
+4. **The hour-of-week profile**, and the lags expressed relative to it. This one was
+   added last and mattered most; `PROFILE_WEEKS` below says why.
 
 Deliberately absent: temperature. It would help - cooling load is the largest single
 component - but the platform has no weather source, and inventing one would be a
@@ -30,6 +38,42 @@ WEEKEND_DAYS = {4, 5}
 LAG_HOURS = (1, 2, 3, 24, 48, 168)
 ROLLING_WINDOWS = (24, 168)
 
+# Lags re-expressed as "how busy was that hour, relative to normal for that hour of
+# the week". 40 kW says nothing on its own; 40 kW when this building normally draws
+# 20 kW at 3am on a Tuesday says a great deal.
+PROFILE_RATIO_LAGS = (1, 24, 168)
+
+# Weeks of history behind the hour-of-week profile.
+#
+# This feature family is the one that closed F9's precision target, and the reason is
+# worth stating because it is not "more features helped". Everything else here is a
+# persistence signal: the model predicts hour t largely from hour t-1, and that works
+# until the load STEPS. Egyptian load steps at midnight - into the Friday-Saturday
+# weekend, into a public holiday, out of one - and at exactly those hours the lags say
+# "yesterday evening was busy" while the truth is that the building is shut.
+#
+# Measured before this feature existed: the relative residual had a standard deviation
+# of 0.125 at hour 00 and 0.096 at hour 01, against 0.06 for every other hour of the
+# day. The detector scales residuals against a window pooled across all hours, so a
+# systematically worse hour breaches the threshold on ordinary days - 640 of 1,379
+# false alarms began at hour 00, and the dates were public holidays and Fridays.
+#
+# A median over four same-hour-of-week observations knows that Friday 00:00 is not
+# Tuesday 00:00, and dividing the target by it turns the holiday shutdown into a
+# multiplier the model can learn from `is_holiday` alone instead of a shape it has to
+# rebuild from lags that contradict it.
+#
+# Four weeks, not more: the median needs enough samples to ignore a fault, and few
+# enough that a genuine seasonal change is not held back by two months of stale
+# summer. Two are required at minimum, so a building becomes forecastable three weeks
+# in rather than five.
+PROFILE_WEEKS = 4
+PROFILE_MIN_WEEKS = 2
+
+# Below this the profile is not a scale worth dividing by. Expressed in kW because a
+# building drawing under a watt is a dead meter, not a quiet one.
+MIN_PROFILE_KW = 1e-3
+
 FEATURE_COLUMNS: tuple[str, ...] = (
     *(f"lag_{h}h" for h in LAG_HOURS),
     *(f"roll_mean_{w}h" for w in ROLLING_WINDOWS),
@@ -45,12 +89,24 @@ FEATURE_COLUMNS: tuple[str, ...] = (
     # detector faithfully reports every hour of it. Measured: the five worst days in
     # the evaluation were all public holidays.
     "is_holiday", "is_ramadan", "is_day_after_holiday", "is_week_after_holiday",
+    # Typical load for this hour of the week, and the lags divided by it.
+    "profile",
+    *(f"profile_ratio_lag_{h}h" for h in PROFILE_RATIO_LAGS),
 )
 
 # Longest lookback any feature needs. A row earlier than this has no complete
 # history and is dropped rather than imputed - imputing a lag invents the very
 # signal the model is supposed to learn.
-WARMUP_HOURS = max(max(LAG_HOURS), max(ROLLING_WINDOWS))
+#
+# The profile dominates it: `PROFILE_MIN_WEEKS` observations of the same hour of the
+# week, each a week apart, plus the shift that keeps the current hour out of its own
+# expectation. Three weeks of warm-up for a feature worth a third of the false alarms
+# is a trade the seeded six-month history can easily afford.
+WARMUP_HOURS = max(
+    max(LAG_HOURS),
+    max(ROLLING_WINDOWS),
+    168 * (PROFILE_MIN_WEEKS + 1),
+)
 
 
 def to_hourly(frame: pd.DataFrame) -> pd.DataFrame:
@@ -72,8 +128,27 @@ def to_hourly(frame: pd.DataFrame) -> pd.DataFrame:
     return series.to_frame("kw")
 
 
+def hour_of_week_profile(kw: pd.Series) -> pd.Series:
+    """Typical load at this hour of the week, from this building's own recent past.
+
+    Strictly causal, which is the whole difficulty. Grouping by (day of week, hour)
+    and taking a trailing median inside each group means each point is compared with
+    the same hour of previous weeks and never with itself: `shift(1)` moves the window
+    back one WEEK, because within a group the neighbouring observation is seven days
+    away.
+
+    A median rather than a mean because the history contains faults. A stuck meter or
+    a spike in one of the four weeks must not drag the expectation it is going to be
+    measured against - the same reason the detector downstream uses MAD.
+    """
+    key = kw.index.dayofweek * 24 + kw.index.hour
+    return kw.groupby(key).transform(
+        lambda s: s.shift(1).rolling(PROFILE_WEEKS, min_periods=PROFILE_MIN_WEEKS).median()
+    )
+
+
 def build_features(hourly: pd.DataFrame) -> pd.DataFrame:
-    """Attach lag, rolling and calendar features to an hourly series."""
+    """Attach lag, rolling, calendar and profile features to an hourly series."""
     out = hourly.copy()
 
     for hours in LAG_HOURS:
@@ -107,6 +182,12 @@ def build_features(hourly: pd.DataFrame) -> pd.DataFrame:
 
     for name, values in holiday_flags(index).items():
         out[name] = values
+
+    profile = hour_of_week_profile(out["kw"])
+    out["profile"] = profile
+    floor = profile.clip(lower=MIN_PROFILE_KW)
+    for lag in PROFILE_RATIO_LAGS:
+        out[f"profile_ratio_lag_{lag}h"] = out["kw"].shift(lag) / floor.shift(lag)
 
     return out
 

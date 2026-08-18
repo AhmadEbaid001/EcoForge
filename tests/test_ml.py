@@ -8,11 +8,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gemp.ml.anomaly import MAD_TO_SIGMA, detect, detect_flatlines, robust_scale
+from gemp.ml.anomaly import (
+    MAD_TO_SIGMA,
+    MIN_DENOMINATOR_FRACTION,
+    detect,
+    detect_flatlines,
+    robust_scale,
+)
 from gemp.ml.features import (
     FEATURE_COLUMNS,
+    PROFILE_WEEKS,
     WARMUP_HOURS,
     build_features,
+    hour_of_week_profile,
     split_by_time,
     to_hourly,
     training_frame,
@@ -62,6 +70,58 @@ def test_warmup_rows_are_dropped_not_imputed():
     ready = training_frame(frame)
     assert len(ready) == len(to_hourly(frame)) - WARMUP_HOURS
     assert ready[list(FEATURE_COLUMNS)].notna().all().all()
+
+
+def test_the_profile_never_sees_the_hour_it_describes():
+    """The profile is a causal expectation, so it must exclude its own point.
+
+    Same class of defect as the rolling-window leak above, and harder to see: within
+    an hour-of-week group the neighbouring observation is a WEEK away, so an off-by-one
+    here leaks last week rather than this hour and still looks plausible.
+    """
+    frame = weekly_series(24 * 90)
+    hourly = to_hourly(frame)
+    profile = hour_of_week_profile(hourly["kw"])
+
+    position = 24 * 70
+    stamp = hourly.index[position]
+    same_hour_before = hourly["kw"][
+        (hourly.index < stamp)
+        & (hourly.index.dayofweek == stamp.dayofweek)
+        & (hourly.index.hour == stamp.hour)
+    ]
+    expected = same_hour_before.iloc[-PROFILE_WEEKS:].median()
+    assert profile.iloc[position] == pytest.approx(expected)
+
+
+def test_the_profile_ignores_a_contaminated_week():
+    """A median, not a mean: one stuck meter in the window must not move it.
+
+    The profile is what a fault gets measured against, so a fault that can pull it up
+    partially hides itself - the same reasoning that put MAD in the detector.
+    """
+    frame = weekly_series(24 * 90)
+    hourly = to_hourly(frame)
+    clean = hour_of_week_profile(hourly["kw"])
+
+    dirty = hourly.copy()
+    dirty.iloc[24 * 70, dirty.columns.get_loc("kw")] *= 40
+    contaminated = hour_of_week_profile(dirty["kw"])
+
+    later = 24 * 70 + 168
+    assert contaminated.iloc[later] == pytest.approx(clean.iloc[later])
+
+
+def test_the_forecast_is_never_negative():
+    """Load is never negative, and the anomaly detector divides by this column.
+
+    Measured before the floor existed: predictions reached -1.32 kW in the overnight
+    trough, and dividing an ordinary reading by one of them produced a robust z of
+    15,319 - an alert ranked above every real fault in the portfolio.
+    """
+    result = fit_building(weekly_series(24 * 150, noise=0.05), "b001", test_hours=48)
+    assert result.full_predictions.min() >= 0.0
+    assert result.predictions.min() >= 0.0
 
 
 def test_cyclical_hour_encoding_wraps():
@@ -222,6 +282,46 @@ def test_a_perfectly_modelled_building_can_still_be_flagged():
 
     anomalies = detect(actual, expected, "b001", k=3.0, window_days=30)
     assert anomalies, "a 4x deviation on a perfectly modelled building must flag"
+
+
+def test_a_near_zero_expectation_cannot_dominate_the_ranking():
+    """The relative residual needs a denominator floor, not a divide-by-zero guard.
+
+    An expectation of a ten-thousandth of a kilowatt is not a precise forecast of a
+    quiet building; it is the bottom of the overnight trough. Dividing by it turned an
+    ordinary 2 kW reading into a robust z of 15,319 on the running stack - an alert
+    ranked above every real fault in the portfolio, produced by the denominator.
+
+    The hour may still be flagged. What it must not do is outrank everything else.
+    """
+    index = pd.date_range(T0, periods=24 * 60, freq="1h", tz=UTC)
+    expected = pd.Series(100.0, index=index)
+    expected.iloc[-1] = 1e-4
+    actual = pd.Series(100.0, index=index)
+    actual.iloc[-1] = 2.0
+
+    flagged = {a.ts: a for a in detect(actual, expected, "b001", k=5.0)}
+    hit = flagged.get(index[-1])
+    # Unfloored this reads (2 - 1e-4) / 1e-4 = ~20,000 relative, and a z in the
+    # millions. Floored at 5% of typical load the residual cannot exceed 1/0.05.
+    assert hit is None or abs(hit.robust_z) <= 1 / MIN_DENOMINATOR_FRACTION / 0.01
+
+
+def test_the_denominator_floor_scales_with_the_building():
+    """Five per cent of typical load, so the bound means the same on any building."""
+    index = pd.date_range(T0, periods=24 * 60, freq="1h", tz=UTC)
+    scores = []
+    for typical in (10.0, 1000.0):
+        expected = pd.Series(typical, index=index)
+        expected.iloc[-1] = typical * 1e-6
+        actual = pd.Series(typical, index=index)
+        actual.iloc[-1] = typical * 0.02
+
+        flagged = {a.ts: a for a in detect(actual, expected, "b001", k=5.0)}
+        hit = flagged.get(index[-1])
+        scores.append(abs(hit.robust_z) if hit else 0.0)
+
+    assert scores[0] == pytest.approx(scores[1], rel=1e-6)
 
 
 def test_detect_handles_an_empty_series():

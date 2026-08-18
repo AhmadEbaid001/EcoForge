@@ -41,6 +41,22 @@ MAD_TO_SIGMA = 1.4826
 # produces exactly that.
 MIN_SCALE_KW = 1e-6
 
+# Floor on the DENOMINATOR of the relative residual, as a fraction of the building's
+# own typical expected load.
+#
+# `MIN_SCALE_KW` was doing this job and is far too small to do it. Dividing by an
+# expectation of 0.0015 kW turned a perfectly ordinary 0.85 kW reading at midnight
+# into a robust z of 15,319 - a certain alert, ranked above every real fault in the
+# portfolio, generated entirely by the bottom of the overnight trough on a holiday.
+# Forecasts are now floored at zero upstream, which removes the sign flip but not the
+# division by something near it.
+#
+# Five per cent of typical load is the floor because below that a proportional error
+# has stopped describing anything an operator would act on: a building at 5% of its
+# normal draw is either shut or broken, and both of those are the flatline detector's
+# business, not the residual test's.
+MIN_DENOMINATOR_FRACTION = 0.05
+
 # Floor on the relative spread used as the reference scale.
 #
 # Without it, a building the forecaster models almost perfectly gets a near-zero MAD,
@@ -183,7 +199,10 @@ def detect(
     # Dividing by the expected value makes the residual a proportional error, which
     # is comparable across the load curve and is also how an operator reads it:
     # "this building is drawing forty per cent more than it should".
-    denominator = aligned["expected"].abs().clip(lower=MIN_SCALE_KW)
+    typical = float(aligned["expected"].abs().median())
+    denominator = aligned["expected"].abs().clip(
+        lower=max(MIN_SCALE_KW, MIN_DENOMINATOR_FRACTION * typical)
+    )
     residuals = (aligned["actual"] - aligned["expected"]) / denominator
     window = int(timedelta(days=window_days).total_seconds() // 3600 // freq_hours)
     scores = robust_z_scores(residuals, window)

@@ -145,6 +145,56 @@ def _live_truth_path():
     return data_dir().parent / "anchor" / "live_anomalies.jsonl"
 
 
+def split_live_runs(records: list[dict]) -> list[list[dict]]:
+    """Group appended live records by the simulator run that wrote them.
+
+    The file is append-ordered and each run advances its data clock monotonically, so
+    a record whose start goes BACKWARDS is the first record of a new run. There is no
+    run marker in the format, and adding one would not repair the file already on disk.
+    """
+    runs: list[list[dict]] = []
+    previous = None
+    for record in records:
+        if previous is None or record["start"] < previous:
+            runs.append([])
+        runs[-1].append(record)
+        previous = record["start"]
+    return runs
+
+
+def drop_rewound_runs(seed_end: datetime, runs: list[list[dict]]) -> list[list[dict]]:
+    """Discard runs whose readings cannot have been stored.
+
+    A simulator run that starts its data clock inside already-covered time publishes
+    nothing but duplicates, and `insert_ignore` drops every one of them - while the
+    run goes on recording the faults it "injected" into readings that were never
+    written. Those events are not missed detections. There is no data in which to
+    detect them, and counting them makes recall a measure of how badly the simulator
+    restarted.
+
+    Measured on this stack before `resume_point` was made to refuse a rewind: 1,762 of
+    2,212 recorded events were phantoms of two rewound runs, and they read as recall
+    0.375 for a detector whose recall on real data is 0.81. The monthly breakdown was
+    unambiguous - 0.03 to 0.20 of events found across the rewound span, 0.87 to 0.90
+    outside it.
+    """
+    kept, covered_until = [], seed_end
+    for run in runs:
+        start = min(r["start"] for r in run)
+        end = max(r["end"] for r in run)
+        if start < covered_until:
+            log.warning(
+                "dropping %d ground-truth events from a simulator run that rewound to "
+                "%s, inside data already covered to %s - its readings were discarded "
+                "as duplicates, so no data supports these events",
+                len(run), start.isoformat(), covered_until.isoformat(),
+            )
+            continue
+        kept.append(run)
+        covered_until = max(covered_until, end)
+    return kept
+
+
 def load_ground_truth(path=None, live_path=None) -> pd.DataFrame:
     """Every injected fault: the seeded history plus whatever the live node added.
 
@@ -154,6 +204,10 @@ def load_ground_truth(path=None, live_path=None) -> pd.DataFrame:
     every correctly detected LIVE fault as a false alarm, which is not a small
     effect: measured on this stack it read episode precision as 0.26 where the
     detector's actual precision was 0.50.
+
+    Live records are grouped into the runs that wrote them and rewound runs are
+    dropped - see `drop_rewound_runs`, which exists because trusting this file cost
+    the project a measurement it had already written down.
     """
     path = path or (data_dir() / "ground_truth.csv")
     if not path.exists():
@@ -174,22 +228,37 @@ def load_ground_truth(path=None, live_path=None) -> pd.DataFrame:
             for r in csv.DictReader(fh)
         ]
 
+    for row in rows:
+        row["run"] = "seed"
+    seed_end = max((row["end"] for row in rows), default=datetime.min)
+
     live_path = live_path or _live_truth_path()
     if live_path.exists():
+        appended = []
         with live_path.open(encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
                     continue
                 record = json.loads(line)
-                rows.append({
+                appended.append({
                     "building_id": record["building_id"],
                     "kind": record["kind"],
                     "start": datetime.fromisoformat(record["start"]),
                     "end": datetime.fromisoformat(record["end"]),
                     "source": "live",
                 })
-        log.info("ground truth: %d events (seed + live)", len(rows))
+        runs = drop_rewound_runs(seed_end, split_live_runs(appended))
+        kept = sum(len(run) for run in runs)
+        for index, run in enumerate(runs):
+            for record in run:
+                record["run"] = f"live-{index}"
+                rows.append(record)
+        log.info(
+            "ground truth: %d events (seed %d + live %d over %d run(s); %d dropped as "
+            "unsupported by any stored reading)",
+            len(rows), len(rows) - kept, kept, len(runs), len(appended) - kept,
+        )
     else:
         log.warning(
             "%s not found - only the seeded window has ground truth. Detections after "
@@ -208,16 +277,18 @@ def truth_windows(truth: pd.DataFrame) -> list[tuple[datetime, datetime]]:
     measure the detector, it measures how much data was collected after the last
     truth file was written.
 
-    Per source, not one span from the earliest start to the latest end. The seeded
-    window and the live window are separated by however long the simulator ran while
-    its ground-truth file was going nowhere - a gap of seven months of data time on
-    this stack, because the `sim` container had no mount for `anchor/`. A single
-    min-to-max span would swallow that gap and quietly resume counting correct
-    detections in it as false alarms, which is the exact bug this function exists to
-    remove.
+    Per RUN, not one span from the earliest start to the latest end, and not per
+    source either. The seeded window and the live windows are separated by however
+    long the simulator ran while its ground-truth file was going nowhere - a gap of
+    seven months of data time on this stack, because the `sim` container had no mount
+    for `anchor/`. A single min-to-max span would swallow that gap and quietly resume
+    counting correct detections in it as false alarms, which is the exact bug this
+    function exists to remove. Grouping by source left the same hole open one level
+    down: every restart of the simulator opens another gap inside the live records.
     """
+    column = "run" if "run" in truth.columns else "source"
     windows = []
-    for _source, group in truth.groupby("source"):
+    for _run, group in truth.groupby(column):
         windows.append((group["start"].min(), group["end"].max()))
     return sorted(windows)
 

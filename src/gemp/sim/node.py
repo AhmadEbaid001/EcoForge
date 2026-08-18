@@ -1,4 +1,12 @@
-"""Virtual sensor nodes: one publisher per building, all on one process.
+"""F11 - virtual sensor nodes: one publisher per building, all on one process.
+
+F11 cut the WireGuard VPN because the physical sensors it was reserved for do not
+exist, and said the paper should describe it as designed-for with the MQTT topic
+contract as the evidence. This docstring is that evidence: the contract below is
+what a real node would publish, so admitting hardware is a matter of pointing it at
+the broker over whatever transport the site provides. Nothing downstream - the
+ingester, the hash chain, the forecaster - can tell the difference, because none of
+them knows where a message came from.
 
 Each reading is published as its own MQTT message in exactly the shape a physical
 ESP32 node with a clamp-on CT would send:
@@ -196,7 +204,11 @@ class SimulatorNode:
         self.published += 1
 
 
-def resume_point() -> datetime:
+class ResumePointUnavailable(RuntimeError):
+    """The API could not be reached, so where to resume the data clock is unknown."""
+
+
+def resume_point(attempts: int = 30, delay_s: float = 5.0) -> datetime:
     """Where the data clock should start: just after the newest stored reading.
 
     Starting at wall-clock `now` instead leaves a hole between the seeded history and
@@ -207,20 +219,51 @@ def resume_point() -> datetime:
 
     Asks the API rather than the database so the simulator keeps no database
     credentials and stays a pure publisher, exactly as a physical node would be.
+
+    **It retries rather than guessing, and raises rather than falling back to `now`.**
+    That fallback cost the project its live evaluation data and was invisible while it
+    did so. `depends_on: service_healthy` only holds for `docker compose up`; when the
+    API restarts later, `restart: always` brings this container back on its own and
+    the health endpoint is refused for a few seconds. The old code answered that with
+    `now`, which under 720x replay is over a YEAR BEHIND the stored data - so every
+    reading it published was a duplicate that `insert_ignore` dropped, while
+    `_maybe_start_anomaly` went on appending faults to the ground-truth file for
+    readings that were never stored.
+
+    The damage was entirely silent: the stream looked alive, the container was up, and
+    the only symptom was anomaly recall collapsing from 0.81 to 0.26 as the truth file
+    filled with events that no data supports. Failing here instead lets Docker restart
+    the container until the API is actually back, which is the loop that was wanted.
     """
     url = os.environ.get("GEMP_API_URL", "http://core:8000") + "/health"
-    try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            latest = json.load(response).get("readings")
-        if latest:
-            resume = datetime.fromisoformat(latest) + timedelta(minutes=STEP_MINUTES)
-            log.info("resuming the data clock from stored history at %s", resume.isoformat())
-            return resume
-        log.info("no stored readings; starting the data clock at now")
-    except (OSError, ValueError) as exc:
-        log.warning("could not read %s (%s); starting the data clock at now", url, exc)
+    last_error: Exception | None = None
 
-    return datetime.now(UTC).replace(second=0, microsecond=0)
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=10) as response:
+                latest = json.load(response).get("readings")
+        except (OSError, ValueError) as exc:
+            last_error = exc
+            log.warning("attempt %d/%d: could not read %s (%s)", attempt, attempts, url, exc)
+        else:
+            if latest:
+                resume = datetime.fromisoformat(latest) + timedelta(minutes=STEP_MINUTES)
+                log.info("resuming the data clock from stored history at %s",
+                         resume.isoformat())
+                return resume
+            # A reachable API with an empty reading table is a genuinely fresh
+            # deployment, and there is nothing to rewind into.
+            log.info("no stored readings; starting the data clock at now")
+            return datetime.now(UTC).replace(second=0, microsecond=0)
+
+        if attempt < attempts:
+            time.sleep(delay_s)
+
+    raise ResumePointUnavailable(
+        f"{url} unreachable after {attempts} attempts ({last_error}). Refusing to "
+        f"start: guessing the resume point rewinds the data clock and publishes "
+        f"readings that are silently discarded as duplicates."
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -237,11 +280,15 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = get_settings()
     buildings = load_buildings()
-    start = (
-        datetime.fromisoformat(args.data_start)
-        if args.data_start
-        else resume_point()
-    )
+    try:
+        start = (
+            datetime.fromisoformat(args.data_start)
+            if args.data_start
+            else resume_point()
+        )
+    except ResumePointUnavailable as exc:
+        log.error("%s", exc)
+        return 1
 
     node = SimulatorNode(buildings, settings)
     signal.signal(signal.SIGINT, node.stop)

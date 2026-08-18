@@ -619,7 +619,6 @@ def db_claims(k_values: Sequence[float] | None = None) -> list[ClaimResult]:
             detail=f"flag rate {scores.flag_rate:.2%}; "
                    f"{scores.episodes_unscorable} alerts outside the ground-truth "
                    f"window were excluded rather than counted against precision",
-            known_open=True,
         ),
     ]
 

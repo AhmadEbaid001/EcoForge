@@ -1,4 +1,4 @@
-"""Per-building load forecasting, with a baseline that is allowed to win.
+"""F10 - per-building load forecasting, with a baseline that is allowed to win.
 
 The proposal (Section 4.5) sets the rule this module implements: the learned model is
 retained only if it beats a seasonal-naive predictor on held-out data, and otherwise
@@ -10,6 +10,15 @@ Model choice is `HistGradientBoostingRegressor`: already in scikit-learn, no new
 dependency, trains fifty per-building models in well under a minute, and handles the
 hour-of-week structure that dominates building load. Prophet was rejected - a Stan
 backend that inflates image size and build time, and weak on sub-daily load.
+
+That rejection IS F10, and this module is the whole of its resolution: the proposal's
+Table 3 said "scikit-learn / Prophet", and what shipped is scikit-learn alone. The
+finding is recorded here rather than only in the review because the paper has to be
+able to point at the code that settles it. The seasonal-naive fallback F10 asked to
+keep is `seasonal_naive` below; on the current portfolio it never fires - HGBR is the
+retained model at all 50 buildings - so the rule reads as ceremony until the day a
+building's history is too short or too erratic for it, which is exactly when a
+forecaster that shipped without the check would be believed.
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 
 from gemp.ml.features import (
     FEATURE_COLUMNS,
+    MIN_PROFILE_KW,
     WARMUP_HOURS,
     split_by_time,
     training_frame,
@@ -30,11 +40,21 @@ from gemp.ml.features import (
 
 log = logging.getLogger("gemp.ml.forecast")
 
-MODEL_VERSION = "hgbr-1"
+MODEL_VERSION = "hgbr-2"
 BASELINE_VERSION = "seasonal-naive-1"
 
 SEASONAL_LAG_HOURS = 168        # same hour, previous week
 MIN_TRAINING_HOURS = WARMUP_HOURS + 24 * 21
+
+# Load is never negative, and a forecast that says otherwise is not a small error.
+#
+# The model was predicting down to -1.32 kW at the bottom of the overnight trough on
+# holidays. Four hundredths of a per cent of all hours, and it did real damage: the
+# anomaly detector divides by the expected value, so an expectation near zero turned
+# an ordinary 1 kW reading into a robust z-score of 15,319 and a guaranteed alert.
+# Clamping here is cheaper and more honest than teaching every consumer to distrust
+# the column.
+MIN_EXPECTED_KW = MIN_PROFILE_KW
 
 
 @dataclass
@@ -107,6 +127,18 @@ def seasonal_naive(frame: pd.DataFrame, horizon: pd.DatetimeIndex | None = None)
     return shifted.reindex(horizon)
 
 
+def _predict_kw(model, frame: pd.DataFrame) -> np.ndarray:
+    """Ratio prediction back into kW, floored at zero.
+
+    The floor belongs here rather than at the call sites: every consumer of a forecast
+    - the annual estimate, the dashboards, the anomaly denominator - is entitled to
+    assume a load is a load.
+    """
+    profile = frame["profile"].clip(lower=MIN_PROFILE_KW).to_numpy()
+    return np.maximum(model.predict(frame[list(FEATURE_COLUMNS)]) * profile,
+                      MIN_EXPECTED_KW)
+
+
 def fit_building(
     readings: pd.DataFrame,
     building_id: str,
@@ -134,10 +166,24 @@ def fit_building(
         validation_fraction=0.15,
         random_state=random_state,
     )
-    model.fit(train[list(FEATURE_COLUMNS)], train["kw"])
+    # Predict the RATIO to the hour-of-week profile, not the load itself.
+    #
+    # A tree adds leaf values, so in kW it can only express "a holiday costs this
+    # building 14 kW at 09:00" - one constant per building, per hour, per calendar
+    # state, learned from the handful of holidays in the training window. In ratio
+    # space the same fact is "a holiday is 0.3x", one split that holds at every hour
+    # and every season, and the diurnal and weekly shape is carried by the profile
+    # instead of being rebuilt from lags that disagree with it at every step change.
+    #
+    # Measured on the seeded portfolio: held-out MAPE 3.83% -> 3.24%, and episode
+    # precision at the anomaly gate 0.554 -> 0.827 at a recall of 0.875. The precision
+    # gain is far larger than the MAPE gain because what it removes is not noise but a
+    # systematic failure at one hour of the day.
+    profile = train["profile"].clip(lower=MIN_PROFILE_KW)
+    model.fit(train[list(FEATURE_COLUMNS)], train["kw"] / profile)
 
     actual = test["kw"].to_numpy()
-    model_pred = model.predict(test[list(FEATURE_COLUMNS)])
+    model_pred = _predict_kw(model, test)
     model_metrics = evaluate(actual, model_pred)
 
     # The baseline needs the full frame so it can look back a week from the start of
@@ -153,7 +199,7 @@ def fit_building(
     if model_metrics.mape < baseline_metrics.mape:
         chosen, version = "model", MODEL_VERSION
         predictions = pd.Series(model_pred, index=test.index)
-        full = pd.Series(model.predict(frame[list(FEATURE_COLUMNS)]), index=frame.index)
+        full = pd.Series(_predict_kw(model, frame), index=frame.index)
     else:
         log.info(
             "%s: seasonal-naive wins (%.1f%% vs %.1f%% MAPE), using the baseline",

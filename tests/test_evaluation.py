@@ -279,3 +279,51 @@ def test_detect_all_does_not_double_report_one_hour():
     anomalies = detect_all(actual, expected, "b001", k=3.0, min_flatline_hours=3)
     stamps = [a.ts for a in anomalies]
     assert len(stamps) == len(set(stamps))
+
+
+# --- ground truth a rewound simulator cannot support -------------------------
+
+
+def test_live_records_split_into_the_runs_that_wrote_them():
+    from datetime import UTC, datetime
+
+    from gemp.ml.evaluate import split_live_runs
+
+    def record(day):
+        return {"start": datetime(2026, 1, day, tzinfo=UTC),
+                "end": datetime(2026, 1, day, 1, tzinfo=UTC)}
+
+    runs = split_live_runs([record(1), record(2), record(5),      # one run
+                            record(3), record(4)])                # clock went back
+    assert [len(run) for run in runs] == [3, 2]
+
+
+def test_events_from_a_rewound_run_are_dropped():
+    """Their readings were discarded as duplicates, so no data supports them.
+
+    Counting them made recall a measure of how badly the simulator restarted: 1,762
+    of 2,212 events were phantoms, and they read as recall 0.375 for a detector whose
+    recall is 0.84.
+    """
+    from datetime import UTC, datetime
+
+    from gemp.ml.evaluate import drop_rewound_runs
+
+    seed_end = datetime(2026, 6, 1, tzinfo=UTC)
+    forward = [{"start": datetime(2026, 7, 1, tzinfo=UTC),
+                "end": datetime(2026, 8, 1, tzinfo=UTC)}]
+    rewound = [{"start": datetime(2026, 6, 2, tzinfo=UTC),
+                "end": datetime(2026, 6, 3, tzinfo=UTC)}]
+
+    assert drop_rewound_runs(seed_end, [forward, rewound]) == [forward]
+
+    # A run that begins after everything already covered is legitimate, however long
+    # the gap before it - the simulator spent seven months of data time writing its
+    # ground truth into a container with no mount, and that history is real.
+    assert drop_rewound_runs(seed_end, [forward]) == [forward]
+
+    # And the first live run in the file is not exempt: starting inside the SEEDED
+    # window is the same duplicate-publishing failure.
+    into_the_seed = [{"start": datetime(2026, 5, 1, tzinfo=UTC),
+                      "end": datetime(2026, 5, 2, tzinfo=UTC)}]
+    assert drop_rewound_runs(seed_end, [into_the_seed]) == []

@@ -42,51 +42,46 @@ electricity_tariff_egp_per_kwh: 1.85
 # the simulator injected and reports EPISODE-level precision and recall - one alert
 # per incident, which is the unit an operator actually receives.
 #
-# Re-measured in Phase 4 after two scoring defects were fixed. Alerts raised outside
-# the window the ground truth covers are now excluded rather than counted as false
-# alarms, and the live simulator's own injected faults are included in that truth -
-# they had been going to a file inside a container with no mount, so the platform was
-# scoring its own correct detections against a record that did not exist.
+# Re-measured after three scoring defects and one modelling defect were fixed.
+# Alerts raised outside the window the ground truth covers are excluded rather than
+# counted as false alarms; the live simulator's own injected faults are included in
+# that truth; and faults recorded by a simulator run that rewound its data clock are
+# now dropped, because the readings that run published were discarded as duplicates
+# and no data supports them. That last one had been reading recall as 0.375 for a
+# detector whose recall is 0.84 - see `drop_rewound_runs` in gemp/ml/evaluate.py.
 #
 #     k      alerts   precision   recall     F1
-#     4       2,318      0.396     0.924    0.554
-#     5       1,719      0.449     0.903    0.600
-#     6       1,406      0.482     0.866    0.619
-#     7       1,178      0.525     0.833    0.645
-#     8       1,045      0.550     0.809    0.655   <- set
-#    10         805      0.601     0.756    0.670
+#     3       2,986      0.442     0.928    0.599
+#     4       1,522      0.703     0.913    0.794
+#     5       1,127      0.827     0.875    0.850   <- set
+#     6         958      0.879     0.823    0.850
+#     8         757      0.945     0.768    0.847
+#    10         648      0.968     0.717    0.824
 #
-# k=8 is chosen over the higher F1 at k=10 because recall matters more than precision
+# k=5 and k=6 tie on F1. k=5 is chosen because recall matters more than precision
 # here: a missed fault burns energy every hour it runs, while a false alert costs one
-# look at a chart. The flag rate at k=8 is 0.93%.
+# look at a chart. It also keeps a margin above the 0.8 recall gate rather than
+# sitting on it. The flag rate at k=5 is 0.88%.
 #
-# **These numbers are still converging, upward, and it is worth knowing why.** The
-# simulator records the faults it injects live, and that record only began
-# accumulating once the `sim` container was given a mount for it. Every fault injected
-# before that is undetectable ground truth, so a correct detection of one is excluded
-# from scoring rather than credited. As live coverage grows, fewer real detections are
-# unjudgeable and both metrics rise: precision at k=8 read 0.515 with 454 recorded
-# events and 0.550 with 618. Recall at k=8 sits close to its gate - 0.79 to 0.81
-# across runs - so a single run reporting 0.79 is drift, not a regression.
+# **The old conclusion here - that 0.6 precision was unreachable by any means - was
+# half right and is corrected in full rather than deleted.** It was right that no
+# threshold reaches it: k only slides a point along one curve, and 64 combinations of
+# k, minimum episode duration and minimum peak z did not move the curve either.
+# Requiring longer episodes bought precision at the same rate as raising k, and
+# requiring a higher peak z made precision WORSE (0.607 -> 0.535 at k=8), because a
+# frozen meter barely deviates while the largest residuals are legitimate load the
+# forecaster missed.
 #
-# **Precision of 0.55 does not meet the 0.6 target, and tuning cannot reach it.**
-# k only slides a point along one precision/recall curve. Phase 4 tested whether
-# episode-level suppression moves the curve itself, over 64 combinations of k,
-# minimum episode duration and minimum peak z:
-#
-#   * Requiring an episode to last longer buys precision by spending recall at about
-#     the same rate as raising k. k=8 with a 3-hour minimum reads 0.645 precision at
-#     0.438 recall - the target met on one axis by failing the other.
-#   * Requiring a higher peak z is WORSE than useless: at k=8 with a 2-hour minimum
-#     it moves precision from 0.607 down to 0.535. A large residual does not indicate
-#     a real fault here, which makes sense - a frozen meter barely deviates at all,
-#     while the largest residuals come from legitimate load the forecaster missed.
-#
-# The best precision available at recall >= 0.8 is 0.550, at k=8 with no suppression
-# at all. Precision does reach 0.601 at k=10, but only by giving up recall (0.756),
-# which is the wrong trade for a fault detector. Reaching 0.6 at recall 0.8 needs a
-# better expected-load model, not a better threshold.
-anomaly_k: 8.0
+# It was wrong that the ceiling was 0.55. That number was a property of the
+# forecaster, and the forecaster had one systematic failure doing most of the damage:
+# it predicted hour 00 badly, because Egyptian load STEPS at midnight into the
+# weekend or a public holiday while every lag feature says the building was busy an
+# hour ago. Relative residual dispersion was 0.125 at hour 00 against 0.06 for the
+# rest of the day, and 640 of 1,379 false alarms started at hour 00 on a Friday or a
+# holiday. Predicting the ratio to a causal hour-of-week profile instead of the load
+# itself - `PROFILE_WEEKS` in gemp/ml/features.py - moved held-out MAPE from 3.83% to
+# 3.24% and precision at recall 0.875 from 0.55 to 0.83.
+anomaly_k: 5.0
 anomaly_window_days: 30          # evaluated in DATA time, never wall time
 
 # --- F3: end-use disaggregation -------------------------------------
