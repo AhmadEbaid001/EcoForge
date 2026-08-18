@@ -42,20 +42,30 @@ const state = { user: null, view: 'overview', viewLifetime: null };
 
 /* -------------------------------------------------------------- appearance */
 
-/* Light and dark, with Auto as the default.
+/* Two buttons, Light and Dark, over three states.
  *
- * Auto means "no data-theme attribute", which leaves the stylesheet's
- * prefers-color-scheme query in charge. That ordering matters for a reason
- * beyond taste: the CSP forbids inline script, so nothing can run before the
- * stylesheet paints. A design where the correct appearance depended on
- * JavaScript would therefore flash the wrong one on every load. Following the
- * system by default means the common case is right before this file executes.
+ * Auto has no button any more, but it is still the state a browser starts in, and
+ * removing it as the DEFAULT would be a different and much worse change. Auto means
+ * "no data-theme attribute", which leaves the stylesheet's prefers-color-scheme
+ * query in charge, and that ordering is load-bearing: the CSP forbids inline script,
+ * so nothing can run before the stylesheet paints. If the correct appearance
+ * depended on JavaScript, every load would flash the wrong one first. Following the
+ * system until someone chooses otherwise means the common case is already right by
+ * the time this file executes.
  *
- * Light and Dark exist anyway because this screen gets demonstrated on other
- * people's projectors, where the right answer is whatever the room can read.
+ * So the switch is an override rather than a three-way choice. Until it is touched
+ * neither button reads as pressed, which is honest - the system is deciding, not the
+ * page. Once touched the choice sticks, and it cannot be handed back to the system
+ * from the interface; clearing gemp.appearance from local storage is the way back.
+ *
+ * The two buttons exist because this screen gets demonstrated on other people's
+ * projectors, where the right answer is whatever the room can read.
  */
 const APPEARANCE_KEY = 'gemp.appearance';
 const APPEARANCES = ['auto', 'light', 'dark'];
+/* What the switch offers. Auto stays valid, and stays the default; it is simply not
+ * something the interface asks anyone to pick. */
+const APPEARANCE_CHOICES = ['light', 'dark'];
 
 function storedAppearance() {
   try {
@@ -82,14 +92,13 @@ function applyAppearance(choice) {
 }
 
 const APPEARANCE_LABELS = {
-  auto: 'Match the system appearance',
   light: 'Light appearance',
   dark: 'Dark appearance',
 };
 
 function appearanceSwitch() {
   const current = storedAppearance();
-  const buttons = APPEARANCES.map((key) => `
+  const buttons = APPEARANCE_CHOICES.map((key) => `
     <button type="button" data-appearance="${key}" title="${APPEARANCE_LABELS[key]}"
             aria-label="${APPEARANCE_LABELS[key]}"
             aria-pressed="${key === current}">${icon(key)}</button>`).join('');
