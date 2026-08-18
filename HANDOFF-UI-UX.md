@@ -62,7 +62,7 @@ web/
   index.html        Empty shell. Renders nothing until the app asks the server who
                     the caller is, so an unauthenticated browser gets no markup
                     describing data it may not see.
-  style.css         ~940 lines, in 13 numbered sections. Tokens first (light, then
+  style.css         ~1100 lines, in 14 numbered sections. Tokens first (light, then
                     dark twice - see §5), then base, chrome, components, charts,
                     map, responsive. One component per section; no appended block.
   js/
@@ -74,16 +74,26 @@ web/
     charts.js       Hand-drawn inline SVG: lineChart, stackedBars, proportionBar,
                     statTile, the three appearance icons, escapeHtml, compact.
                     ~190 lines.
+    ui.js           The furniture every view needs and each was doing
+                    differently: pageHead, freshness, setStatus, the skeletons,
+                    emptyState, dataTable + wireSort, picker, openDialog and
+                    confirmAction. ~330 lines. Read this before adding a view.
     views.js        Seven views: overview, forecasts, alerts, runs, integrity,
-                    admin, account, plus openDialog() - the form that replaced
-                    window.prompt for minting credentials. ~730 lines.
+                    admin, account. Each is now composition over ui.js rather
+                    than its own table and its own spinner. ~990 lines.
     map.js          The map, moved wholesale from the old single-page app. Owns its
                     own markup (MAP_HTML / MODAL_HTML template strings at the top).
-                    ~600 lines. Treat as working code to be respected, not rewritten.
+                    ~700 lines. Projection and rendering are working code to be
+                    respected; its markup and its zoom controls are not sacred.
 ```
 
-Navigation order: Overview, Map, Forecasts, Alerts, Allocations, Integrity,
-Administration — plus an Account view reachable from the user button.
+Navigation is a **fixed left sidebar**, not top tabs: Overview, Map, Forecasts, Alerts,
+Allocations, Integrity, Administration, with Account, Sign out, the health indicator
+and the appearance switch pinned to its foot. It collapses to a 60px icon rail — by
+choice (the toggle in the workspace bar, remembered in `localStorage` under
+`gemp.nav`), automatically below 1024px, and it becomes a horizontal strip below 700px.
+The workspace bar above the content names the current view, so a collapsed rail never
+leaves the screen unlabelled.
 
 ---
 
@@ -193,6 +203,147 @@ its three fills separate by lightness (adjacent stack segments differ by 3.08:1 
 
 ---
 
+## 5a. The Stitch reference set, and what was taken from it
+
+`STITCH-PROMPT.md` produced ten reference screens (archive on the Desktop). They are a
+**source of ideas, not a target to match** — the ten screens are not one product:
+
+- **Four different navigation systems** across ten screens: top tabs
+  (Dashboard/Analytics/Scenarios/Reports), a 240px labelled sidebar (Allocation Map /
+  Alert Inbox / Reports / Support / Logs), a 56px icon rail, and a hybrid.
+- **Three product names**: GEMP, "EnergyInsight", "Grid Control · District Alpha".
+- **The accent flips hue between modes** — blue in light, green in dark.
+- **Invented domain data throughout**: ROI in years, EUI in kWh/m², anomaly *types*
+  ("HVAC Surge", "Phantom Load"), severity "Low", the solver named "Mixed Integer
+  Linear Program", buildings called "Engineering Block D". GEMP has none of these.
+- **One map screen renders Google Maps tiles of Gurugram, India** — an off-origin
+  fetch, in the wrong country, on the screen whose entire premise is that it works
+  with the cable unplugged.
+- **The login screen states security properties that are not true**: "AES-256-GCM",
+  "FIPS 140-3", a node identifier, "AUDIT LOG ACTIVE", a version number, and a
+  "Request Emergency Override Access" link. That was not implemented and must not be:
+  a compliance claim in front of judges has to be one the system can support.
+
+What **was** adopted, because it is genuinely better than what was here:
+
+| Taken | Why |
+|---|---|
+| Sidebar navigation | Seven tabs already wrapped the header at 1180px, and left nowhere for a page title |
+| Bordered fact grid in the building detail | Hairline-separated cells stay dense and still parse; the old two-column text block did not |
+| Rank badge on every option card | Makes the ranking arguable — you can see when the chosen option is *not* rank 1, which is what a district cap does |
+| Zebra striping on tables | Scanning a wide row without losing the line |
+| Tonal layering over shadows | Depth from surface + hairline, which is what already worked in dark mode |
+
+The rest of `DESIGN.md` in the archive is a reasonable restatement of the system
+already in §5 — with the exception of its Inter-from-Google-Fonts requirement, which
+constraint §4.1 forbids. The system font stack stays.
+
+## 5c. Two rules that are load-bearing and look like nothing
+
+**Every row in the sidebar shares one left edge and one icon column.** `.sidebar`
+declares `--row-pad` and `--icon-col`; the brand, the seven destinations, the health
+indicator and the account button all inherit them. Measured in the browser, every row
+box starts at x=8, every glyph centres on x=28, and every piece of text starts at x=52
+— one value per column, which is the whole point. Two things had broken that:
+
+- `.nav-item` is a `<button>`, and the base `button` rule in §4 centres its contents.
+  A nav row therefore centred its own icon and label inside its own width, so the icons
+  landed at *five different x positions* depending on how long each label happened to
+  be. `justify-content: flex-start` on `.nav-item` is what fixes it. Anything else in
+  this file that is a button but should read as a row needs the same.
+- A `border: 1px solid transparent` on `.nav-item` pushed every icon and label one
+  pixel past the brand mark, which has none. The focus ring is an `outline`, so the
+  border was doing nothing but that.
+
+**Every control that opens a list goes through `selectWrap()`.** A bare `<select>` is
+drawn by the operating system — its arrow, its height and its font are Windows's
+decision, which is why they did not match the inputs beside them and why the arrow
+stayed dark on a dark page. `appearance: none` takes the drawing back and the wrapper
+supplies a chevron, because a pseudo-element cannot hang off a `<select>`.
+
+The chevron is a rotated square, **not** a data-URI SVG. An inline SVG needs an
+`xmlns="http://www.w3.org/2000/svg"` attribute, and `test_no_external_resource_references`
+reads that as an off-origin reference — correctly, since it cannot tell a namespace
+from a fetch. Base64-encoding it to dodge the test would have hidden the string from
+the check that exists to catch exactly this.
+
+The popup list itself cannot be styled by any page. What it *can* be told is which
+appearance to draw, which is what `color-scheme` on the root does; without it the open
+list stays white over a dark page.
+
+## 5d. The map's context layer
+
+The map used to draw fifty shapes on an empty field. The geometry was right and
+nobody could read it: there was nothing around a building to place it against, which
+is the first thing anyone asks of a map.
+
+`scripts/fetch_osm_context.py` fetches the same New Cairo bounding box that
+`fetch_osm_buildings.py` uses and keeps what that script throws away — the road
+network and every other building footprint. It writes `web/data/context.geojson`
+(~970 kB: 1,695 roads, 890 buildings, 14 water/parks), which nginx serves from this
+origin like any other file under `web/`.
+
+**Run it by hand, once.** Nothing fetches at runtime. A tile from a map provider would
+be an off-origin request: blocked by the CSP and dead on a demonstration machine with
+the cable out (F13). Baking the surroundings into the repository keeps the context and
+the offline guarantee. If the file is missing the map degrades to exactly what it drew
+before — `loadContext()` swallows the failure on purpose.
+
+Three things about it are load-bearing:
+
+- **It is projected with the portfolio's own `toScreen`**, built inside
+  `buildGeometry()`. Two layers on two projections would drift apart at zoom.
+- **Panning moves the group's `transform`; it does not re-render.** The context is
+  ~2,600 paths, and rebuilding that markup on every pointer move made the map
+  unusable to drag. `applyTransform()` is the whole pan update; zoom still goes
+  through `render()`, because the zoom band decides what is drawn. Measured: 6 ms to
+  pan, ~20 ms per zoom step.
+- **Detail is gated by zoom band** (`#map[data-zoom]`, set in `render()`). At the
+  opening view the minor streets are a grey wash that hides the roads anyone would
+  navigate by, and the neighbouring footprints are specks — neither is drawn until it
+  means something. Verified: far = 0 minor roads and 0 context buildings, mid and
+  close = 1,384 and 890, portfolio switching from squares to real footprints at the
+  same threshold.
+
+Roads use `vector-effect: non-scaling-stroke`, so a street stays one pixel wide at
+every zoom instead of growing into a slab as the group scales.
+
+The scale bar is a fixed 80 px with a measured label, not a round number with a
+stretched bar. The usual way round would mean writing a width from JavaScript, and an
+inline style is discarded under `style-src 'self'`.
+
+## 5b. How a view is built
+
+Every view opens with the same three things, from `ui.js`. Follow the pattern rather
+than inventing a fourth way to show a spinner.
+
+```js
+root.innerHTML = `${pageHead({ title, description, meta: freshness(clock) })}
+                  ${skeletonRows(8)}`;      // shaped like what replaces it
+…
+setStatus(root, { kind: 'ok', message: 'Closed 34 alerts.', actionLabel: 'Undo', … });
+```
+
+- **`pageHead`** — an `h2` title and a sentence saying what the screen is for. `h1` is
+  the product name in the header, so a panel heading is an `h3`. Skipping a level
+  makes the heading outline lie to a screen reader.
+- **`freshness(dataClock)`** — the data clock plus a Refresh button. Nothing polls (§7
+  item 7), and at 720× a screen left open for a minute is showing half a day of stale
+  numbers. Stating when the numbers were read is the honest version of that; a live
+  badge over a stopped clock is not.
+- **`setStatus`** — the result of an action, **inline at the top of the view**, not a
+  floating toast. A fixed toast can cover the control that holds keyboard focus, and
+  one that expires on a timer is unreadable for anyone who needs longer than it lasts.
+  It stays until replaced or dismissed.
+- **Skeletons, not a spinner line.** The old `<div class="loading">` was one line tall
+  and everything below it moved when the data arrived.
+- **`dataTable` + `wireSort`** for every table. Sorting is client-side over the rows
+  already loaded and the footer says so — the API returns a capped slice, and sorting
+  100 of 31,000 rows while calling them "the worst" would be a lie the interface tells
+  on its own.
+- **`openDialog` traps focus and returns it** to whatever opened it. `confirmAction` is
+  the same dialog with no fields, for changes that are not obviously reversible.
+
 ## 6. Roles, and what each sees
 
 Ladder: `viewer` < `analyst` < `admin`.
@@ -252,6 +403,24 @@ were fixed in the light/dark redesign pass; the rest are still open and still re
   desktop default. Everything interactive is now at least 28px, most 30px.
 - **Text was sized in px throughout**, so the browser's own text-size setting could not
   scale it. The type scale is in rem.
+- **Zoom was the mouse wheel and nothing else**, which left the map unreachable from a
+  keyboard. There are now +/−/Fit buttons, and the map itself is focusable with arrow
+  keys to pan and `+` `-` `0` to zoom.
+- **Both map modals opened with focus left behind them**, so Tab walked the page under
+  the scrim and Escape did nothing. Focus moves into the dialog and returns to the
+  button that opened it. Escape is handled on the modal, not on `document`, so it adds
+  no listener to leak.
+- **A role change fired on `change` with no confirmation and no visible result.** It
+  now says what the role means, asks, and reverts the select if the answer is no.
+- **Every table and every "no data" case had its own markup.** One `dataTable`, one
+  `emptyState`, all sortable, all with the row count stated.
+
+A note for whoever picks this up: the `ui-ux-pro-max` skill's generated design system
+recommends a Fira Code / Fira Sans pairing **loaded from Google Fonts**. That was
+rejected, not overlooked — see §4.1. Its useful contributions were the density and
+motion dials (dashboard density, subtle 200–250 ms transitions), the Swiss/minimal
+direction, and the rule that telemetry may only be labelled live when it is backed by a
+current source with an update time and a stale state, which is what `freshness()` is.
 
 ### Serious
 
@@ -273,10 +442,13 @@ were fixed in the light/dark redesign pass; the rest are still open and still re
 
 ### Moderate
 
-4. **The alert list caps at 100** with ~31,000 open. The count is now stated, so the
-   cap is no longer silent, but there is still no pagination — and there cannot be
-   until `/dashboard/anomalies` takes an `offset`. Acknowledging rows refills the list
-   from the pool.
+4. **The alert list caps at 100** with ~31,000 open. Mostly addressed: the count is
+   stated, the list can be filtered by building as well as severity, rows can be
+   multi-selected and closed in one call, and every close offers a real undo
+   (`acknowledge` takes `acknowledged: false`). What is still missing is **paging** —
+   and it cannot be added until `/dashboard/anomalies` takes an `offset`. That is a
+   one-parameter API change and it is the last thing standing between this screen and
+   a workable triage queue.
 
 5. ~~**"Acknowledge all shown" does not do what it says.**~~ **CLOSED** — it is now
    "Acknowledge by severity…", it states the scope and the count, and it confirms in
@@ -288,9 +460,10 @@ were fixed in the light/dark redesign pass; the rest are still open and still re
    one. Only the map redraws. Fixing this properly needs the teardown hook issue 2
    also wants, so the two belong in one pass.
 
-7. **Nothing refreshes.** No polling anywhere. Data time advances at 720×, so the
-   Overview a judge is looking at goes stale within a minute and nothing says so.
-   Either poll the summary or timestamp the panels with "as of".
+7. **Nothing refreshes on its own.** Still true, and still worth doing. Half-addressed:
+   every view now states the data clock its numbers were read at and offers a Refresh
+   button, so a stale screen says it is stale instead of pretending. Automatic polling
+   of the summary is the remaining half.
 
 8. ~~**Sign-out leaves the hash pointing at the last view.**~~ **CLOSED.**
 
@@ -299,6 +472,80 @@ were fixed in the light/dark redesign pass; the rest are still open and still re
 9. ~~**No `aria-label` on any interactive control.**~~ **CLOSED.**
 
 10. ~~**`onPasswordChanged` is a no-op.**~~ **CLOSED.**
+
+---
+
+## 7a. The charts, after the interaction pass
+
+`charts.js` no longer returns a picture. Every chart is a host with three parts and
+only the first is ever redrawn:
+
+```
+.chart-host
+  .chart-plot     the SVG - replaced on every resize
+  .chart-tip      the readout - positioned from --tip-x, never rebuilt
+  details.chart-table   the same numbers, collapsed
+```
+
+Listeners bind to the host once and read `host.__meta`, which the latest draw left
+behind. Binding to the SVG would mean re-attaching after every resize, and a missed
+re-attach is a chart that silently stops responding at one particular window width.
+
+What a reader can now do, on every chart:
+
+- **Point at it.** A crosshair snaps to the nearest reading and one readout lists
+  every series at that moment - the pointer never has to land on a line.
+- **Focus it and use the arrow keys.** Same values, same readout. Shift steps ten at
+  a time, Home and End jump to the ends, Escape clears. The SVG carries the
+  `tabindex`, so the chart itself is the stop rather than a wrapper around it.
+- **Open the table.** A `<details>` under each chart with the same numbers, thinned
+  to every nth row past sixty and labelled as thinned. No script, keyboard operable
+  and announced for free.
+
+The Overview carries **one filter row above everything it scopes** - 7 / 14 / 30 / 90
+days - and both charts, the sparkline and the trend move together. A refetch dims the
+frame it already has rather than dropping a skeleton in, so nothing jumps under the
+reader who just asked the question. The window lives on the view object, so leaving
+the screen and coming back does not reset it.
+
+### The severity palette is not separable by hue, and the charts work around it
+
+Run through a colourblindness check, in the light appearance:
+
+| pair | deutan ΔE | normal ΔE |
+|---|---|---|
+| `--sev-critical` vs `--sev-high` | **0.6** | 26 |
+| `--sev-high` vs `--sev-medium` | 11 | **13.0** |
+
+A deutan ΔE of 0.6 means critical and high are, to roughly one man in twenty, **the
+same colour** - and the alerts chart stacks them on each other. 13 in normal vision is
+below the 15 at which two marks can be told apart at a glance by anyone.
+
+The real repair is re-stepping the three tokens, and that is **not a chart's decision
+to make**: those colours are also the alert badges, the map markers and the severity
+chips, so they change everywhere or nowhere. Until someone does that, the charts stop
+relying on hue alone - each band carries a hatch as well as a colour, at 45°, 135° and
+90°, painted in `--surface` so it reads as the surface showing through the mark. The
+legend keys carry the same textures, or the legend would be the one place a reader
+still had to separate the bands by hue.
+
+Two related things were fixed in passing. The proportion bar was painting a
+categorical question - *which forecaster is in use* - in the severity ramp, so a
+portfolio entirely on the current model drew a full-width bar in critical red with
+"100%" on it: an alarm about good news. It draws from `--series-*` now. And the
+readout puts the value first and heavier with the label after it, which is the
+legend's hierarchy inverted, because at that point the reader has the series and wants
+the number.
+
+### Still open here
+
+- **The three severity tokens should be re-stepped** so they pass without texture.
+  Texture is the workaround, not the fix.
+- **The forecast overlay is often a single line.** `/dashboard/forecast` returns
+  actual and forecast for the last N hours, but the data clock advances at 720x while
+  the refit runs on a wall-clock schedule, so within a few hours of wall time the
+  window contains readings and no forecast. The chart is right; what it is drawing has
+  aged out. Re-running `python -m gemp.ml.jobs` refills it.
 
 ---
 
@@ -313,6 +560,8 @@ Verified working, live, at the time of this handoff:
 - signed out shows only the login form and leaks nothing about the portfolio
 - 50 building polygons render; real OSM footprints appear past zoom 3
 - both forecast charts, 100 alerts, 25 stored allocations
+- every chart answers the pointer AND the arrow keys, and carries a table of the same
+  numbers; the Overview's window control moves both charts and the sparkline together
 - integrity reads **Intact** over 51,400 rows with the external anchor matching
 - acknowledging an alert closes it and it leaves the open list
 

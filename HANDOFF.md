@@ -42,11 +42,16 @@ remote**, branch `master`.
 | — | interface rebuild: sidebar shell, light/dark, accessibility |
 | 5 — rehearsal, documentation | **not started** |
 
-353 tests plus 15 integration tests that skip themselves without the stack, lint
+361 tests plus 15 integration tests that skip themselves without the stack, lint
 clean, coverage floor 80%, all four gates passing.
 
 Five containers: timescaledb, mosquitto, core, sim, nginx. Grafana was removed when
-its dashboards moved into the application.
+its dashboards moved into the application; its provisioning survives as an archive that
+`tests/test_grafana_archive.py` checks and labels as one.
+
+**After rebuilding and recreating `core`, restart nginx too.** It resolves the upstream
+hostname once at startup, so a recreated API container leaves every request answering
+502 while `docker ps` says healthy.
 
 ```bash
 docker compose up -d
@@ -82,40 +87,53 @@ Ordered by what would cost most if it were still true on 31 August.
    biggest of those: the old "+10% / +134% CP-SAT over greedy" headline must not be
    quoted; it measured a baseline that stops spending.
 
-### Measured, not met
-
-3. **Anomaly precision is 0.55 at recall 0.81**, against a 0.6 target — and tuning
-   cannot close it. 64 combinations of threshold, episode duration and peak-z were
-   swept; duration buys precision at the same exchange rate as the threshold, and a
-   peak-z floor makes precision *worse*. Closing it needs a better expected-load
-   model — `ml/features.py`, not `anomaly_k`. Documented as a negative result with
-   the evidence, which is a legitimate thing to submit.
-
 ### Verification gaps
 
-4. **CI has never executed.** No git remote, so `.github/workflows/ci.yml` has never
+3. **CI has never executed.** No git remote, so `.github/workflows/ci.yml` has never
    run. `scripts/check.py` is what actually enforces the gates. Creating a remote and
-   pushing once would validate the workflow.
-
-5. **Several things are verified by DOM inspection, not by eye.** The browser pane
-   used for automation does not composite, which means `requestAnimationFrame`,
-   `ResizeObserver` and `:focus` never fire in it. Confirmed working by other means
-   but never *seen*: map footprints past zoom 3, the skip link appearing on focus, and
-   the ResizeObserver path of the chart redraw. Each is a few seconds to confirm in a
-   real window.
+   pushing once would validate the workflow. (Its two tests now live in
+   `tests/test_ci_workflow.py` rather than inside the Grafana file.)
 
 ### Traceability
 
-6. **F10 and F11 are resolved but unlabelled.** Prophet was rejected for HGBR +
-   seasonal-naive; WireGuard and SMTP were cut and the architecture collapsed to what
-   the review prescribed. Every other finding is labelled at the module implementing
-   it, so the paper has no evidence trail for these two. F11 also carries a Phase 5
-   writing task: describe WireGuard and SMTP as *designed-for*, with the MQTT topic
-   contract as the evidence.
+4. Nothing outstanding. F10 and F11 are labelled at the modules that resolve them -
+   `gemp.ml.forecast` and `gemp.ml.features` for the Prophet rejection,
+   `gemp.api.main`, `gemp.ingest.webhook` and `gemp.sim.node` for the monolith
+   collapse, the dropped SMTP service and the WireGuard-as-designed-for argument. F11
+   still carries the Phase 5 writing task: the paper has to make that last argument in
+   prose, with the MQTT topic contract as its evidence.
 
-7. **Grafana provisioning is retained but not deployed**, and `test_provisioning.py`
-   still validates it. Either say plainly that it is kept as Phase 3 evidence, or drop
-   it — a passing test currently implies something is running that is not.
+### Recently closed, and why it is written down rather than deleted
+
+The anomaly precision target, the Grafana ambiguity and the F10/F11 labels came off
+this list on 18 August. One of them changed a paper claim rather than a line of code,
+which is the part worth carrying forward.
+
+**Anomaly precision is 0.827 at recall 0.875 (k=5)**, against gates of 0.6 and 0.8.
+`F9-b` is a real gate in the claims harness now rather than a known-open `FAIL*`. The
+threshold sweep's conclusion was right that tuning cannot reach 0.6 and wrong that 0.55
+was a ceiling: the forecaster mispredicted hour 00, where Egyptian load steps into the
+weekend or a public holiday while every lag feature says the building was busy an hour
+ago. Predicting the ratio to a causal hour-of-week profile fixed it. Details in
+`CLAUDE.md` under "Findings that change the paper", item 6.
+
+**The three behaviours that had only ever been checked through the DOM have now been
+seen.** In a displayed browser pane, signed in, on 18 August: the skip link appears
+top-left on the first Tab and moves focus to `#view` when activated; real OpenStreetMap
+footprints replace the proxy squares past `FOOTPRINT_ZOOM`, and they are visibly
+building-shaped - an L, a cross - rather than boxes; and narrowing the chart's
+container from 519 px to 320 px with no window `resize` event redrew the chart at the
+new width, `viewBox` 519 to 320, axes and labels re-laid out rather than squashed. The
+pane composites once it is DISPLAYED, which is the detail the earlier note was missing:
+it is not that the pane cannot composite, it is that a hidden one does not.
+
+**Two measurement defects fell out of that work and both were worse than the thing they
+were hiding.** Forecasts could be negative, so the detector - which divides by the
+expectation - scored an ordinary 1 kW reading at a robust z of 15,319. And the
+simulator, whenever it could not reach the API at startup, silently rewound its data
+clock by thirteen months and published nothing but duplicates while still recording the
+faults it thought it was injecting: 1,762 of 2,212 ground-truth events described data
+that was never stored. Anything written about F9 must come from a run after this.
 
 ---
 

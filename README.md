@@ -227,32 +227,48 @@ Stated more usefully as what the difference is worth: choosing funding by raw kW
 instead of life-cycle carbon costs at most **0.02 %** of the carbon a carbon-optimal
 allocation would deliver, across 20 budgets.
 
-## Open finding: the anomaly precision target is not reachable by tuning
+## Closed finding: the anomaly precision target, and what it took to reach it
 
-Episode-level detection reads **precision 0.55 at recall 0.81** (k = 8). Recall meets
-the 0.8 gate in the technical review; precision does not meet 0.6, and the reason is
-not that the threshold is badly chosen.
+Episode-level detection reads **precision 0.83 at recall 0.88** (k = 5), against gates
+of 0.6 and 0.8 in the technical review. Both are met. The route there is worth more
+than the number, because for most of the project this section said the target was
+unreachable, and the reasoning that led to that conclusion was half sound.
 
-`k` moves a point along a single precision/recall curve. To find out whether the curve
-itself could be moved, 64 combinations of `k`, minimum episode duration and minimum
-peak z were measured against injected ground truth. Requiring longer episodes buys
-precision at about the same exchange rate as raising `k` — 0.645 precision at 0.438
-recall. Requiring a higher peak z makes precision *worse*, moving it from 0.607 to
-0.535, which is informative rather than merely disappointing: a frozen meter barely
-deviates from its expectation at all, while the largest residuals are legitimate load
-that the forecaster failed to anticipate. Residual magnitude does not separate real
-faults from forecast misses here.
+**The sound half.** `k` moves a point along a single precision/recall curve. To find
+out whether the curve itself could be moved, 64 combinations of `k`, minimum episode
+duration and minimum peak z were measured against injected ground truth. Requiring
+longer episodes buys precision at about the same exchange rate as raising `k`.
+Requiring a higher peak z makes precision *worse*, moving it from 0.607 to 0.535,
+which is informative rather than merely disappointing: a frozen meter barely deviates
+from its expectation at all, while the largest residuals are legitimate load that the
+forecaster failed to anticipate. Residual magnitude does not separate real faults from
+forecast misses. All of that still holds.
 
-The best precision available at recall ≥ 0.8 is **0.550, with no suppression at all**.
-Precision does reach 0.601 at k = 10, but only by giving up recall (0.756) — the wrong
-trade for a detector whose misses burn energy every hour they go unnoticed. Closing
-the gap needs a better expected-load model, not a better threshold, which is a finding
-about where the remaining engineering effort belongs.
+**The unsound half** was treating 0.55 as a property of the problem. It was a property
+of the forecaster, and the forecaster had one systematic failure doing most of the
+damage. Egyptian building load STEPS at midnight — into the Friday–Saturday weekend,
+into a public holiday, out of one — and every lag feature says the building was busy an
+hour ago. Relative residual dispersion measured 0.125 at hour 00 against 0.06 for the
+rest of the day, and 640 of 1,379 false alarms began at hour 00, on Fridays and public
+holidays. The detector scales residuals against a window pooled across all hours, so a
+systematically worse hour breaches the threshold on ordinary days.
 
-Both figures are still rising as the simulator's live fault record accumulates: a
-correct detection of a fault that was never recorded cannot be credited, so it is
-excluded from scoring instead. Precision at k = 8 read 0.515 against 454 recorded
-events and 0.550 against 618.
+The fix is one idea: predict the **ratio** to a causal hour-of-week profile rather than
+the load itself. A tree adds leaf values, so in kW a holiday is a per-building,
+per-hour constant learned from a handful of examples; in ratio space it is "0.3×", one
+split that holds everywhere. Held-out MAPE moved 3.83 % → 3.24 %, and episode precision
+at recall 0.88 moved 0.55 → 0.83. The precision gain is far larger than the accuracy
+gain because what it removed was not noise but a systematic error at one hour of the
+day.
+
+Two measurement defects were fixed in the same pass, and the second was the larger.
+Forecasts are now floored at zero — the model had been predicting down to −1.32 kW in
+the overnight trough, and the detector divides by the expected value, so an ordinary
+1 kW reading became a robust z of 15,319. And ground truth from a simulator run that
+rewound its data clock is now discarded: such a run republishes timestamps that already
+exist, every reading is dropped as a duplicate, and the faults it records happened to
+nothing. That had 1,762 of 2,212 recorded events describing data that was never stored,
+and it read as recall 0.375 for a detector whose recall is 0.84.
 
 ## Roadmap
 
@@ -261,7 +277,7 @@ events and 0.550 against 618.
 | 0 — foundation + optimizer | **complete** |
 | 1 — infrastructure, ingestion, integrity | **complete** |
 | 2 — forecasting + anomaly detection | **complete** |
-| 3 — map UI, controls, Grafana | **complete** |
+| 3 — map UI, controls, dashboards | **complete** |
 | 4 — evaluation harness + hardening | **complete** |
 | 5 — rehearsal + documentation | next |
 
@@ -273,4 +289,8 @@ Critical path: `catalog schema → savings model → candidates → CP-SAT → /
 
 Cut list, in order, if the schedule slips: SMTP alerting → WireGuard → Grafana →
 anomaly detection → forecasting. The optimizer, the map and the evaluation harness are
-never cut.
+never cut. The first three were cut, and F10 and F11 record why: SMTP became an
+optional webhook (`gemp.ingest.webhook`), WireGuard is described rather than built with
+the MQTT topic contract as the evidence (`gemp.sim.node`), and Grafana's panels became
+views inside the application, leaving its provisioning as an archive
+(`tests/test_grafana_archive.py`).

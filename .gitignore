@@ -29,6 +29,12 @@ mosquitto/log/
 grafana/data/
 integrity_anchor.log
 
+# --- agent scratch ---
+# .claude/ holds linked git worktrees: a full second copy of the tree, including
+# a .env.example and a settings.local.json. Committing it would publish a
+# duplicate of the repository inside itself.
+.claude/
+
 # --- OneDrive / Windows noise ---
 Thumbs.db
 desktop.ini

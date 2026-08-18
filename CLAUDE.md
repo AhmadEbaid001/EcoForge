@@ -18,14 +18,17 @@ decision or display it.
 | 0 — domain + optimizer | done |
 | 1 — infra, ingestion, integrity | done |
 | 2 — forecasting, anomaly detection | done |
-| 3 — map UI, controls, Grafana | done (audited) |
+| 3 — map UI, controls, dashboards | done (audited) |
 | 4 — evaluation harness, hardening, CI | done |
 | 5 — rehearsal, documentation | **next** |
 | — | identity, RBAC and in-app dashboards (added after Phase 4) |
 
-344 tests plus 15 integration tests that skip themselves without the stack, lint
+361 tests plus 15 integration tests that skip themselves without the stack, lint
 clean, coverage floor 80%. **Five** containers: timescaledb, mosquitto, core, sim,
-nginx. Grafana was removed when its dashboards moved into the application.
+nginx. Grafana was removed when its dashboards moved into the application; its
+provisioning is kept as an archive and `tests/test_grafana_archive.py` says so in its
+first line, because a passing test file named `test_provisioning` had been implying a
+service that does not run.
 
 Integration tests need the stack and their own environment:
 
@@ -141,6 +144,28 @@ Grafana is no longer part of the stack: its panels are views inside the applicat
   whole session. Environment beats `.env` in pydantic-settings, so host-side code that
   calls `get_settings()` inside a test run gets the *test* key. It presented as an
   intact production chain reporting "modified at seq 0".
+- **A simulator that cannot reach the API used to rewind its data clock by a year,
+  and nothing anywhere said so.** `resume_point` fell back to `datetime.now()` when
+  `core:8000/health` refused a connection, which happens whenever the API restarts and
+  `restart: always` brings the simulator back on its own - `depends_on` only holds for
+  `docker compose up`. Under 720x replay, `now` is thirteen months BEHIND the stored
+  data, so every reading it published was a duplicate that `insert_ignore` dropped,
+  while it went on appending the faults it "injected" to `anchor/live_anomalies.jsonl`.
+  The stream looked alive and stored nothing. Measured: 1,762 of 2,212 ground-truth
+  events described readings that were never written, and anomaly recall read 0.375 for
+  a detector whose recall is 0.84. `resume_point` now retries and then refuses to
+  start, and `drop_rewound_runs` discards the events of any run that rewound.
+- **The automation browser pane composites only while it is DISPLAYED.** A hidden
+  pane runs no `requestAnimationFrame`, fires no `ResizeObserver`, and never applies
+  `:focus`, so anything that depends on layout or focus reads as broken and screenshots
+  time out. It is not a limitation of the pane - ask for it to be shown and all three
+  work. Three UI behaviours went unverified for weeks on the wrong conclusion.
+- **nginx caches the address of `core` for the life of the process.** `proxy_pass
+  http://core:8000/` resolves the hostname once at startup, so recreating the API
+  container - any rebuild - leaves every `/api/`, `/health` and `/docs` request
+  answering 502 while `docker ps` reports core healthy. `docker compose restart nginx`
+  clears it. On the day, that is a dead demonstration with no error message pointing
+  anywhere near the cause.
 - **A continuous aggregate's refresh policy is scheduled in WALL time** while the data
   it materialises advances in data time. At 720× the 5-minute schedule is 60 hours of
   data, so the aggregate tail is routinely a day or two behind the hypertable. That is
@@ -221,7 +246,32 @@ Grafana is no longer part of the stack: its panels are views inside the applicat
    paper should make: exact optimization earns its place through side constraints no
    greedy variant can express, not through a large unconstrained margin.
 
-6. **Two claims in the review were mis-specified rather than wrong.** "Every bundle
+6. **The anomaly precision target is met, and the negative result that used to stand
+   in its place must not be quoted as a conclusion.** Detection now reads **precision
+   0.827 at recall 0.875 (k=5)** against gates of 0.6 and 0.8. What changed was the
+   expected-load model, not the threshold: the forecaster predicts the RATIO to a
+   causal hour-of-week profile rather than the load itself, which moved held-out MAPE
+   from 3.83% to 3.24% and precision at that recall from 0.55 to 0.83.
+
+   The old text is half right and should be kept in that form. It is right that no
+   threshold and no episode-level suppression reaches 0.6 — 64 combinations of k,
+   duration and peak z say so, and a peak-z floor makes precision *worse* (0.607 →
+   0.535 at k=8) because a frozen meter barely deviates while the largest residuals
+   are legitimate load the forecaster missed. It is wrong that 0.55 was a ceiling. It
+   was a property of one systematic failure: Egyptian load steps at midnight into the
+   weekend or a holiday while every lag feature says the building was busy an hour
+   ago, relative residual dispersion was 0.125 at hour 00 against 0.06 elsewhere, and
+   640 of 1,379 false alarms started at hour 00 on a Friday or a public holiday.
+
+   **Two of the numbers the paper could have quoted were measurement artefacts.** The
+   forecaster was predicting down to −1.32 kW in the overnight trough and the detector
+   divides by the expectation, so an ordinary 1 kW reading scored a robust z of 15,319;
+   and a simulator that rewound its clock had filled the ground truth with 1,762
+   phantom events, reading as recall 0.375. Both are fixed and both are pinned by
+   tests. Anything written about F9 must come from a run after this, not from the
+   earlier sweeps.
+
+7. **Two claims in the review were mis-specified rather than wrong.** "Every bundle
    saves less than the sum of its parts" fails for 509 of 1,114 bundles and should:
    lighting and HVAC controls act on different end uses and rooftop solar is
    generation, so there is no interaction term to lose. What holds is the narrower
@@ -236,22 +286,9 @@ Grafana is no longer part of the stack: its panels are views inside the applicat
   `python -m gemp.domain.catalog --validate --strict` fails until they are sourced.
   This is the one thing code cannot close, and every number the platform reports
   derives from it.
-- **Anomaly precision is 0.55 at recall 0.81** (k=8, episode-level), and **the 0.6
-  target is not reachable by tuning.** k only slides a point along one curve. Phase 4
-  swept 64 combinations of k, minimum episode duration and minimum peak z: duration
-  buys precision at the same exchange rate as k, and a peak-z floor makes precision
-  *worse* (0.607 → 0.535 at k=8), because a frozen meter barely deviates while the
-  largest residuals are legitimate load the forecaster missed. Precision reaches 0.601
-  at k=10 but only by dropping recall to 0.756, which is the wrong trade for a fault
-  detector. Closing this needs a better expected-load model — the fixed features in
-  `ml/features.py` are the place to look, not `anomaly_k`.
-- **Those two numbers are still drifting upward** as the live ground-truth file
-  accumulates, because a correct detection of a fault with no record is excluded
-  rather than credited. Precision at k=8 read 0.515 at 454 recorded events and 0.550
-  at 618. Recall sits close to its gate (0.79–0.81 across runs), so a single run
-  reporting 0.79 is drift, not a regression — re-run before treating it as one.
-- The claims harness reports two known-open findings (`DATA`, `F9-b`). They print
-  `FAIL*` and do not fail the run.
+- The claims harness reports one known-open finding (`DATA`, the uncited catalog). It
+  prints `FAIL*` and does not fail the run. `F9-b` used to sit alongside it and is now
+  a real gate — see below.
 
 ## Identity and access
 
