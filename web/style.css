@@ -50,10 +50,13 @@
 
   /* Primary is the darker blue; primary-container the brighter one the action
      bar and the filled buttons use. */
-  --accent:        #004a9a;
-  --accent-hover:  #003a7a;
-  --accent-bright: #0b62c4;
-  --accent-soft:   #d6e2ff;
+  /* Green is the interaction colour: the logo is green and the active row in the
+     sidebar always was, while every button and link was blue. Two accents were
+     competing, and the nav was the one telling the truth. */
+  --accent:        #146c37;
+  --accent-hover:  #0d5228;
+  --accent-bright: #1c8a45;
+  --accent-soft:   #d3f3de;
   --on-accent:     #ffffff;
 
   --success:       #006d43;
@@ -79,8 +82,14 @@
   --brand-ink:     #003663;
   --brand-accent:  #85e199;
 
-  --funded:        #006d43;
-  --funded-edge:   #004f30;
+  /* Funded is BLUE, and it is the only blue left in the product.
+     It was green, which is now the colour of every button and focus ring - so a
+     funded building and a primary control read as the same thing on the screen this
+     project demonstrates most. Blue left the furniture so it could mean one thing
+     here: this is where the money went. It also stops funded buildings sitting
+     green-on-green over the map's parkland. */
+  --funded:        #0b62c4;
+  --funded-edge:   #084a92;
   --unfunded:      #a8aebf;
   --anomaly:       #ba1a1a;
   --district-s:    16%;
@@ -156,11 +165,11 @@
     --ink-2:         #a4aebd;
     --ink-3:         #838d9c;
 
-    --accent:        #abc7ff;
-    --accent-hover:  #c9dcff;
-    --accent-bright: #4d8fe8;
-    --accent-soft:   #00458f;
-    --on-accent:     #001b3f;
+    --accent:        #8fe0ae;
+    --accent-hover:  #b5eece;
+    --accent-bright: #4fc27d;
+    --accent-soft:   #12492c;
+    --on-accent:     #04240f;
 
     --success:       #7dd9a5;
     --success-soft:  #00382180;
@@ -181,8 +190,8 @@
     --brand-ink:     #e2ecf6;
     --brand-accent:  #85e199;
 
-    --funded:        #7dd9a5;
-    --funded-edge:   #d6ffe4;
+    --funded:        #7fb0f0;
+    --funded-edge:   #d6e6ff;
     --unfunded:      #4a5464;
     --anomaly:       #ff8f83;
     --district-s:    18%;
@@ -221,11 +230,11 @@
   --ink-2:         #a4aebd;
   --ink-3:         #838d9c;
 
-  --accent:        #abc7ff;
-  --accent-hover:  #c9dcff;
-  --accent-bright: #4d8fe8;
-  --accent-soft:   #00458f;
-  --on-accent:     #001b3f;
+  --accent:        #8fe0ae;
+  --accent-hover:  #b5eece;
+  --accent-bright: #4fc27d;
+  --accent-soft:   #12492c;
+  --on-accent:     #04240f;
 
   --success:       #7dd9a5;
   --success-soft:  #00382180;
@@ -246,8 +255,8 @@
   --brand-ink:     #e2ecf6;
   --brand-accent:  #85e199;
 
-  --funded:        #7dd9a5;
-  --funded-edge:   #d6ffe4;
+  --funded:        #7fb0f0;
+  --funded-edge:   #d6e6ff;
   --unfunded:      #4a5464;
   --anomaly:       #ff8f83;
   --district-s:    18%;
@@ -400,9 +409,12 @@ body.nav-collapsed .brand-mark { display: block; }
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .nav-item:hover { background: var(--surface-hover); color: var(--ink); }
+/* The accent, like every other interactive thing. It used to draw from --success,
+   which is why the nav was green while the buttons were blue - and why --success
+   also had to mean "healthy". One accent, one meaning each. */
 .nav-item[aria-current="page"] {
-  background: var(--success-soft); color: var(--success-ink);
-  border-left-color: var(--success); font-weight: 700;
+  background: var(--accent-soft); color: var(--accent);
+  border-left-color: var(--accent); font-weight: 700;
 }
 .nav-item .icon { width: 20px; height: 20px; flex: none; }
 .nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1583,6 +1595,12 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
 @media (max-width: 1024px) {
   .sidebar { width: 64px; }
   .sidebar .nav-label, .sidebar-brand-text { display: none; }
+  /* The rail arrives by two routes - the toggle sets body.nav-collapsed, a narrow
+     viewport sets none of that - and the compact mark has to appear on both. It was
+     bound to the class alone, so below 1024px the brand area went blank: the
+     wordmark hidden with .sidebar-brand-text, the mark still waiting for a class
+     nobody had set. */
+  .brand-mark { display: block; }
   .nav-item, .status { justify-content: center; padding-left: 0; padding-right: 0; }
   .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
   .sidebar .appearance { flex-direction: column; margin: var(--s-sm) auto 0; }
@@ -1603,7 +1621,7 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
     border-left: 0; border-bottom: 4px solid transparent;
     padding: var(--s-sm); min-height: 40px;
   }
-  .nav-item[aria-current="page"] { border-left-color: transparent; border-bottom-color: var(--success); }
+  .nav-item[aria-current="page"] { border-left-color: transparent; border-bottom-color: var(--accent); }
   .sidebar-foot {
     flex-direction: row; margin: 0 0 0 auto; padding: 0; border-top: 0; align-items: center;
   }
