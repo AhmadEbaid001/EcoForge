@@ -119,7 +119,7 @@ src/gemp/
     runner.py      one interface, three solvers, one return type
   ingest/      Phase 1: MQTT -> hash-chained storage
   ml/          Phase 2: forecasting and anomaly detection
-  api/  web/   Phase 3: FastAPI + inline-SVG map (no mapping library — see CLAUDE.md)
+  api/  web/   Phase 3: FastAPI + inline-SVG map (no mapping library — F13, offline demo)
 ```
 
 `domain/` importing nothing infrastructural is what lets the optimizer run against CSV
@@ -281,8 +281,8 @@ and it read as recall 0.375 for a detector whose recall is 0.84.
 | 4 — evaluation harness + hardening | **complete** |
 | 5 — rehearsal + documentation | next |
 
-See [CLAUDE.md](CLAUDE.md) for the working context: decisions, traps, and the findings
-that change the paper.
+The engineering record — decisions, traps, and the findings that change the paper —
+is kept with the team rather than in this repository, which holds the platform.
 
 Critical path: `catalog schema → savings model → candidates → CP-SAT → /optimize → map
 → rehearsal`. Everything else hangs off that spine and is severable.

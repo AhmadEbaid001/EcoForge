@@ -73,6 +73,12 @@
   --series-0:      #004a9a;
   --series-1:      #8a5a06;
 
+  /* Brand. The supplied artwork is navy on light green, drawn for a light ground.
+     The green is the constant; the navy is what has to move, because #003663 on the
+     dark appearance's #12161c is very nearly the same colour. */
+  --brand-ink:     #003663;
+  --brand-accent:  #85e199;
+
   --funded:        #006d43;
   --funded-edge:   #004f30;
   --unfunded:      #a8aebf;
@@ -172,6 +178,9 @@
     --series-0:      #7fb0f0;
     --series-1:      #fabb64;
 
+    --brand-ink:     #e2ecf6;
+    --brand-accent:  #85e199;
+
     --funded:        #7dd9a5;
     --funded-edge:   #d6ffe4;
     --unfunded:      #4a5464;
@@ -233,6 +242,9 @@
   --sev-medium:    #8e98a8;
   --series-0:      #7fb0f0;
   --series-1:      #fabb64;
+
+  --brand-ink:     #e2ecf6;
+  --brand-accent:  #85e199;
 
   --funded:        #7dd9a5;
   --funded-edge:   #d6ffe4;
@@ -672,10 +684,15 @@ label.check {
   padding: var(--s-sm) var(--s-margin);
   background: var(--surface); border-bottom: 1px solid var(--line); flex: none;
 }
-.login-bar .wordmark {
-  font-size: var(--fs-head-md); font-weight: 800; letter-spacing: -.01em;
-  color: var(--ink); margin: 0;
-}
+/* Sized by height and left to find its own width: the mark is 4.4:1, so pinning a
+   width is how it ends up either clipped or three pixels tall. */
+.brand-wordmark { margin: 0; line-height: 0; }
+.wordmark-svg { display: block; height: 100%; width: auto; }
+.wm-ink { fill: var(--brand-ink); }
+.wm-accent { fill: var(--brand-accent); }
+
+.login-bar .brand-wordmark { height: 22px; }
+.sidebar-brand .brand-wordmark { height: 20px; }
 .login-bar .chip {
   font-size: var(--fs-label-sm); font-weight: 600; letter-spacing: .02em;
   text-transform: uppercase; padding: var(--s-xs) var(--s-sm);

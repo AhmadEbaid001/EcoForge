@@ -1,0 +1,47 @@
+# What `docker compose build` is allowed to send to the daemon.
+#
+# Without this file the ENTIRE working directory is uploaded as the build context on
+# every build - .git, .venv, the 133 MB UCI dataset, pgdata, and .env. None of it is
+# copied into the image (infra/Dockerfile takes only pyproject.toml, README.md, src/
+# and data/), but the context is transferred and cached regardless, and a secret that
+# travels to the daemon is a secret in one more place than it needs to be.
+
+# --- version control and agent scratch ---
+.git
+.gitignore
+.gitattributes
+.claude
+
+# --- secrets: must never enter a build context ---
+.env
+*.key
+secrets/
+infra/mosquitto/passwd
+
+# --- local environments and caches ---
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+*.egg-info
+
+# --- runtime state and generated output ---
+anchor/
+out/
+pgdata/
+models/
+artifacts/
+data/household_power_consumption.txt
+data/ground_truth.csv
+
+# --- not part of the runtime image ---
+tests/
+docs/
+web/
+.github/
+*.md
+!README.md

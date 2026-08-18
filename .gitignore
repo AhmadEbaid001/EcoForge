@@ -36,6 +36,17 @@ mosquitto/log/
 grafana/data/
 integrity_anchor.log
 
+# --- internal working notes, not part of the platform ---
+# These are the team's engineering record - traps, decisions, the corrections the
+# paper depends on - and they are kept on disk and read daily. They are not shipped:
+# infra/Dockerfile copies only pyproject.toml, README.md, src/ and data/, and nginx
+# serves web/, so none of them ever reached a container. Untracking them keeps the
+# published repository to the platform itself.
+CLAUDE.md
+HANDOFF.md
+HANDOFF-UI-UX.md
+STITCH-PROMPT.md
+
 # --- agent scratch ---
 # .claude/ holds linked git worktrees: a full second copy of the tree, including
 # a .env.example and a settings.local.json. Committing it would publish a

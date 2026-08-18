@@ -2,7 +2,7 @@
 
 The rest of the suite runs against SQLite, which is fast, needs no container, and is
 wrong about several things that matter here: it has no hypertables, no continuous
-aggregates, no JSONB, and a different planner. Every trap in CLAUDE.md that cost real
+aggregates, no JSONB, and a different planner. Every trap in the working notes that cost real
 time lived in that gap.
 
 These tests run against the live TimescaleDB and are skipped - not failed - when it

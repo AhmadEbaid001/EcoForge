@@ -160,7 +160,7 @@ def test_no_grafana_service_is_declared():
     services = set(compose["services"])
 
     assert "grafana" not in services, (
-        "Grafana is back in the stack. Update tests/test_grafana_archive.py, "
-        "CLAUDE.md, HANDOFF.md and the README together, or take it out again."
+        "Grafana is back in the stack. Update tests/test_grafana_archive.py, the "
+        "README and the team's working notes together, or take it out again."
     )
     assert len(services) == 5, f"expected five services, found {sorted(services)}"

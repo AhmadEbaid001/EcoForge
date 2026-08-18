@@ -14,6 +14,7 @@
 'use strict';
 
 import { api, setPasswordChangeHandler, setUnauthenticatedHandler } from './api.js';
+import { wordmark } from './brand.js';
 import { escapeHtml, hydrateCharts, icon } from './charts.js';
 
 import { mapView } from './map.js';
@@ -125,7 +126,7 @@ function showLogin(message = '') {
     <div class="login-wrap">
       <header class="login-bar">
         <span class="mark">${icon('bolt')}</span>
-        <p class="wordmark">GEMP</p>
+        <p class="wordmark brand-wordmark">${wordmark('GEMP')}</p>
         <span class="chip">Restricted access</span>
         ${appearanceSwitch()}
       </header>
@@ -283,9 +284,11 @@ async function showApp() {
     <div class="shell">
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
+          <!-- The tile stays: it is what the rail shows once the sidebar collapses,
+               where an 816x185 wordmark has nowhere to go. -->
           <span class="mark">${icon('bolt')}</span>
           <div class="sidebar-brand-text">
-            <h1>GEMP</h1>
+            <h1 class="brand-wordmark">${wordmark('GEMP')}</h1>
             <p class="sub">Team Ecoforge</p>
           </div>
         </div>
