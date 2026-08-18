@@ -100,6 +100,10 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
       <button type="button" id="zoom-reset" aria-label="Fit the whole district">Fit</button>
     </div>
 
+    <div class="map-scale" aria-hidden="true">
+      <div class="map-scale-bar"></div><span id="scale-label">&mdash;</span>
+    </div>
+
     <p class="maphint" id="map-help">Scroll or use + and &minus; to zoom &mdash; real
     OpenStreetMap footprints appear as you zoom in &middot; drag or use the arrow keys to
     pan &middot; click a building for its options</p>
@@ -314,6 +318,79 @@ function buildGeometry() {
 
     return { id: props.id, props, cx: x, cy: y, side, ring };
   });
+
+  /* Metres per screen pixel at k = 1, for the scale bar. One degree of latitude
+   * is 111,320 m closely enough over a district. */
+  state.metresPerPx = 111320 / scale;
+
+  buildContext(toScreen);
+}
+
+/* ------------------------------------------------------------ context layer */
+
+/* The streets and neighbouring footprints the portfolio sits among, projected
+ * with the SAME transform as the portfolio so the two layers agree.
+ *
+ * Built once per geometry pass and kept as a string. There are about 2,600
+ * features in it: rebuilding that markup on every pointer move would make the
+ * map unusable, which is why panning now moves the group's transform instead of
+ * redrawing (see attachPanZoom).
+ */
+function buildContext(toScreen) {
+  if (!state.context) { state.contextMarkup = ''; return; }
+
+  const parts = [];
+  const water = [], roads = [], buildings = [];
+
+  for (const feature of state.context.features) {
+    const kind = feature.properties?.kind;
+    const coords = feature.geometry?.coordinates;
+    if (!coords) continue;
+
+    if (kind === 'road') {
+      const d = coords.map((point, i) => {
+        const [x, y] = toScreen(point);
+        return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join('');
+      const weight = feature.properties.weight || 1;
+      // Classed by weight so the stylesheet can drop the minor roads at low
+      // zoom, where they are a grey wash rather than information.
+      const rank = weight >= 2.4 ? 'major' : weight >= 1.4 ? 'mid' : 'minor';
+      roads.push(`<path class="ctx-road ${rank}" d="${d}"/>`);
+    } else {
+      const points = (coords[0] || []).map((point) => {
+        const [x, y] = toScreen(point);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      if (!points) continue;
+      const markup = `<polygon class="ctx-${kind}" points="${points}"/>`;
+      if (kind === 'building') buildings.push(markup);
+      else water.push(markup);
+    }
+  }
+
+  // Painted in this order: ground, then blocks, then streets over both.
+  parts.push('<g class="ctx" aria-hidden="true">', water.join(''),
+             buildings.join(''), roads.join(''), '</g>');
+  state.contextMarkup = parts.join('');
+}
+
+async function loadContext() {
+  /* Served from this origin as a static file. A tile from a map provider would
+   * be an off-origin request - blocked by the Content-Security-Policy, and dead
+   * on a demonstration machine with the cable out (F13). The surroundings ship
+   * with the application instead.
+   *
+   * Missing or unreadable is not an error worth stopping for: the map then
+   * draws exactly what it drew before this layer existed. */
+  if (state.context) return;
+  try {
+    const response = await fetch('data/context.geojson', { credentials: 'same-origin' });
+    if (!response.ok) return;
+    state.context = await response.json();
+  } catch {
+    state.context = null;
+  }
 }
 
 /* One hue per district, from the name, so the districts stay visually separate
@@ -336,7 +413,14 @@ function render() {
     (state.run?.items || []).map((i) => i.building_id).filter(Boolean));
   const isFunded_ = (b) => funded.has(b.id) || b.props.funded === true;
 
-  const parts = [`<g transform="translate(${x},${y}) scale(${k})">`];
+  /* The zoom band drives which context detail is drawn, through CSS rather
+   * than by rebuilding the markup: at the opening zoom the minor roads are a
+   * grey wash that hides the streets someone would actually navigate by. */
+  svg.dataset.zoom = k >= 6 ? 'close' : k >= 2.5 ? 'mid' : 'far';
+  updateScaleBar();
+
+  const parts = [`<g id="map-root" transform="translate(${x},${y}) scale(${k})">`,
+                 state.contextMarkup || ''];
 
   // District labels, placed at each cluster's centroid.
   const byDistrict = new Map();
@@ -419,7 +503,11 @@ function attachPanZoom(signal) {
     if (!dragging) return;
     state.view.x = originX + (e.clientX - startX);
     state.view.y = originY + (e.clientY - startY);
-    render();
+    /* Move the group, do not rebuild it. The context layer is about 2,600
+     * paths; regenerating that markup on every pointer move made the map
+     * unusable to drag. A pan changes nothing about WHAT is drawn, only where,
+     * so the transform is the whole update. */
+    applyTransform();
   }, { signal });
   svg.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -433,10 +521,10 @@ function attachPanZoom(signal) {
   svg.addEventListener('keydown', (e) => {
     const step = e.shiftKey ? 120 : 40;
     const keys = {
-      ArrowLeft: () => { state.view.x += step; },
-      ArrowRight: () => { state.view.x -= step; },
-      ArrowUp: () => { state.view.y += step; },
-      ArrowDown: () => { state.view.y -= step; },
+      ArrowLeft: () => { state.view.x += step; applyTransform(); },
+      ArrowRight: () => { state.view.x -= step; applyTransform(); },
+      ArrowUp: () => { state.view.y += step; applyTransform(); },
+      ArrowDown: () => { state.view.y -= step; applyTransform(); },
       '+': () => zoomAbout(1.25),
       '=': () => zoomAbout(1.25),
       '-': () => zoomAbout(1 / 1.25),
@@ -446,8 +534,17 @@ function attachPanZoom(signal) {
     if (!action) return;
     e.preventDefault();
     action();
-    render();
   });
+}
+
+/* A pan is a transform change and nothing else. Zoom still goes through
+ * render(), because the zoom band decides which context detail is drawn and
+ * whether footprints replace the consumption squares. */
+function applyTransform() {
+  const group = document.getElementById('map-root');
+  const { x, y, k } = state.view;
+  if (group) group.setAttribute('transform', `translate(${x},${y}) scale(${k})`);
+  updateScaleBar();
 }
 
 /* Zooms about a point in the map's own coordinates, defaulting to the middle of
@@ -462,6 +559,29 @@ function zoomAbout(factor, px, py) {
   state.view.y = ay - ((ay - state.view.y) * next) / state.view.k;
   state.view.k = next;
   render();
+}
+
+/* The bar is a fixed 80 screen pixels wide and the LABEL says what that is
+ * worth at the current zoom.
+ *
+ * The usual trick is the other way round - a round number like "500 m" and a
+ * bar stretched to match - but that would mean writing a width from JavaScript,
+ * and an inline style is discarded under `style-src 'self'`. A fixed bar with a
+ * measured label is the same information and survives the policy. Two
+ * significant figures, because the third would be claiming a precision an
+ * equirectangular projection does not have. */
+function updateScaleBar() {
+  const label = $('scale-label');
+  if (!label || !state.metresPerPx) return;
+  const metres = (80 / state.view.k) * state.metresPerPx;
+  const round2 = (v) => {
+    const power = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+    return Math.round(v / power) * power;
+  };
+  const value = round2(metres);
+  label.textContent = value >= 1000
+    ? `${(value / 1000).toFixed(value % 1000 ? 1 : 0)} km`
+    : `${Math.round(value)} m`;
 }
 
 function resetView() {
@@ -771,6 +891,7 @@ async function main(signal) {
   wire(signal);
   attachPanZoom(signal);
   await checkHealth();
+  await loadContext();      // before the first geometry pass, so it is there on paint 1
   await loadMap();
 
   if (canSolve) {
