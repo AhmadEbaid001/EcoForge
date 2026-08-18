@@ -31,6 +31,7 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 
 from gemp.config import get_settings
 from gemp.db import (
@@ -124,6 +125,8 @@ class Ingester:
         self.last_error = ""
         # Readings discarded because the queue was full while the database was away.
         self.overflowed = 0
+        # Readings the database refused outright - an unknown building, most likely.
+        self.rejected = 0
         self._last_checkpoint = time.monotonic()
 
         self.client = mqtt.Client(
@@ -211,11 +214,32 @@ class Ingester:
 
         try:
             written, detected, duplicates = self._write(pending)
+        except IntegrityError as exc:
+            # A constraint violation is DETERMINISTIC: retrying it produces the same
+            # violation forever. `reading.building_id` is a foreign key, so a single
+            # reading for a building the portfolio does not contain - a stale
+            # simulator, or the physical node F11 describes arriving before its
+            # building row - would otherwise be requeued at the FRONT of the queue and
+            # retried on every pass, blocking every valid reading behind it. Ingestion
+            # would be permanently dead while the thread stayed alive.
+            #
+            # So this batch is dropped rather than requeued, and the ids are named:
+            # the operator needs to know WHICH building the platform does not know
+            # about, because the fix is to add it, not to restart anything.
+            self.rejected += len(pending)
+            unknown = sorted({r["building_id"] for r in pending})[:5]
+            log.error(
+                "database refused a batch of %d readings and it has been dropped "
+                "(%d total). Buildings in the batch: %s. %s",
+                len(pending), self.rejected, ", ".join(unknown), exc.orig or exc,
+            )
+            return 0
         except Exception:
-            # The batch has already left the queue, so putting it back is the whole
-            # difference between "retried on the next pass" and "silently lost".
-            # Chain state was not touched - see `_write` - so the retry re-signs from
-            # the same head and produces the same rows.
+            # Anything else is treated as transient - a dropped connection, a
+            # restarting database. The batch has already left the queue, so putting it
+            # back is the whole difference between "retried on the next pass" and
+            # "silently lost". Chain state was not touched - see `_write` - so the
+            # retry re-signs from the same head and produces the same rows.
             self.queue.extendleft(reversed(pending))
             raise
 

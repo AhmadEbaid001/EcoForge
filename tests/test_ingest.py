@@ -369,3 +369,29 @@ def test_the_queue_is_bounded(ingester):
 
     assert ingester.queue.maxlen == MAX_QUEUED_READINGS
     assert ingester.overflowed == 0
+
+
+def test_a_reading_for_an_unknown_building_does_not_wedge_ingestion(ingester, session_factory):
+    """A constraint violation is deterministic, so retrying it is retrying forever.
+
+    reading.building_id is a foreign key. A reading for a building the portfolio does
+    not contain - a stale simulator, or the physical node F11 describes arriving
+    before its building row - used to be requeued at the front of the queue and
+    retried on every pass, blocking every valid reading behind it while the thread
+    stayed alive and healthy-looking.
+    """
+    ingester._on_message(None, None, FakeMessage({
+        "building_id": "b999-does-not-exist",
+        "ts": T0.isoformat(),
+        "kw": 40.0,
+        "source": "sim",
+    }))
+
+    assert ingester.flush() == 0
+    assert ingester.rejected == 1
+    assert not ingester.queue, "the poisoned batch was requeued and will retry forever"
+
+    # And the pipeline still works afterwards.
+    publish(ingester, 3)
+    assert ingester.flush() == 3
+    assert [r["seq"] for r in stored_rows(session_factory)] == [0, 1, 2]
