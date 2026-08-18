@@ -486,6 +486,28 @@ main {
 }
 .freshness-age.stale { color: var(--warn-ink); font-weight: 600; }
 
+/* Off-screen until focused, then a real target in the top-left. Never
+   `display: none` - a hidden element cannot receive focus, so the link would
+   exist for nobody. */
+.skip-link {
+  position: fixed;
+  top: var(--s-sm);
+  left: -9999px;
+  z-index: 100;
+  padding: var(--s-sm) var(--s-md);
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-3);
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus { left: var(--s-sm); }
+
+/* The skip target takes focus programmatically; it must not then draw a ring
+   around the entire content column. */
+#view:focus { outline: none; }
+
 /* The chart redraws itself at the width it is actually given, so it must not be
    handed a width that depends on its own content. */
 .chart-host { display: block; width: 100%; min-width: 0; }

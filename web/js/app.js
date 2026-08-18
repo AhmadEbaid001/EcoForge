@@ -274,6 +274,12 @@ async function showApp() {
   const who = escapeHtml(state.user.display_name || state.user.username);
 
   $('root').innerHTML = `
+    <!-- Ten navigation items stand between the top of the document and the
+         content, on every single view change. Without a way past them a keyboard
+         user tabs through the whole sidebar to reach the table they came for, and
+         does it again the next time. WCAG 2.4.1 calls this bypassing blocks; it is
+         one link and it is only visible when it has focus. -->
+    <a class="skip-link" href="#view">Skip to content</a>
     <div class="shell">
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
@@ -315,7 +321,10 @@ async function showApp() {
              keeps it and the sidebar still while fourteen rows of alerts move
              underneath them. Views write into it through ui.pageHead(). -->
         <div id="page-head"></div>
-        <main id="view"></main>
+        <!-- tabindex="-1" so the skip link can actually move focus here. A
+             fragment link alone scrolls the page without moving the focus ring,
+             so the next Tab press carries on from the sidebar regardless. -->
+        <main id="view" tabindex="-1"></main>
       </div>
     </div>`;
 

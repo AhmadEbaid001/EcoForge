@@ -294,3 +294,46 @@ def test_a_screen_says_how_old_it_is():
 
     # And it must not outlive the screen it describes.
     assert "clearInterval" in app, "the tick has to stop when the view is torn down"
+
+
+def test_there_is_a_way_past_the_navigation():
+    """Ten sidebar items sit between the top of the document and the content.
+
+    Without a skip link a keyboard user tabs through the entire sidebar to reach the
+    table they came for, and does it again on every view change. WCAG 2.4.1. The link
+    must be focusable at all times - `display: none` would make it unreachable, which
+    is the usual way this control gets broken - and the target needs tabindex="-1" or
+    the fragment scrolls the page without moving focus.
+    """
+    app = (WEB / "js" / "app.js").read_text(encoding="utf-8")
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="skip-link"' in app, "no skip link in the signed-in shell"
+    assert 'href="#view"' in app
+    assert 'id="view" tabindex="-1"' in app, (
+        "the skip target must be focusable or the link only scrolls"
+    )
+
+    rule = re.search(r"\.skip-link\s*\{([^}]*)\}", css, re.S)
+    assert rule, "the skip link needs a rule that positions it off-screen"
+    assert "display: none" not in rule.group(1), (
+        "a display:none element cannot receive focus, so the link would exist for nobody"
+    )
+    assert re.search(r"\.skip-link:focus\s*\{[^}]*left", css), (
+        "it has to come back on screen when focused"
+    )
+
+
+def test_selection_checkboxes_say_what_they_select():
+    """A hundred rows each announcing "Select this row" tells a screen-reader user
+    that there is a checkbox and nothing about what ticking it would do. The name is
+    visible in the row beside it, which is exactly the information the control has to
+    carry itself."""
+    ui = (WEB / "js" / "ui.js").read_text(encoding="utf-8")
+    views = (WEB / "js" / "views.js").read_text(encoding="utf-8")
+
+    assert "rowLabel" in ui, "dataTable must let the caller name each row"
+    assert "rowLabel ? rowLabel(row)" in ui, "with a fallback when none is given"
+    assert "rowLabel:" in views, (
+        "the alert inbox is the selectable table; its rows must be named"
+    )
