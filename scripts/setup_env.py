@@ -40,8 +40,6 @@ GEMP_MQTT_PORT=1883
 GEMP_MQTT_USER=gemp
 GEMP_MQTT_PASSWORD={mqtt_password}
 
-GEMP_GRAFANA_PASSWORD={grafana_password}
-
 # 1 wall-second = this many data-seconds. 720 => 12 data-minutes per second, so a
 # six-month backfill replays in about five hours, and a demonstration shows a full
 # day of load in two minutes. All rolling windows are evaluated in DATA time.
@@ -66,7 +64,6 @@ def main() -> int:
             db_password=secrets.token_urlsafe(24),
             db_ro_password=secrets.token_urlsafe(24),
             mqtt_password=secrets.token_urlsafe(18),
-            grafana_password=secrets.token_urlsafe(12),
         ),
         encoding="utf-8",
     )

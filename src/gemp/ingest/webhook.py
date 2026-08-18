@@ -5,6 +5,12 @@ red marker on the map, and "an optional outbound webhook - roughly five lines". 
 first two shipped in Phase 2. This is the third, and it is more than five lines for
 one reason: it must never be able to slow down or break ingestion.
 
+What it replaces is the proposal's SMTP alerting service, which F11 cut: nobody
+reads email during a presentation, and a mail server is a whole component whose only
+demonstrable behaviour is one nobody would watch. This file is the entire outbound
+notification story, and the rest of F11 is labelled at `gemp.api.main` (the collapse
+to one process) and `gemp.sim.node` (WireGuard, described rather than built).
+
 The ingester is a single-threaded loop. A synchronous POST inside it means a slow or
 black-holed endpoint stalls the write path, and readings queue in memory until the
 broker's redelivery makes it worse. So posting happens on a worker thread behind a

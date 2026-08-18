@@ -1,9 +1,18 @@
-"""FastAPI application.
+"""F11 - FastAPI application.
 
 One process, several modules - the deployment shape argued for in the review. The
 route handlers are deliberately thin; anything with judgement in it lives in
 `gemp.domain` or `gemp.services`, which is what keeps the optimizer runnable from a
 command line with no web server involved.
+
+F11 asked for six independently deployed services to collapse into a modular
+monolith, and this module is where that collapse is visible: the ingester and the
+scheduler are threads started in the lifespan below rather than services of their
+own. The seams the review said would survive the collapse are the package
+boundaries, not process boundaries, and `gemp.domain` importing no database, broker
+or web framework is what keeps them honest. The other two thirds of F11 - SMTP
+dropped for a webhook, WireGuard never built - are labelled at
+`gemp.ingest.webhook` and `gemp.sim.node`.
 """
 
 from __future__ import annotations

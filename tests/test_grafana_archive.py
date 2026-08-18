@@ -1,15 +1,25 @@
-"""Grafana dashboards and the CI workflow, checked as data.
+"""The Grafana provisioning archive. GRAFANA IS NOT DEPLOYED.
 
-Neither of these had any test. Both fail the same way: not loudly, but at the worst
-moment. A dashboard whose datasource uid stopped matching provisioning renders eight
-"Datasource not found" panels the first time anyone opens it, and a workflow with a
-YAML error is simply never scheduled - and this one has never run at all, because the
-repository has no remote to push to.
+Read that first, because a green tick on this file used to imply otherwise. The stack
+is five containers - timescaledb, mosquitto, core, sim, nginx - and Grafana is not one
+of them. Its panels became views inside the application when a second service turned
+out to mean a second login, a second set of credentials, and SQL that could disagree
+with the application about what a number meant.
 
-Nothing here starts Grafana. These are structural checks: files parse, references
-resolve, and every table and column a panel queries still exists in the schema the
-application creates. That last one is the check with teeth - it fails when a
-migration renames something the dashboard reads.
+The provisioning files are kept anyway, for two reasons that are worth separating.
+The paper describes Phase 3 as including Grafana, so the files are the evidence that
+the work was done rather than claimed. And `docker compose` could start it again from
+exactly these files, which is the only reason it is still worth knowing whether they
+would work.
+
+So that is what these tests check, and all they check: that the archive would still
+provision cleanly if anyone started it. Files parse, datasource uids resolve, and
+every table a panel queries still exists in the schema the application creates. The
+last one is the check with teeth - a migration that renames a table is the way this
+archive rots, and rotting silently is how it would come to be quoted as working.
+
+`test_no_grafana_service_is_declared` is the one that keeps the rest honest: it fails
+if Grafana ever comes back to the compose file without this docstring being rewritten.
 """
 
 from __future__ import annotations
@@ -27,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GRAFANA = ROOT / "infra" / "grafana" / "provisioning"
 DASHBOARDS = GRAFANA / "dashboards"
 DATASOURCES = GRAFANA / "datasources"
-WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+COMPOSE = ROOT / "docker-compose.yml"
 
 
 def dashboard_files() -> list[Path]:
@@ -135,33 +145,22 @@ def test_dashboard_time_windows_are_not_anchored_on_the_wall_clock(path):
     assert not offenders, f"wall-clock windows in: {offenders}"
 
 
-# --- the workflow that has never run ----------------------------------------
+# --- the decision this archive records --------------------------------------
 
 
-def test_the_ci_workflow_parses():
-    assert WORKFLOW.exists(), "no CI workflow committed"
-    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+def test_no_grafana_service_is_declared():
+    """The archive must stay an archive.
 
-    # `on:` is YAML 1.1's boolean true, which is why it round-trips as True rather
-    # than as the string. Accepting either is the point: this test is here to catch a
-    # syntax error, not to relitigate the YAML spec.
-    triggers = workflow.get("on", workflow.get(True))
-    assert triggers, "workflow declares no triggers"
-    assert workflow["jobs"], "workflow declares no jobs"
+    Every document in the project says five containers. If a sixth is ever added
+    back, this fails before the docs, the README and the module docstring above
+    quietly become wrong together - which is the failure mode that made a passing
+    provisioning test misleading in the first place.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    services = set(compose["services"])
 
-
-def test_ci_runs_the_same_gates_as_the_local_script():
-    """The two must not drift into disagreeing about what "passing" means."""
-    from scripts.check import GATES
-
-    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    steps = " ".join(
-        step.get("run", "") for job in workflow["jobs"].values() for step in job["steps"]
+    assert "grafana" not in services, (
+        "Grafana is back in the stack. Update tests/test_grafana_archive.py, "
+        "CLAUDE.md, HANDOFF.md and the README together, or take it out again."
     )
-
-    for name, command, _why in GATES:
-        # Compare on the module or tool being invoked, not on the exact argv: CI
-        # legitimately adds things like a coverage flag.
-        target = next((part for part in command if not part.startswith("-")
-                       and part != command[0]), None)
-        assert target and target in steps, f"CI does not run the {name!r} gate ({target})"
+    assert len(services) == 5, f"expected five services, found {sorted(services)}"
