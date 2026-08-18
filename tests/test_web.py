@@ -250,3 +250,47 @@ def test_credentials_are_never_minted_through_a_browser_prompt():
             if not COMMENT_LINE.match(line)
         )
         assert "window.prompt(" not in source, f"{path.name} mints input via window.prompt"
+
+
+def test_charts_redraw_at_the_width_they_are_given():
+    """A chart drawn once at 760px scales, but scaling is not redrawing.
+
+    Tick placement, label spacing and gridline geometry were all decided for 760
+    pixels, so a chart in a 980px column was stretched and one in a 360px column was
+    cramped. The map has redrawn on resize since it was written; the charts never
+    had. Measured after the fix: viewBox follows the container - 980, then 360, then
+    980 again.
+    """
+    charts = (WEB / "js" / "charts.js").read_text(encoding="utf-8")
+
+    assert "hydrateCharts" in charts, "charts must expose a way to connect them"
+    assert "ResizeObserver" in charts, (
+        "the sidebar collapsing changes a chart's width without changing the window's"
+    )
+    assert "window.addEventListener('resize'" in charts, (
+        "ResizeObserver does not fire in every harness; a window resize is the common "
+        "case and must work on its own"
+    )
+
+    app = (WEB / "js" / "app.js").read_text(encoding="utf-8")
+    assert "hydrateCharts" in app, "the shell connects charts after a view renders"
+    assert "MutationObserver" in app, (
+        "a view that rebuilds itself through its own Refresh button replaces the "
+        "markup the shell hydrated, and nothing would reconnect it"
+    )
+
+
+def test_a_screen_says_how_old_it_is():
+    """Data time advances at 720x, so a stamp states a moment without admitting the
+    moment has passed. Nothing is polled - re-fetching on a timer during a
+    demonstration moves numbers under whoever is talking about them - so the stamp
+    ages instead, and turns amber once it is worth pressing Refresh."""
+    app = (WEB / "js" / "app.js").read_text(encoding="utf-8")
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+
+    assert "freshness-age" in app, "the reading's age has to be shown, not just its stamp"
+    assert "STALE_AFTER_MS" in app, "there has to be a point at which it says so"
+    assert ".freshness-age" in css and ".stale" in css
+
+    # And it must not outlive the screen it describes.
+    assert "clearInterval" in app, "the tick has to stop when the view is torn down"

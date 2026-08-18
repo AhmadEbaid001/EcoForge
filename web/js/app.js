@@ -14,7 +14,7 @@
 'use strict';
 
 import { api, setPasswordChangeHandler, setUnauthenticatedHandler } from './api.js';
-import { escapeHtml, icon } from './charts.js';
+import { escapeHtml, hydrateCharts, icon } from './charts.js';
 
 import { mapView } from './map.js';
 import { account, admin, alerts, forecasts, integrity, overview, runs } from './views.js';
@@ -395,6 +395,27 @@ async function navigate(key) {
       signal: state.viewLifetime.signal,
       onPasswordChanged: refreshSession,
     });
+
+    /* Both of these are done here rather than by each view, for the same reason
+     * the abort signal is: a view should not have to remember cross-cutting
+     * furniture, and seven views each remembering it differently is how they
+     * drift apart. */
+    const signal = state.viewLifetime.signal;
+    hydrateCharts(root, signal);
+    showAge(signal);
+
+    /* A view can rebuild itself without the shell knowing - the Refresh button in
+     * the workspace header calls the view's own render(). Everything hydrated
+     * above is then thrown away and replaced by fresh markup that nothing has
+     * connected, so the charts would go back to drawing at a fixed width and the
+     * age chip would simply vanish. Watching for that is cheaper than asking
+     * every view to remember to announce it. */
+    const rehydrate = new MutationObserver(() => {
+      hydrateCharts(root, signal);
+      if (!document.querySelector('.freshness-age')) showAge(signal);
+    });
+    rehydrate.observe(root, { childList: true, subtree: true });
+    signal.addEventListener('abort', () => rehydrate.disconnect());
   } catch (error) {
     root.innerHTML = `<div class="error-box" role="alert">${escapeHtml(error.detail || error.message)}</div>`;
   }
@@ -409,6 +430,42 @@ async function refreshSession() {
     const session = await api.session();
     if (session.authenticated) state.user = session.user;
   } catch { /* the next request will discover it too */ }
+}
+
+/* --------------------------------------------------------------- staleness */
+
+/* Data time advances at 720x, so a screen that was accurate when it loaded is
+ * wrong a minute later - and the data clock in the header keeps stating the
+ * moment it was read, with nothing to say that moment has passed.
+ *
+ * Nothing is polled. A dashboard that re-fetches on a timer during a
+ * demonstration competes for the same solver the person is dragging a slider
+ * against, and it moves numbers under someone who is talking about them. What
+ * this does instead is age the stamp honestly: the reading is from then, this is
+ * how long ago that was, the Refresh button is right there.
+ */
+const AGE_TICK_MS = 15000;
+const STALE_AFTER_MS = 120000;
+
+function showAge(signal) {
+  const stamp = document.querySelector('.freshness');
+  if (!stamp) return;
+
+  const readAt = Date.now();
+  const age = document.createElement('span');
+  age.className = 'freshness-age';
+  stamp.appendChild(age);
+
+  const tick = () => {
+    const seconds = Math.round((Date.now() - readAt) / 1000);
+    age.textContent = seconds < 45 ? 'read just now'
+      : `read ${Math.round(seconds / 60)} min ago`;
+    age.classList.toggle('stale', Date.now() - readAt > STALE_AFTER_MS);
+  };
+  tick();
+
+  const timer = window.setInterval(tick, AGE_TICK_MS);
+  signal?.addEventListener('abort', () => window.clearInterval(timer));
 }
 
 /* -------------------------------------------------------------------- boot */

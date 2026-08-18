@@ -1,237 +1,266 @@
-/* GEMP interface.
-   No framework, no build step, no fonts or assets fetched from anywhere: the
-   demonstration has to work with the network cable unplugged (F13).
+/* GEMP interface — the Kinetic Grid design.
+   Implemented from the Google Stitch reference set, whose own DESIGN.md calls
+   it "instrument grade": Swiss functionalist, high density, tonal layering and
+   hairlines instead of shadows, 4px corners, uppercase label-sm table headers.
 
-   Two things about this file are load-bearing and easy to undo by accident.
+   Three things in that reference cannot be carried over, and all three are
+   physically blocked rather than matters of taste:
 
-   1. Every colour is a token, and every token is defined THREE times: once for
-      light on bare `:root`, once under `prefers-color-scheme: dark`, once under
-      `[data-theme]` so an explicit choice wins over the system in both
-      directions. A colour whose only definition lives inside a media query has
-      no value for half the users of this page.
+   1. Inter and Material Symbols were loaded from Google Fonts. The server sends
+      `font-src 'self'; style-src 'self'`, so the browser REFUSES them, and F13
+      requires the demonstration to survive an unplugged cable. The system UI
+      stack stands in for Inter (same class of grotesque, metric-compatible
+      enough for a 4px grid) and the icons are hand-drawn strokes in charts.js.
+   2. One reference map rendered Google Maps tiles. Off-origin, and of Gurugram.
+   3. `style="..."` attributes are discarded under `style-src 'self'`, so every
+      value here has to be reachable through a class.
 
-   2. The Content-Security-Policy is `style-src 'self'` with no 'unsafe-inline',
-      so a `style="..."` attribute is DISCARDED BY THE BROWSER. Every visual
-      decision has to be reachable from here through a class. Three inline
-      styles had been sitting in map.js doing nothing for exactly this reason.
+   Two rules of this file that are load-bearing:
+
+   - Every colour token is defined THREE times: light on bare `:root`, dark
+     under `prefers-color-scheme`, dark again under `[data-theme="dark"]`. A
+     token defined only inside a media query does not exist outside it.
+   - `.modal[hidden]` must keep its `display: none`. See section 11.
    ===================================================================== */
 
 /* =====================================================================
-   1. Tokens — light is the base layer
+   1. Tokens — the Kinetic Grid palette, light as the base layer
    ===================================================================== */
 
 :root {
   color-scheme: light dark;
 
-  /* Grounds, from the page floor up to what sits on top of it. */
-  --bg:            #eef1f6;
-  --surface:       #ffffff;
-  --surface-2:     #ffffff;   /* modals and popovers: elevated by shadow, not hue */
-  --surface-3:     #f3f5f9;   /* inset: fields, code, table stripes */
-  --surface-hover: #e9edf4;
+  /* Tonal layers, lowest to highest. Depth here is a change of tone plus a
+     hairline, never a drop shadow. */
+  --bg:            #eef1f6;   /* level 0, the canvas */
+  --surface:       #ffffff;   /* level 1, a panel */
+  --surface-2:     #ffffff;   /* level 2, modals — separated by shadow-2 only */
+  --surface-3:     #e9eef8;   /* level -1, inset: fields, code, stripes */
+  --surface-zebra: #f8f9ff;   /* the even table row */
+  --surface-hover: #e3e8f3;
+  --surface-sidebar: #eef4fe;
 
-  /* Hairlines, and the heavier line a control's edge needs. A separator may be
-     faint; the boundary of an input may not — WCAG 1.4.11 wants 3:1 there, and
-     --control-line measures 3.50:1 on white. */
-  --line:          #d6dce6;
-  --line-strong:   #c3ccd9;
-  --control-line:  #7f8a9a;
+  --line:          #c2c6d5;   /* outline-variant: the hairline */
+  --line-strong:   #a8aebf;
+  --control-line:  #727784;   /* outline: the edge of an interactive control */
 
-  /* Text, in three ranks. Measured on --surface: 18.4, 7.0 and 5.3 to 1. */
-  --ink:           #0f151c;
-  --ink-2:         #4d5a6b;
-  --ink-3:         #5f6d7e;
+  --ink:           #161c23;   /* on-surface */
+  --ink-2:         #424752;   /* on-surface-variant */
+  --ink-3:         #5c6270;
 
-  /* Meaning. Each one is 4.7:1 or better on both --bg and --surface. */
-  --accent:        #0b62c4;
-  --accent-hover:  #094e9e;
-  --accent-soft:   #e6effb;
+  /* Primary is the darker blue; primary-container the brighter one the action
+     bar and the filled buttons use. */
+  --accent:        #004a9a;
+  --accent-hover:  #003a7a;
+  --accent-bright: #0b62c4;
+  --accent-soft:   #d6e2ff;
   --on-accent:     #ffffff;
-  --success:       #127a4e;
-  --success-soft:  #e4f4ec;
-  --success-ink:   #0e6641;
+
+  --success:       #006d43;
+  --success-soft:  #99f6bf;
+  --success-ink:   #017348;
   --warn:          #8a5a06;
-  --warn-soft:     #fbf1dd;
-  --warn-ink:      #7a4e05;
-  --danger:        #c03a25;
-  --danger-soft:   #fdeae6;
-  --danger-ink:    #98291a;
+  --warn-soft:     #ffddb5;
+  --warn-ink:      #643f00;
+  --danger:        #ba1a1a;
+  --danger-soft:   #ffdad6;
+  --danger-ink:    #93000a;
 
-  /* Data marks. Severity is ordinal, so the three fills separate by lightness
-     as well as hue: adjacent segments of a stack differ by 3.08 and 1.55 to 1,
-     which is what lets the stack be read without discriminating colour. */
-  --sev-critical:  #a82c18;
-  --sev-high:      #d9a52c;
-  --sev-medium:    #7d8b9c;
-  --series-0:      #0b62c4;
-  --series-1:      #b06a00;
+  /* Severity is ordinal, so the three read as an intensity ramp. */
+  --sev-critical:  #ba1a1a;
+  --sev-high:      #8a5a06;
+  --sev-medium:    #5c6270;
+  --series-0:      #004a9a;
+  --series-1:      #8a5a06;
 
-  /* Map. Funded is a colour AND an outline, because a funded building that is
-     only greener is invisible to a reviewer who cannot see green. */
-  --funded:        #127a4e;
-  --funded-edge:   #0a5334;
-  --unfunded:      #7d8b9c;
-  --anomaly:       #c03a25;
+  --funded:        #006d43;
+  --funded-edge:   #004f30;
+  --unfunded:      #a8aebf;
+  --anomaly:       #ba1a1a;
   --district-s:    16%;
-  --district-l:    74%;
-  --bldg-edge:     rgba(15, 21, 28, .35);
-  --map-ground:    #e7ebf1;
+  --district-l:    82%;
+  --bldg-edge:     rgba(22, 28, 35, .28);
+  --map-ground:    #e3e8f3;
+  /* The context layer sits UNDER the portfolio and must stay there: a street
+     network that competes with fifty buildings stops the map answering the
+     question it exists for. */
+  --ctx-building:  #dfe4ee;
+  --ctx-road:      #c9cfdb;
+  --ctx-road-major:#b3bccb;
+  --ctx-water:     #d8e6f2;
+  --ctx-park:      #dfeade;
 
-  /* Elevation. In light the shadow does the work; in dark it is mostly the
-     border, because a shadow on a dark ground is nearly invisible. */
-  --shadow-1: 0 1px 2px rgba(15, 21, 28, .06), 0 1px 1px rgba(15, 21, 28, .04);
-  --shadow-2: 0 4px 12px rgba(15, 21, 28, .08), 0 1px 3px rgba(15, 21, 28, .06);
-  --shadow-3: 0 18px 48px rgba(15, 21, 28, .18), 0 2px 8px rgba(15, 21, 28, .10);
-  --scrim:    rgba(15, 21, 28, .45);
-  --header-bg: rgba(255, 255, 255, .82);
+  /* "Avoid dramatic shadows." Only the floating layers get one at all. */
+  --shadow-1: 0 1px 2px rgba(22, 28, 35, .05);
+  --shadow-2: 0 4px 12px rgba(22, 28, 35, .05);
+  --shadow-3: 0 12px 32px rgba(22, 28, 35, .12);
+  --scrim:    rgba(22, 28, 35, .45);
+  --overlay:  rgba(255, 255, 255, .9);
 
-  /* Type. In rem, so the browser's own text-size setting scales the interface
-     instead of being overridden by it — this page's answer to Dynamic Type. */
-  --fs-micro:   .6875rem;   /* 11px, and never below: only ever paired with 600 */
-  --fs-caption: .75rem;     /* 12px */
-  --fs-small:   .8125rem;   /* 13px */
-  --fs-body:    .875rem;    /* 14px */
-  --fs-lead:    .9375rem;   /* 15px */
-  --fs-title:   1.0625rem;  /* 17px */
-  --fs-figure:  1.5rem;     /* 24px */
-  --fs-figure-lg: 1.75rem;  /* 28px */
+  /* Type. In rem so the browser's own text-size setting still scales the
+     interface. The names are the reference's; the sizes are its sizes. */
+  --fs-label-sm: .6875rem;  /* 11 / 14, +.02em, uppercase on table headers */
+  --fs-label-md: .75rem;    /* 12 / 16, 600 */
+  --fs-body-sm:  .8125rem;  /* 13 / 18 */
+  --fs-body-md:  .875rem;   /* 14 / 20 — also the data-mono size */
+  --fs-body-lg:  1rem;      /* 16 / 24 */
+  --fs-head-md:  1.25rem;   /* 20 / 28, -.01em, 600 */
+  --fs-head-lg:  1.5rem;    /* 24 / 32, -.01em, 600 */
+  --fs-display:  2rem;      /* 32 / 40, -.02em, 600 */
 
+  /* Inter is unreachable offline; this is the closest thing every target
+     machine already has. */
   --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text",
           "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
 
-  /* Space, on a 4px grid. */
-  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
-  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+  /* The reference's 4px scale, by its own names. */
+  --s-xs: 4px; --s-sm: 8px; --s-md: 16px; --s-lg: 24px; --s-xl: 32px;
+  --s-gutter: 16px; --s-margin: 24px;
 
-  --radius: 10px;
-  --radius-sm: 7px;
-  --radius-lg: 16px;
+  /* 4px on components, 8px on containers, per the reference's own code. */
+  --radius: 4px;
+  --radius-lg: 8px;
   --radius-pill: 999px;
 
+  --sidebar-w: 240px;
+  --control-h: 30px;
+
   --ease: cubic-bezier(.2, .7, .3, 1);
-  --dur: 140ms;
+  --dur: 150ms;
 }
 
-/* The dark palette. Not an inversion: the grounds get dimmer while the accents
-   get BRIGHTER, which is how a dark interface keeps foreground content forward.
-   Guarded against [data-theme="light"] so an explicit light choice survives a
-   dark system setting. */
+/* Dark. Not an inversion: the canvas drops to near-black, the layers separate
+   by tone, and the accents brighten so foreground content stays forward. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg:            #0d1117;
-    --surface:       #151b23;
-    --surface-2:     #1c232d;
-    --surface-3:     #10151b;
-    --surface-hover: #1e2632;
+    --bg:            #0a0d11;
+    --surface:       #12161c;
+    --surface-2:     #171c23;
+    --surface-3:     #1b212a;
+    --surface-zebra: #151a21;
+    --surface-hover: #202832;
+    --surface-sidebar: #0f141a;
 
-    --line:          #2b3644;
-    --line-strong:   #3a4756;
-    --control-line:  #627287;
+    --line:          #262e39;
+    --line-strong:   #3a4453;
+    --control-line:  #616b7a;
 
-    --ink:           #e8eef5;
-    --ink-2:         #a9b8c9;
-    --ink-3:         #8494a6;
+    --ink:           #e7ecf3;
+    --ink-2:         #a4aebd;
+    --ink-3:         #838d9c;
 
-    --accent:        #58a6ff;
-    --accent-hover:  #7cbaff;
-    --accent-soft:   #12243a;
-    --on-accent:     #06121f;
-    --success:       #43b581;
-    --success-soft:  #12241c;
-    --success-ink:   #7ad9ab;
-    --warn:          #e0a94d;
-    --warn-soft:     #2a2114;
-    --warn-ink:      #f0c476;
-    --danger:        #f4795b;
-    --danger-soft:   #2a1a15;
-    --danger-ink:    #ffb098;
+    --accent:        #abc7ff;
+    --accent-hover:  #c9dcff;
+    --accent-bright: #4d8fe8;
+    --accent-soft:   #00458f;
+    --on-accent:     #001b3f;
 
-    --sev-critical:  #c94a30;
-    --sev-high:      #f2c063;
-    --sev-medium:    #7d8ca0;
-    --series-0:      #58a6ff;
-    --series-1:      #e0a94d;
+    --success:       #7dd9a5;
+    --success-soft:  #00382180;
+    --success-ink:   #99f6bf;
+    --warn:          #fabb64;
+    --warn-soft:     #4a300080;
+    --warn-ink:      #ffddb5;
+    --danger:        #ff8f83;
+    --danger-soft:   #5c000980;
+    --danger-ink:    #ffdad6;
 
-    --funded:        #43b581;
-    --funded-edge:   #baf0d6;
-    --unfunded:      #5b6a7d;
-    --anomaly:       #f4795b;
+    --sev-critical:  #ff8f83;
+    --sev-high:      #fabb64;
+    --sev-medium:    #8e98a8;
+    --series-0:      #7fb0f0;
+    --series-1:      #fabb64;
+
+    --funded:        #7dd9a5;
+    --funded-edge:   #d6ffe4;
+    --unfunded:      #4a5464;
+    --anomaly:       #ff8f83;
     --district-s:    18%;
-    --district-l:    32%;
-    --bldg-edge:     rgba(0, 0, 0, .45);
-    --map-ground:    #0a0e13;
+    --district-l:    26%;
+    --bldg-edge:     rgba(0, 0, 0, .5);
+    --map-ground:    #080b0e;
+    --ctx-building:  #18202a;
+    --ctx-road:      #26303d;
+    --ctx-road-major:#36424f;
+    --ctx-water:     #10222f;
+    --ctx-park:      #12211a;
 
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, .5);
-    --shadow-2: 0 4px 14px rgba(0, 0, 0, .45);
-    --shadow-3: 0 24px 60px rgba(0, 0, 0, .6), 0 2px 10px rgba(0, 0, 0, .5);
-    --scrim:    rgba(3, 6, 10, .66);
-    --header-bg: rgba(21, 27, 35, .82);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-2: 0 4px 12px rgba(0, 0, 0, .4);
+    --shadow-3: 0 12px 32px rgba(0, 0, 0, .55);
+    --scrim:    rgba(2, 4, 6, .7);
+    --overlay:  rgba(18, 22, 28, .9);
   }
 }
 
-/* And the same palette again for an explicit dark choice on a light system.
-   Duplicated on purpose: a token defined only inside a media query is a token
-   that does not exist for whoever is not in that media query. */
+/* The same palette again, for an explicit dark choice on a light system. */
 :root[data-theme="dark"] {
-  --bg:            #0d1117;
-  --surface:       #151b23;
-  --surface-2:     #1c232d;
-  --surface-3:     #10151b;
-  --surface-hover: #1e2632;
+  --bg:            #0a0d11;
+  --surface:       #12161c;
+  --surface-2:     #171c23;
+  --surface-3:     #1b212a;
+  --surface-zebra: #151a21;
+  --surface-hover: #202832;
+  --surface-sidebar: #0f141a;
 
-  --line:          #2b3644;
-  --line-strong:   #3a4756;
-  --control-line:  #627287;
+  --line:          #262e39;
+  --line-strong:   #3a4453;
+  --control-line:  #616b7a;
 
-  --ink:           #e8eef5;
-  --ink-2:         #a9b8c9;
-  --ink-3:         #8494a6;
+  --ink:           #e7ecf3;
+  --ink-2:         #a4aebd;
+  --ink-3:         #838d9c;
 
-  --accent:        #58a6ff;
-  --accent-hover:  #7cbaff;
-  --accent-soft:   #12243a;
-  --on-accent:     #06121f;
-  --success:       #43b581;
-  --success-soft:  #12241c;
-  --success-ink:   #7ad9ab;
-  --warn:          #e0a94d;
-  --warn-soft:     #2a2114;
-  --warn-ink:      #f0c476;
-  --danger:        #f4795b;
-  --danger-soft:   #2a1a15;
-  --danger-ink:    #ffb098;
+  --accent:        #abc7ff;
+  --accent-hover:  #c9dcff;
+  --accent-bright: #4d8fe8;
+  --accent-soft:   #00458f;
+  --on-accent:     #001b3f;
 
-  --sev-critical:  #c94a30;
-  --sev-high:      #f2c063;
-  --sev-medium:    #7d8ca0;
-  --series-0:      #58a6ff;
-  --series-1:      #e0a94d;
+  --success:       #7dd9a5;
+  --success-soft:  #00382180;
+  --success-ink:   #99f6bf;
+  --warn:          #fabb64;
+  --warn-soft:     #4a300080;
+  --warn-ink:      #ffddb5;
+  --danger:        #ff8f83;
+  --danger-soft:   #5c000980;
+  --danger-ink:    #ffdad6;
 
-  --funded:        #43b581;
-  --funded-edge:   #baf0d6;
-  --unfunded:      #5b6a7d;
-  --anomaly:       #f4795b;
+  --sev-critical:  #ff8f83;
+  --sev-high:      #fabb64;
+  --sev-medium:    #8e98a8;
+  --series-0:      #7fb0f0;
+  --series-1:      #fabb64;
+
+  --funded:        #7dd9a5;
+  --funded-edge:   #d6ffe4;
+  --unfunded:      #4a5464;
+  --anomaly:       #ff8f83;
   --district-s:    18%;
-  --district-l:    32%;
-  --bldg-edge:     rgba(0, 0, 0, .45);
-  --map-ground:    #0a0e13;
+  --district-l:    26%;
+  --bldg-edge:     rgba(0, 0, 0, .5);
+  --map-ground:    #080b0e;
+  --ctx-building:  #18202a;
+  --ctx-road:      #26303d;
+  --ctx-road-major:#36424f;
+  --ctx-water:     #10222f;
+  --ctx-park:      #12211a;
 
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, .5);
-  --shadow-2: 0 4px 14px rgba(0, 0, 0, .45);
-  --shadow-3: 0 24px 60px rgba(0, 0, 0, .6), 0 2px 10px rgba(0, 0, 0, .5);
-  --scrim:    rgba(3, 6, 10, .66);
-  --header-bg: rgba(21, 27, 35, .82);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, .4);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, .55);
+  --scrim:    rgba(2, 4, 6, .7);
+  --overlay:  rgba(18, 22, 28, .9);
 
   color-scheme: dark;
 }
 
 :root[data-theme="light"] { color-scheme: light; }
 
-/* Legacy token names, kept as aliases.
-   The map draws `fill="var(--funded)"` into an SVG presentation attribute and
-   the handoff document names this set. Aliasing costs nothing and means the
-   rename cannot break the one screen that gets demonstrated most. */
+/* Legacy names. `map.js` draws `fill="var(--funded)"` into an SVG presentation
+   attribute and the handoff names this set, so they stay as aliases. */
 :root {
   --panel:     var(--surface);
   --panel-2:   var(--surface-3);
@@ -245,54 +274,50 @@
 
 * { box-sizing: border-box; }
 
-/* The root stays at the browser's own size, and that is load-bearing.
- *
- * `html, body { font: var(--fs-body) ... }` applied a rem value to the ROOT, so the
- * root became 14px and every rem token then resolved against 14 instead of 16 -
- * compounding once, everywhere. Measured in the browser: body text 12.25px where the
- * token table promised 14, captions 10.5px, navigation 11.4px. The whole interface
- * was 12.5% smaller than it was designed to be, which is most of what "hard on the
- * eyes" turns out to mean.
- *
- * Sizing the root in a relative unit also fights the reader: someone who has set a
- * larger default font in their browser gets it silently scaled back down.
- */
+/* The root keeps the browser's own size, and NOTHING sets a font-size on it.
+   `html { font: var(--fs-body-md) … }` looks harmless and is not: the shorthand
+   resolves .875rem against the initial 16px, makes the root 14px, and then
+   every rem in the file is silently scaled to 87.5% of its stated value —
+   11px table headers rendered at 9.6px. Type goes on <body>. */
 html {
   font-size: 100%;
   -webkit-text-size-adjust: 100%;
+  height: 100%;
 }
 
 body {
-  margin: 0;
-  min-height: 100%;
-  display: block;
-  height: auto;
-  background: var(--bg);
-  color: var(--ink);
-  font: var(--fs-body)/1.55 var(--font);
+  margin: 0; height: 100%;
+  background: var(--bg); color: var(--ink);
+  font: var(--fs-body-md)/1.43 var(--font);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
 
-h1, h2, h3, h4 { line-height: 1.3; letter-spacing: -.01em; }
+/* The reference is an application shell, not a document: the page never
+   scrolls, the data pane does. That is what keeps the page header and the
+   sidebar fixed while fourteen rows of alerts move underneath them. */
+body.signed-in { overflow: hidden; }
 
-/* One focus ring for the whole application, on the control that actually has
-   focus from the keyboard. Before this, only the login inputs showed focus at
-   all, which made every dashboard unusable without a mouse. */
+h1, h2, h3, h4 { line-height: 1.3; }
+
+/* "Tabular Lining figures for all numerical data." */
+.tabular, td, .stat-value, output, .metric, .facts dd { font-variant-numeric: tabular-nums; }
+
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 1px;
+  border-radius: var(--radius);
 }
 :focus:not(:focus-visible) { outline: none; }
 
-::selection { background: var(--accent); color: var(--on-accent); }
+::selection { background: var(--accent-bright); color: #fff; }
 
-/* Scrollbars follow the theme rather than staying black in light mode. */
-* { scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+/* 4px, per the reference's own scrollbar rule. */
+*::-webkit-scrollbar { width: 4px; height: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--control-line); }
+* { scrollbar-color: var(--line) transparent; scrollbar-width: thin; }
 
-/* Every animation in here is decorative. Someone who has asked the system for
-   less motion gets none of it. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .001ms !important;
@@ -301,277 +326,483 @@ h1, h2, h3, h4 { line-height: 1.3; letter-spacing: -.01em; }
   }
 }
 
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
 /* =====================================================================
-   3. Header
+   3. Shell — the fixed sidebar and the data workspace
    ===================================================================== */
 
-.bar {
-  display: flex; align-items: center; gap: var(--s-4);
-  padding: var(--s-3) var(--s-5);
-  border-bottom: 1px solid var(--line);
-  background: var(--header-bg);
-  flex-wrap: wrap;
+.shell { display: flex; height: 100vh; overflow: hidden; }
+
+.sidebar {
+  width: var(--sidebar-w); flex: none;
+  display: flex; flex-direction: column;
+  padding: var(--s-md) 0;
+  background: var(--surface-sidebar);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  transition: width var(--dur) var(--ease);
 }
+body.nav-collapsed .sidebar { width: 64px; }
 
-/* Translucency only where the browser can blur what is behind it. Without the
-   blur a semi-transparent header is just a washed-out header. */
-@supports (backdrop-filter: blur(20px)) {
-  .bar { backdrop-filter: saturate(180%) blur(20px); }
+.sidebar-brand {
+  display: flex; align-items: center; gap: var(--s-sm);
+  padding: 0 var(--s-md) var(--s-xl); min-width: 0;
 }
+.sidebar-brand-text { min-width: 0; }
+.sidebar-brand h1 {
+  margin: 0; font-size: var(--fs-head-md); font-weight: 800;
+  color: var(--accent); line-height: 1; letter-spacing: -.01em;
+}
+.sub { margin: var(--s-xs) 0 0; font-size: var(--fs-label-sm); color: var(--ink-2); }
 
-body.signed-in .bar { position: sticky; top: 0; z-index: 10; }
-
-.brand { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
-
-/* The mark is drawn, not fetched. An <img> here would be one more thing that
-   has to exist on the demonstration machine. */
+/* The reference's 32px rounded tile. Drawn, not fetched. */
 .mark {
-  width: 30px; height: 30px; border-radius: 9px; flex: none;
-  background: linear-gradient(140deg, var(--success), var(--accent));
-  box-shadow: var(--shadow-1);
-  position: relative;
+  width: 32px; height: 32px; border-radius: var(--radius); flex: none;
+  background: var(--accent-bright);
+  display: grid; place-items: center; color: var(--accent-soft);
 }
-.mark::after {
-  content: ""; position: absolute; inset: 0; border-radius: inherit;
-  border: 1px solid rgba(255, 255, 255, .22);
+.mark .icon { width: 20px; height: 20px; }
+
+.nav { display: flex; flex-direction: column; gap: var(--s-xs); flex: 1; }
+.sidebar-foot {
+  display: flex; flex-direction: column; gap: var(--s-xs);
+  margin-top: auto; padding-top: var(--s-md);
+  border-top: 1px solid var(--line);
 }
 
-.bar h1 { font-size: var(--fs-lead); margin: 0; font-weight: 600; }
-.sub { margin: 0; font-size: var(--fs-caption); color: var(--ink-2); }
+/* Square rows the full width of the rail, not floating pills: the active one
+   is a filled block with a 4px left bar, which is the reference's own
+   treatment and what makes the current position readable at a glance. */
+.nav-item {
+  appearance: none; background: none; border: 0;
+  border-left: 4px solid transparent;
+  color: var(--ink-2); font: 600 var(--fs-label-md)/1.33 var(--font);
+  display: flex; align-items: center; justify-content: flex-start; gap: var(--s-sm);
+  padding: var(--s-sm) var(--s-md) var(--s-sm) calc(var(--s-md) - 4px);
+  min-height: 36px; width: 100%; cursor: pointer; text-align: left;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.nav-item:hover { background: var(--surface-hover); color: var(--ink); }
+.nav-item[aria-current="page"] {
+  background: var(--success-soft); color: var(--success-ink);
+  border-left-color: var(--success); font-weight: 700;
+}
+.nav-item .icon { width: 20px; height: 20px; flex: none; }
+.nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-user { display: flex; align-items: center; gap: var(--s-sm); min-width: 0; }
+.nav-user-name { overflow: hidden; text-overflow: ellipsis; }
 
 .status {
-  display: flex; align-items: center; gap: var(--s-2);
-  font-size: var(--fs-caption); color: var(--ink-2);
-  padding: var(--s-1) var(--s-3);
-  border: 1px solid var(--line); border-radius: var(--radius-pill);
-  background: var(--surface);
+  display: flex; align-items: center; gap: var(--s-sm);
+  padding: var(--s-sm) var(--s-md); min-height: 32px;
+  font-size: var(--fs-label-sm); color: var(--ink-2);
 }
+.nav-slot { width: 20px; flex: none; display: grid; place-items: center; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
 .dot.ok  { background: var(--success); }
 .dot.bad { background: var(--danger); }
 
-/* Navigation as a segmented control: one enclosure, so it reads as a set of
-   alternatives rather than seven loose buttons. */
-.tabs {
-  display: flex; gap: 2px; flex: 1 1 auto; flex-wrap: wrap;
-  padding: 3px; border-radius: var(--radius);
-  background: var(--surface-3); border: 1px solid var(--line);
-}
-.tab {
-  appearance: none; background: none; border: 1px solid transparent;
-  color: var(--ink-2); font: 500 var(--fs-small)/1 var(--font);
-  padding: 0 var(--s-3); min-height: 30px; border-radius: var(--radius-sm);
-  cursor: pointer; transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-  white-space: nowrap;
-}
-.tab:hover { color: var(--ink); background: var(--surface-hover); }
-.tab[aria-current="page"] {
-  color: var(--ink); background: var(--surface);
-  border-color: var(--line-strong); box-shadow: var(--shadow-1);
-  font-weight: 600;
+body.nav-collapsed .nav-label,
+body.nav-collapsed .sidebar-brand-text { display: none; }
+body.nav-collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+body.nav-collapsed .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+body.nav-collapsed .status { justify-content: center; padding-left: 0; padding-right: 0; }
+/* Scoped to the rail. Unscoped, this rule also stacked the switch on the
+   sign-in bar, where there is a whole header of room for it. */
+body.nav-collapsed .sidebar .appearance { flex-direction: column; margin: var(--s-sm) auto 0; }
+
+.workspace {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden; background: var(--bg);
 }
 
-.who { display: flex; gap: var(--s-2); align-items: center; }
+/* The page header is a surface panel with a hairline under it, outside the
+   scroll area — so it holds still while the data moves. */
+.page-head {
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  padding: var(--s-lg) var(--s-margin);
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: var(--s-md); flex-wrap: wrap; flex: none;
+}
+.page-head-text { min-width: 0; }
+.page-head h2 {
+  margin: 0; font-size: var(--fs-head-lg); font-weight: 700;
+  letter-spacing: -.01em; color: var(--ink);
+}
+.page-head p {
+  margin: var(--s-xs) 0 0; font-size: var(--fs-body-sm);
+  color: var(--ink-2); max-width: 70ch;
+}
+.page-head-side { display: flex; align-items: center; gap: var(--s-md); flex-wrap: wrap; }
+
+/* The scrolling data pane. */
+main {
+  flex: 1; overflow: auto; padding: var(--s-margin);
+  display: flex; flex-direction: column; gap: var(--s-sm);
+}
+
+.icon-button {
+  appearance: none; background: none; border: 1px solid transparent;
+  color: var(--ink-2); width: 32px; height: 32px; min-height: 32px; padding: 0;
+  border-radius: var(--radius); display: grid; place-items: center; cursor: pointer;
+}
+.icon-button:hover { color: var(--ink); background: var(--surface-hover); }
+.icon-button .icon { width: 18px; height: 18px; }
+
+.icon { fill: none; stroke: currentColor; stroke-width: 1.6;
+        stroke-linecap: butt; stroke-linejoin: miter; }
+.icon .filled { fill: currentColor; stroke: none; }
+
+/* The data clock, as the reference draws it: an inset chip in the data font.
+   `.icon` carries no intrinsic size — inside a button it inherits one from the
+   button rule, but standing on its own an <svg> with only a viewBox stretches
+   to fill its line box. This chip rendered with a 40px clock and three lines
+   of wrapped text until the size was stated here. */
+.freshness {
+  display: inline-flex; align-items: center; gap: var(--s-xs);
+  padding: 0 var(--s-sm); min-height: var(--control-h);
+  background: var(--surface-3); border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--fs-body-sm); color: var(--ink-2);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.freshness .icon { width: 16px; height: 16px; flex: none; }
+.freshness-label { font-weight: 600; }
+
+/* How long ago the screen was read, ticking, next to the moment it was read at.
+   Data time advances at 720x, so a stamp alone states a moment without ever
+   admitting that the moment has passed. Quiet until it matters, then amber -
+   this is a prompt to press Refresh, not an error. */
+.freshness-age {
+  padding-left: var(--s-2);
+  margin-left: var(--s-2);
+  border-left: 1px solid var(--line);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.freshness-age.stale { color: var(--warn-ink); font-weight: 600; }
+
+/* The chart redraws itself at the width it is actually given, so it must not be
+   handed a width that depends on its own content. */
+.chart-host { display: block; width: 100%; min-width: 0; }
 
 .badge {
-  display: inline-block; padding: 1px var(--s-2); border-radius: var(--radius-pill);
-  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .02em;
+  display: inline-block; padding: 1px var(--s-xs); border-radius: var(--radius);
+  font-size: var(--fs-label-sm); font-weight: 600; letter-spacing: .02em;
   background: var(--surface-3); border: 1px solid var(--line); color: var(--ink-2);
 }
-.badge.role { margin-left: var(--s-1); }
+.badge.role { margin-left: var(--s-xs); }
 
 /* ---- appearance switch ---------------------------------------------- */
 
-/* Three states, not two. The default is Auto, which follows the system, so the
-   common case needs no choice at all — the platform guidance is that an app
-   should respect the systemwide setting rather than invent its own. Light and
-   Dark exist because this screen gets demonstrated on a projector, where the
-   right answer is whatever the room can read. */
 .appearance {
-  display: flex; gap: 2px; padding: 3px;
+  display: flex; gap: 2px; padding: 2px; margin: var(--s-sm) var(--s-md) 0;
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--surface-3);
 }
 .appearance button {
-  appearance: none; border: 1px solid transparent; background: none;
-  color: var(--ink-2); cursor: pointer;
-  width: 30px; height: 26px; border-radius: var(--radius-sm);
-  display: grid; place-items: center;
+  appearance: none; border: 0; background: none; color: var(--ink-2);
+  cursor: pointer; flex: 1; height: 26px; min-height: 26px; padding: 0;
+  border-radius: 2px; display: grid; place-items: center;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .appearance button:hover { color: var(--ink); background: var(--surface-hover); }
-.appearance button[aria-pressed="true"] {
-  color: var(--ink); background: var(--surface);
-  border-color: var(--line-strong); box-shadow: var(--shadow-1);
-}
+.appearance button[aria-pressed="true"] { color: var(--ink); background: var(--surface); }
 .appearance svg { width: 15px; height: 15px; display: block; }
-
-/* The icons are drawn as strokes so one set works in both appearances. */
-.icon { fill: none; stroke: currentColor; stroke-width: 1.6;
-        stroke-linecap: round; stroke-linejoin: round; }
-.icon .filled { fill: currentColor; stroke: none; }
 
 /* =====================================================================
    4. Buttons and controls
    ===================================================================== */
 
-/* 30px, everywhere, deliberately. The recommended default control size on a
-   desktop is 28pt and the floor is 20pt; the small ghost buttons in the admin
-   tables were 24px, which is inside the floor but nowhere near comfortable for
-   anyone whose pointing is imprecise. */
+/* 30px is the reference's control height, used on every button and field it
+   draws. Sharp 4px corners; primary filled, secondary outlined, no fill. */
 button, .btn {
-  font: 500 var(--fs-small)/1 var(--font);
-  min-height: 30px; padding: 0 var(--s-4);
-  border-radius: var(--radius-sm); cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  font: 600 var(--fs-label-md)/1 var(--font);
+  min-height: var(--control-h); padding: 0 var(--s-md);
+  border-radius: var(--radius); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-xs);
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
-              color var(--dur) var(--ease), transform var(--dur) var(--ease);
+              color var(--dur) var(--ease);
 }
-button:disabled { opacity: .55; cursor: default; }
-button:active:not(:disabled) { transform: translateY(.5px); }
+button:disabled { opacity: .5; cursor: default; }
+button .icon { width: 16px; height: 16px; flex: none; }
 
 button.primary, .form button, .login button[type="submit"] {
-  background: var(--accent); color: var(--on-accent);
-  border: 1px solid transparent; font-weight: 600;
+  background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent);
 }
 button.primary:hover:not(:disabled),
 .form button:hover:not(:disabled),
-.login button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
+.login button[type="submit"]:hover:not(:disabled) {
+  background: var(--accent-hover); border-color: var(--accent-hover);
+}
 
 button.ghost {
-  background: var(--surface); color: var(--ink);
-  border: 1px solid var(--control-line);
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line);
 }
-button.ghost:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--ink-3); }
+button.ghost:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--control-line); }
 
-/* A ghost button that carries the accent reads as the recommended action in a
-   panel that has no primary. */
-button.ghost.accent { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-button.ghost.accent:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent-hover); }
+/* A borderless text action, which is how the reference draws "Close a whole
+   group…" — an action that is available but is not the point of the screen. */
+button.ghost.accent, button.link {
+  background: none; border: 1px solid transparent; color: var(--accent);
+}
+button.ghost.accent:hover:not(:disabled),
+button.link:hover:not(:disabled) { color: var(--accent-bright); background: var(--surface-hover); }
 
-button.ghost.small { padding: 0 var(--s-3); font-size: var(--fs-caption); min-height: 28px; }
-button.danger { background: var(--danger-soft); color: var(--danger-ink); border: 1px solid var(--danger); }
+button.ghost.small { padding: 0 var(--s-sm); font-size: var(--fs-label-sm); min-height: 26px; }
+button.danger { background: var(--danger); color: #fff; border: 1px solid var(--danger); }
 
-/* The map's sidebar buttons are the full width of the column they sit in. */
-.map-controls button.ghost { width: 100%; }
+.map-controls button.ghost, .map-controls button.primary { width: 100%; }
 
-input[type=text], input[type=password], input[type=number], select, textarea {
-  font: var(--fs-small)/1.4 var(--font);
+/* "Input fields use the inset background with a 1px control border. Focus
+   states use a 2px accent border."
+
+   Selected by exclusion, not by listing types. `input[type=text]` does NOT
+   match `<input>` with no type attribute — the default type is text, but the
+   attribute selector matches the attribute, not the resolved type. Two fields
+   in this application had no `type`, so they fell through to the browser's own
+   drawing: a white box with a dark border sitting beside the inset grey ones,
+   on the sign-in form and on every building picker.
+
+   The exclusions sit inside `:where()`, which contributes NO specificity. A
+   bare `:not()` chain would score four attribute selectors and quietly outrank
+   `.login input`, so the sign-in fields came out at the default 30px instead
+   of the 38 they ask for. */
+input:where(:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file])),
+select, textarea {
+  font: 400 var(--fs-body-sm)/1.4 var(--font);
   color: var(--ink); background: var(--surface-3);
-  border: 1px solid var(--control-line); border-radius: var(--radius-sm);
-  padding: 7px var(--s-3); min-height: 32px; width: 100%;
-  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 0 var(--s-sm); min-height: var(--control-h); width: 100%;
+  transition: border-color var(--dur) var(--ease);
 }
-input:hover, select:hover { border-color: var(--ink-3); }
+textarea { padding: var(--s-sm); }
+input:hover, select:hover { border-color: var(--control-line); }
 input:focus-visible, select:focus-visible, textarea:focus-visible {
-  border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 0;
+  border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px;
 }
 select { cursor: pointer; }
-select.inline { width: auto; min-width: 9rem; background: var(--surface); }
+select.inline { width: auto; min-width: 9rem; }
 
-input[type=range] {
-  width: 100%; accent-color: var(--accent); min-height: 24px;
+/* A bare <select> is drawn by the operating system — its arrow, height and
+   font are Windows's decision. `appearance: none` takes that back. The chevron
+   is a rotated square rather than an SVG data URI, because an inline SVG needs
+   an xmlns URL and the external-reference test reads that as off-origin. */
+.select-wrap { position: relative; display: inline-flex; vertical-align: middle; }
+.select-wrap select, .select-wrap input {
+  appearance: none; -webkit-appearance: none; padding-right: var(--s-xl); width: 100%;
 }
-input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+.select-wrap::after {
+  content: ""; position: absolute; right: 11px; top: 50%;
+  width: 6px; height: 6px; margin-top: -5px;
+  border-right: 1.6px solid var(--ink-2); border-bottom: 1.6px solid var(--ink-2);
+  transform: rotate(45deg); pointer-events: none;
+}
+.field .select-wrap { display: flex; width: 100%; }
+
+/* An <input list> draws its OWN dropdown arrow, which `appearance: none` does
+   not remove — it is a shadow pseudo-element, not part of the control's
+   appearance. Left alone it sat next to this wrapper's chevron and every
+   building picker showed two arrows. */
+.picker::-webkit-calendar-picker-indicator { display: none !important; }
+.picker { appearance: none; }
+
+input[type=range] { width: 100%; accent-color: var(--accent); min-height: 24px; padding: 0; }
+input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; min-height: 0; }
 
 label.check {
-  display: inline-flex; align-items: center; gap: var(--s-2);
-  font-size: var(--fs-small); color: var(--ink-2);
-  min-height: 30px; padding: 0 var(--s-2); cursor: pointer;
-  border-radius: var(--radius-sm);
+  display: inline-flex; align-items: center; gap: var(--s-xs);
+  font-size: var(--fs-body-sm); color: var(--ink); cursor: pointer;
+  min-height: var(--control-h);
 }
-label.check:hover { background: var(--surface-hover); color: var(--ink); }
+
+/* The reference's uppercase tracked micro-label, used for control labels and
+   table headers and nowhere else. */
+.inline-label, .section-label, .field > label, .map-legend h3, .panel h4, .metric .v {
+  font-size: var(--fs-label-sm); font-weight: 500; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--ink-2);
+}
+.field > label, .map-legend h3, .panel h4 { display: block; margin: 0 0 var(--s-sm); }
+.section-label {
+  margin: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-sm);
+}
+/* The reference's count badge beside a section heading. */
+.section-label .count {
+  font-size: 10px; font-weight: 500; padding: 1px var(--s-xs);
+  background: var(--surface-3); color: var(--ink-2); border-radius: 2px;
+  font-variant-numeric: tabular-nums;
+}
 
 /* =====================================================================
    5. Login
    ===================================================================== */
 
 .login-wrap {
-  min-height: 100vh; display: grid; place-items: center; padding: var(--s-6);
-  /* A quiet wash rather than a flat field, so the card has something to sit on
-     in both appearances. */
-  background:
-    radial-gradient(1100px 520px at 50% -10%, var(--accent-soft), transparent 70%),
-    var(--bg);
+  min-height: 100vh; display: flex; flex-direction: column;
+  background: var(--bg);
 }
+
+/* The reference gives the sign-in screen its own slim top bar and a footer.
+   Everything they state is true of this system. */
+.login-bar {
+  display: flex; align-items: center; gap: var(--s-md);
+  padding: var(--s-sm) var(--s-margin);
+  background: var(--surface); border-bottom: 1px solid var(--line); flex: none;
+}
+.login-bar .wordmark {
+  font-size: var(--fs-head-md); font-weight: 800; letter-spacing: -.01em;
+  color: var(--ink); margin: 0;
+}
+.login-bar .chip {
+  font-size: var(--fs-label-sm); font-weight: 600; letter-spacing: .02em;
+  text-transform: uppercase; padding: var(--s-xs) var(--s-sm);
+  background: var(--accent-soft); color: var(--accent); border-radius: var(--radius);
+}
+.login-bar .appearance { margin: 0 0 0 auto; flex-direction: row; }
+
+.login-body { flex: 1; display: grid; place-items: center; padding: var(--s-lg); }
+.login-col { width: min(28rem, 100%); display: grid; gap: var(--s-md); }
+
 .login {
-  width: min(26rem, 100%); background: var(--surface);
-  border: 1px solid var(--line); border-radius: var(--radius-lg);
-  padding: var(--s-8) var(--s-6) var(--s-6);
-  box-shadow: var(--shadow-3);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); padding: var(--s-lg);
+  display: grid; gap: var(--s-md); box-shadow: var(--shadow-1);
 }
-.login .brand { margin-bottom: var(--s-6); }
-.login h1 { font-size: var(--fs-title); margin: 0 0 2px; }
+.login > * { margin: 0; }
+.login h2 {
+  font-size: var(--fs-head-lg); font-weight: 700; letter-spacing: -.01em;
+}
+.login .lede { font-size: var(--fs-body-sm); color: var(--ink-2); margin-top: calc(-1 * var(--s-sm)); }
 .login label {
-  display: block; margin: var(--s-4) 0;
-  font-size: var(--fs-small); font-weight: 500; color: var(--ink-2);
+  display: grid; gap: var(--s-xs); margin: 0;
+  font-size: var(--fs-label-md); font-weight: 600; color: var(--ink);
 }
-.login input { margin-top: var(--s-2); background: var(--surface-3); min-height: 38px; }
-.login button[type="submit"] { width: 100%; margin-top: var(--s-4); min-height: 38px; }
+.login input { min-height: 38px; }
+.login button[type="submit"] { width: 100%; min-height: 40px; font-size: var(--fs-body-sm); }
+
+.password-field { position: relative; display: grid; }
+.password-field input { padding-right: 4rem; }
+.reveal {
+  position: absolute; right: var(--s-xs); top: 50%; transform: translateY(-50%);
+  min-height: 26px; padding: 0 var(--s-sm);
+  background: none; border: 0; color: var(--ink-2); font-size: var(--fs-label-sm);
+}
+.reveal:hover { color: var(--ink); background: var(--surface-hover); }
+
+/* Reserves its row whether or not it is showing, so nothing below it moves. */
+.caps-hint {
+  min-height: 1rem; font-size: var(--fs-label-sm);
+  color: var(--warn-ink); font-weight: 600; visibility: hidden;
+}
+.caps-hint.on { visibility: visible; }
+
+/* The reference's second card. Its version listed encryption algorithms and a
+   FIPS level that this system does not claim; these four are properties the
+   Administration screen reports and the code enforces. */
+.login-facts {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); overflow: hidden;
+}
+.login-facts h3 {
+  margin: 0; padding: var(--s-sm) var(--s-md);
+  font-size: var(--fs-label-sm); font-weight: 700; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--ink-2);
+  border-bottom: 1px solid var(--line); background: var(--surface-3);
+}
+.login-facts dl {
+  margin: 0; padding: var(--s-md);
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-md);
+}
+.login-facts dt {
+  font-size: var(--fs-label-sm); letter-spacing: .02em; text-transform: uppercase;
+  color: var(--ink-2); margin-bottom: 2px;
+}
+.login-facts dd {
+  margin: 0; font-size: var(--fs-body-md); font-weight: 600; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.login-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-md); flex-wrap: wrap;
+  padding: var(--s-sm) var(--s-margin);
+  border-top: 1px solid var(--line); background: var(--surface);
+  font-size: var(--fs-label-sm); color: var(--ink-2); flex: none;
+}
 
 /* =====================================================================
-   6. Layout and panels
+   6. Panels
    ===================================================================== */
 
-body.signed-in main {
-  display: block; padding: var(--s-6) var(--s-5) var(--s-10);
-  max-width: 1240px; margin: 0 auto;
-}
-
+/* "Cards: 1px hairline border, no shadow, surface background. Headers within
+   cards separated by a hairline horizontal rule." */
 .panel {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: var(--s-4) var(--s-5) var(--s-5);
-  margin-bottom: var(--s-5); box-shadow: var(--shadow-1);
+  border-radius: var(--radius); flex: none;
 }
-.panel.narrow { max-width: 30rem; }
 .panel > header {
   display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s-3); margin-bottom: var(--s-4); flex-wrap: wrap;
-  min-height: 30px;
+  gap: var(--s-md); flex-wrap: wrap;
+  padding: var(--s-sm) var(--s-md); border-bottom: 1px solid var(--line);
+  min-height: 44px;
 }
-.panel h3 { margin: 0; font-size: var(--fs-lead); font-weight: 600; }
-.panel h4 {
-  margin: var(--s-5) 0 var(--s-2);
-  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--ink-2);
-}
+.panel h3 { margin: 0; font-size: var(--fs-label-md); font-weight: 700; color: var(--ink); }
+.panel > *:not(header):not(table):not(.table-wrap) { padding: 0 var(--s-md); }
+.panel > .caption:last-child { padding-bottom: var(--s-md); }
+.panel > .chart-legend, .panel > .chart { margin-top: var(--s-md); }
+.panel.narrow { max-width: 30rem; }
+.panel.flex { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
-/* A panel's own controls. Named `toolbar` rather than `controls`, which is what
-   it used to be called — and which collided with the map's sidebar, also
-   `.controls`. The later rule won, so the map's whole left column was being
-   laid out as a wrapping flex ROW. Two blocks in one stylesheet claiming one
-   class name is how that happens silently. */
-.toolbar { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
-.inline-label { font-size: var(--fs-caption); color: var(--ink-2); font-weight: 500; }
-
-/* A heading a screen reader needs and a sighted reader does not: the actions
-   column of a table has no useful visible title. Positioned rather than
-   `display: none`, which would take it out of the accessibility tree too. */
-.sr-only {
-  position: absolute; width: 1px; height: 1px; overflow: hidden;
-  clip-path: inset(50%); white-space: nowrap;
+/* The filter strip: its own panel above the table, groups separated by a 1px
+   rule, the quiet destructive action pushed to the far right. */
+.toolbar-panel {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-md); flex-wrap: wrap; padding: var(--s-sm);
 }
+/* The filters take the room that is going spare and the trailing action keeps
+   its place at the right. Without the flex on .toolbar it claimed the whole
+   row and pushed "Close a whole group…" onto a second line of its own. */
+.toolbar { display: flex; gap: var(--s-md); align-items: center; flex-wrap: wrap; flex: 1 1 auto; }
+.toolbar-panel > button { flex: none; }
+/* The 1px vertical rule the reference puts between filter groups. */
+.toolbar .rule { width: 1px; height: 16px; background: var(--line); flex: none; }
+.toolbar .group { display: flex; align-items: center; gap: var(--s-xs); }
 
 .muted { color: var(--ink-2); }
-.small { font-size: var(--fs-caption); }
-.mono { font-family: var(--font-mono); font-size: var(--fs-caption); }
+.small { font-size: var(--fs-label-sm); }
+.mono { font-family: var(--font-mono); font-size: var(--fs-body-sm); }
+
+.caption {
+  color: var(--ink-2); font-size: var(--fs-body-sm); line-height: 1.55;
+  margin: var(--s-md) 0 0; padding-top: var(--s-sm); border-top: 1px solid var(--line);
+}
+.caption strong { color: var(--ink); }
+/* A caption that explains the screen rather than one panel on it: no rule
+   above it, since it is not attached to anything. */
+.caption.standalone { border-top: 0; margin: 0; padding: 0 var(--s-xs); flex: none; }
+
+/* The deviation figure, coloured by the severity it belongs to — the
+   reference's "+210%" treatment, against this system's robust z. */
+.sev-figure { font-weight: 600; font-variant-numeric: tabular-nums; }
+.sev-figure.critical { color: var(--sev-critical); }
+.sev-figure.high { color: var(--sev-high); }
+.sev-figure.medium { color: var(--ink-2); }
 
 .loading {
-  color: var(--ink-2); padding: var(--s-5) 0; font-size: var(--fs-small);
-  display: flex; align-items: center; gap: var(--s-2);
+  color: var(--ink-2); padding: var(--s-md) 0; font-size: var(--fs-body-sm);
+  display: flex; align-items: center; gap: var(--s-sm);
 }
 .loading::before {
   content: ""; width: 12px; height: 12px; border-radius: 50%;
-  border: 2px solid var(--line-strong); border-top-color: var(--accent);
+  border: 2px solid var(--line); border-top-color: var(--accent);
   animation: spin 700ms linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.caption {
-  color: var(--ink-2); font-size: var(--fs-caption); line-height: 1.65;
-  margin: var(--s-4) 0 0; border-top: 1px solid var(--line); padding-top: var(--s-3);
-}
-.caption strong { color: var(--ink); }
 
 /* =====================================================================
    7. Stat tiles
@@ -579,153 +810,247 @@ body.signed-in main {
 
 .stat-row {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: var(--s-3); margin-bottom: var(--s-5);
+  gap: var(--s-sm); flex: none;
 }
-.stat-row.compact { margin-bottom: 0; }
 .stat {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: var(--s-4);
-  box-shadow: var(--shadow-1); position: relative; overflow: hidden;
+  border-radius: var(--radius); padding: var(--s-md);
+  display: grid; align-content: start; gap: 2px;
 }
-/* A hairline of accent along the top edge. Enough to make a row of tiles read
-   as the headline of the page without colouring the whole tile. */
-.stat::before {
-  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, var(--accent), transparent 75%);
-  opacity: .8;
+.stat-label {
+  order: -1; margin: 0; color: var(--ink-2);
+  font-size: var(--fs-label-sm); font-weight: 500;
+  letter-spacing: .02em; text-transform: uppercase;
 }
 .stat-value {
-  font-size: var(--fs-figure); font-weight: 650; letter-spacing: -.02em;
-  font-variant-numeric: tabular-nums; line-height: 1.15;
+  font-size: var(--fs-display); font-weight: 600; letter-spacing: -.02em;
+  line-height: 1.25; font-variant-numeric: tabular-nums;
 }
-.stat-label { color: var(--ink-2); font-size: var(--fs-caption); margin-top: 2px; font-weight: 500; }
-.stat-hint { color: var(--ink-3); font-size: var(--fs-micro); margin-top: var(--s-2); line-height: 1.5; }
+.stat-hint { color: var(--ink-3); font-size: var(--fs-label-sm); margin-top: var(--s-xs); }
 
 /* =====================================================================
    8. Charts
    ===================================================================== */
 
-.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart { width: 100%; height: auto; display: block; }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 .chart .axis { fill: var(--ink-2); font-size: 11px; font-family: var(--font); }
 .chart .axis.unit { fill: var(--ink-3); font-size: 10px; }
-.chart .series { stroke-width: 1.8; fill: none; }
+.chart .series { stroke-width: 1.6; fill: none; }
 .chart .series.s0 { stroke: var(--series-0); }
-/* Dashed, not merely a second colour. Two lines that differ only in hue are
+/* Dashed, not merely a second colour: two lines that differ only in hue are
    one line to a reader who cannot separate blue from amber. */
 .chart .series.s1 { stroke: var(--series-1); stroke-dasharray: 5 3; }
 .chart.empty .axis { font-size: 13px; fill: var(--ink-3); }
-.chart.proportion { height: 20px; border-radius: var(--radius-sm); overflow: hidden; }
+.chart.proportion { height: 18px; border-radius: 2px; overflow: hidden; }
 
-/* Severity fills carry a hairline edge: amber on white is 2.1:1, so the shape
-   of a bar would otherwise be guesswork at the top of a light-mode stack. */
 .bar, .seg { stroke: var(--surface); stroke-width: .75; }
 .bar.b0, .seg.b0 { fill: var(--sev-critical); }
 .bar.b1, .seg.b1 { fill: var(--sev-high); }
 .bar.b2, .seg.b2 { fill: var(--sev-medium); }
-.bar.b3, .seg.b3 { fill: var(--accent); }
+.bar.b3, .seg.b3 { fill: var(--accent-bright); }
 
-/* Named `chart-legend`, because `legend` was the other half of the collision
-   with the map sidebar described above. */
 .chart-legend {
-  display: flex; gap: var(--s-4); flex-wrap: wrap;
-  margin-bottom: var(--s-2); font-size: var(--fs-caption);
+  display: flex; gap: var(--s-md); flex-wrap: wrap;
+  font-size: var(--fs-label-sm); letter-spacing: .02em;
 }
-.chart-legend .key { color: var(--ink-2); display: inline-flex; align-items: center; gap: var(--s-2); }
+.chart-legend .key { color: var(--ink-2); display: inline-flex; align-items: center; gap: var(--s-xs); }
 .chart-legend .key::before {
-  content: ""; width: 10px; height: 10px; border-radius: 3px; display: inline-block;
-  border: 1px solid var(--line-strong);
+  content: ""; width: 10px; height: 10px; border-radius: 2px; display: inline-block;
+  border: 1px solid var(--line);
 }
 .chart-legend .key.s0::before { background: var(--series-0); }
 .chart-legend .key.s1::before {
-  /* Matches the dashed stroke it stands for. */
   background: repeating-linear-gradient(90deg, var(--series-1) 0 3px, transparent 3px 5px);
 }
 .chart-legend .key.b0::before { background: var(--sev-critical); }
 .chart-legend .key.b1::before { background: var(--sev-high); }
 .chart-legend .key.b2::before { background: var(--sev-medium); }
-.chart-legend .key.b3::before { background: var(--accent); }
+.chart-legend .key.b3::before { background: var(--accent-bright); }
 
 /* =====================================================================
-   9. Tables
+   9. Tables — the core of the system
    ===================================================================== */
 
-.table-wrap { overflow-x: auto; margin: 0 calc(-1 * var(--s-2)); padding: 0 var(--s-2); }
+.table-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.table-wrap { overflow: auto; flex: 1; min-height: 0; }
 
-.panel table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
-.panel th {
-  text-align: left; color: var(--ink-2); font-weight: 600;
-  font-size: var(--fs-micro); letter-spacing: .05em; text-transform: uppercase;
-  padding: var(--s-2); border-bottom: 1px solid var(--line-strong);
-  position: sticky; top: 0; background: var(--surface); z-index: 1;
-  white-space: nowrap;
+table { width: 100%; border-collapse: collapse; text-align: left; }
+
+/* "body-sm for rows, label-sm for headers", uppercase and tracked, sticky, on
+   the lowest surface with a hairline under it. */
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  padding: var(--s-sm) var(--s-xs);
+  font-size: var(--fs-label-sm); font-weight: 500; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--ink-2); white-space: nowrap;
 }
-.panel td { padding: var(--s-2); border-bottom: 1px solid var(--line); vertical-align: middle; }
-.panel tbody tr:hover td { background: var(--surface-3); }
-.panel tr:last-child td { border-bottom: none; }
-.panel tr.denied td { color: var(--danger-ink); }
-.panel td.num, .panel th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.row-actions { display: flex; gap: var(--s-2); justify-content: flex-end; }
+thead th:first-child { padding-left: var(--s-sm); }
+thead th:last-child { padding-right: var(--s-sm); }
 
-/* Row count and paging live under the table they describe. */
+tbody td {
+  padding: var(--s-xs); border-bottom: 1px solid var(--line);
+  font-size: var(--fs-body-sm); vertical-align: middle; white-space: nowrap;
+}
+tbody td:first-child { padding-left: var(--s-sm); }
+tbody td:last-child { padding-right: var(--s-sm); }
+tbody tr:last-child td { border-bottom: none; }
+
+/* Zebra striping, "for high-density scanning". */
+tbody tr:nth-child(even) { background: var(--surface-zebra); }
+tbody tr:hover { background: var(--surface-hover); }
+
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.denied td { color: var(--danger-ink); }
+.row-actions { display: flex; gap: var(--s-xs); justify-content: flex-end; }
+
+.col-select { width: 40px; text-align: center; }
+.col-select input { margin: 0; }
+
+.th-sort {
+  background: none; border: 0; padding: 0; min-height: 0;
+  font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+  display: inline-flex; align-items: center; gap: var(--s-xs); cursor: pointer;
+}
+.th-sort:hover { color: var(--ink); }
+.th-arrow { opacity: .45; font-size: 10px; }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--ink); }
+th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
+  opacity: 1; color: var(--accent);
+}
+
 .table-foot {
   display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-3);
-  font-size: var(--fs-caption); color: var(--ink-2);
+  gap: var(--s-md); flex-wrap: wrap; flex: none;
+  padding: var(--s-sm) var(--s-md); border-top: 1px solid var(--line);
+  font-size: var(--fs-label-sm); color: var(--ink-2);
 }
 
+/* Severity as an icon and an uppercase word in the severity colour, which is
+   how the reference draws it — not as a filled pill. */
 .sev {
-  display: inline-flex; align-items: center; gap: var(--s-1);
-  padding: 2px var(--s-2); border-radius: var(--radius-pill);
-  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .02em;
-  border: 1px solid transparent; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: var(--s-xs);
+  font-size: var(--fs-label-sm); font-weight: 600; letter-spacing: .02em;
+  text-transform: uppercase; white-space: nowrap;
 }
-/* The dot repeats the severity as a shape and a position, so the pill is not
-   read by colour alone. */
-.sev::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.sev.critical { background: var(--danger-soft); color: var(--danger-ink); border-color: var(--danger); }
-.sev.high     { background: var(--warn-soft);   color: var(--warn-ink);   border-color: var(--warn); }
-.sev.medium   { background: var(--surface-3);   color: var(--ink-2);      border-color: var(--line-strong); }
+.sev::before {
+  content: ""; width: 8px; height: 8px; flex: none;
+  background: currentColor;
+}
+.sev.critical { color: var(--sev-critical); }
+/* Each severity gets its own SHAPE as well as its own colour: a square, a
+   diamond and a bar are still three different things in greyscale. */
+.sev.high { color: var(--sev-high); }
+.sev.high::before { transform: rotate(45deg); }
+.sev.medium { color: var(--sev-medium); }
+.sev.medium::before { height: 3px; }
+
+/* The reference's small filled status chip. */
+.chip {
+  display: inline-block; padding: 2px var(--s-xs); border-radius: 2px;
+  font-size: var(--fs-label-sm); font-weight: 600; letter-spacing: .02em;
+  text-transform: uppercase; line-height: 1.3;
+  background: var(--surface-3); color: var(--ink-2);
+}
+.chip.open { background: var(--danger-soft); color: var(--danger-ink); }
+.chip.closed { background: var(--success-soft); color: var(--success-ink); }
+
+/* The selection bar, filled in the bright primary. */
+.action-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-md); flex-wrap: wrap; flex: none;
+  padding: var(--s-sm) var(--s-md); border-radius: var(--radius);
+  background: var(--accent-bright); color: var(--accent-soft);
+  font-size: var(--fs-label-md); font-weight: 600;
+}
+.action-bar[hidden] { display: none; }
+.action-bar button.primary {
+  background: var(--surface); color: var(--accent); border-color: var(--surface);
+}
+.action-bar button.primary:hover { background: var(--surface-3); border-color: var(--surface-3); }
+.action-bar button.ghost.small {
+  background: none; border-color: transparent; color: inherit;
+}
+.action-bar button.ghost.small:hover { background: rgba(255, 255, 255, .14); }
+
+.hash { cursor: help; border-bottom: 1px dotted var(--line-strong); }
+.dot-label { display: inline-flex; align-items: center; gap: var(--s-xs); }
 
 /* =====================================================================
    10. Forms, boxes, definition lists
    ===================================================================== */
 
+.form { padding: var(--s-md); display: grid; gap: var(--s-md); }
 .form label {
-  display: block; margin: var(--s-3) 0;
-  font-size: var(--fs-small); font-weight: 500; color: var(--ink-2);
+  display: grid; gap: var(--s-xs); margin: 0;
+  font-size: var(--fs-label-md); font-weight: 600; color: var(--ink);
 }
-.form input, .form select { margin-top: var(--s-2); }
-.form .hint { font-weight: 400; font-size: var(--fs-caption); color: var(--ink-3); }
-.form .field-error { color: var(--danger-ink); font-size: var(--fs-caption); margin-top: var(--s-1); }
-.form-actions { display: flex; gap: var(--s-2); align-items: center; margin-top: var(--s-4); }
+.form .hint { font-weight: 400; font-size: var(--fs-label-sm); color: var(--ink-3); }
+.form-actions { display: flex; gap: var(--s-sm); align-items: center; flex-wrap: wrap; }
 
 .error-box, .warn-box, .ok-box, .hint-box {
-  padding: var(--s-3) var(--s-4); border-radius: var(--radius-sm);
-  font-size: var(--fs-small); line-height: 1.55; margin: var(--s-3) 0;
+  padding: var(--s-sm) var(--s-md); border-radius: var(--radius);
+  font-size: var(--fs-body-sm); line-height: 1.5; margin: 0;
   border: 1px solid; border-left-width: 3px;
 }
 .error-box { background: var(--danger-soft);  border-color: var(--danger);  color: var(--danger-ink); }
 .warn-box  { background: var(--warn-soft);    border-color: var(--warn);    color: var(--warn-ink); }
 .ok-box    { background: var(--success-soft); border-color: var(--success); color: var(--success-ink); }
-.hint-box  { background: var(--surface-3);    border-color: var(--line-strong); color: var(--ink-2); }
+.hint-box  { background: var(--surface-3);    border-color: var(--line);    color: var(--ink-2); }
+
+.view-status:empty { display: none; }
+.view-status { flex: none; }
+.status-line { display: flex; align-items: center; justify-content: space-between; gap: var(--s-md); }
+.status-actions { display: flex; align-items: center; gap: var(--s-sm); flex: none; }
+.close-inline {
+  background: none; border: 0; color: inherit; opacity: .7;
+  width: 26px; height: 26px; min-height: 26px; padding: 0;
+  font-size: 18px; line-height: 1; border-radius: var(--radius);
+}
+.close-inline:hover { opacity: 1; background: rgba(128, 128, 128, .16); }
 
 .facts {
-  display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-5);
-  margin: 0; font-size: var(--fs-small);
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s-sm) var(--s-lg);
+  margin: 0; font-size: var(--fs-body-sm); padding: var(--s-md) 0;
 }
 .facts dt { color: var(--ink-2); }
-.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.facts dd { margin: 0; font-weight: 500; }
 
 .verdict {
-  display: inline-flex; align-items: center; gap: var(--s-2);
-  padding: var(--s-2) var(--s-4); border-radius: var(--radius-pill);
-  font-weight: 600; margin-bottom: var(--s-3); font-size: var(--fs-small);
-  border: 1px solid;
+  display: inline-flex; align-items: center; gap: var(--s-sm);
+  padding: var(--s-sm) var(--s-md); border-radius: var(--radius);
+  font-weight: 700; font-size: var(--fs-body-md); margin: var(--s-md) 0 0;
+  letter-spacing: .02em; text-transform: uppercase;
 }
-.verdict::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.verdict.good { background: var(--success-soft); color: var(--success-ink); border-color: var(--success); }
-.verdict.bad  { background: var(--danger-soft);  color: var(--danger-ink);  border-color: var(--danger); }
+.verdict.good { background: var(--success-soft); color: var(--success-ink); }
+.verdict.bad  { background: var(--danger-soft);  color: var(--danger-ink); }
+
+/* ---- skeletons and empty states -------------------------------------- */
+
+.skeleton {
+  display: block; border-radius: 2px;
+  background: linear-gradient(90deg, var(--surface-3) 25%, var(--surface-hover) 37%, var(--surface-3) 63%);
+  background-size: 400% 100%; animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.skeleton-tile { display: grid; gap: var(--s-sm); }
+.skeleton-figure { height: 30px; width: 60%; }
+.skeleton-line { height: 11px; width: 85%; }
+.skeleton-chart { height: 240px; }
+.skeleton-table { display: grid; gap: 1px; padding: var(--s-md); }
+.skeleton-row { height: 28px; }
+
+.empty-state {
+  padding: var(--s-xl) var(--s-lg); text-align: center;
+}
+.empty-state h4 {
+  margin: 0 0 var(--s-sm); font-size: var(--fs-body-lg); font-weight: 600;
+  color: var(--ink); text-transform: none; letter-spacing: normal;
+}
+.empty-state p { margin: 0 auto; color: var(--ink-2); font-size: var(--fs-body-sm); max-width: 48ch; }
+
+.two-col { display: grid; grid-template-columns: minmax(0, 24rem) minmax(0, 1fr); gap: var(--s-sm); align-items: start; }
 
 /* =====================================================================
    11. Modals and dialogs
@@ -734,224 +1059,311 @@ body.signed-in main {
 .modal {
   position: fixed; inset: 0; z-index: 20;
   background: var(--scrim); display: flex; align-items: center; justify-content: center;
-  padding: var(--s-5);
-}
-@supports (backdrop-filter: blur(6px)) {
-  .modal { backdrop-filter: blur(6px); }
+  padding: var(--s-lg);
 }
 /* Without this the `hidden` attribute does nothing here. `[hidden]` gets its
-   `display: none` from the browser's own stylesheet, and ANY author rule setting
-   display beats a user-agent rule - so `display: flex` above kept both modals on
-   screen from the moment the page loaded. The map opened behind a full-screen
-   overlay reading "Solving...", with nothing solving. */
+   `display: none` from the browser's own stylesheet, and ANY author rule
+   setting display beats a user-agent rule — so `display: flex` above kept both
+   modals on screen from the moment the page loaded. The map opened behind a
+   full-screen overlay reading "Solving...", with nothing solving. */
 .modal[hidden] { display: none; }
 
 .modal-inner {
   background: var(--surface-2); border: 1px solid var(--line);
-  border-radius: var(--radius-lg); padding: var(--s-6);
-  width: min(48rem, 100%); max-height: 86vh; overflow-y: auto;
-  position: relative; box-shadow: var(--shadow-3);
+  border-radius: var(--radius-lg); width: min(48rem, 100%);
+  max-height: 86vh; overflow-y: auto; position: relative;
+  box-shadow: var(--shadow-3);
 }
 .modal-inner.narrow { width: min(26rem, 100%); }
-.modal h2 { margin: 0 var(--s-8) var(--s-4) 0; font-size: var(--fs-title); }
+.modal h2 {
+  margin: 0; padding: var(--s-md) var(--s-xl) var(--s-md) var(--s-md);
+  font-size: var(--fs-head-md); font-weight: 700; letter-spacing: -.01em;
+  border-bottom: 1px solid var(--line);
+}
+.modal .dialog-lede, .modal > .modal-inner > p { margin: 0; }
+.dialog-lede {
+  padding: var(--s-md) var(--s-md) 0; margin: 0;
+  color: var(--ink-2); font-size: var(--fs-body-sm); line-height: 1.55;
+}
+.modal-inner > table, .modal-inner > .caption, .modal-inner > div:not(.form) { padding: 0; }
+.modal-inner > #compare-body, .modal-inner > #narrative-body { padding: var(--s-md); }
 .close {
-  position: absolute; top: var(--s-3); right: var(--s-3);
-  background: none; border: 1px solid transparent; color: var(--ink-2);
-  width: 30px; height: 30px; min-height: 30px; padding: 0;
-  border-radius: var(--radius-sm); font-size: 20px; line-height: 1;
+  position: absolute; top: var(--s-sm); right: var(--s-sm);
+  background: none; border: 0; color: var(--ink-2);
+  width: 28px; height: 28px; min-height: 28px; padding: 0;
+  border-radius: var(--radius); font-size: 20px; line-height: 1;
 }
 .close:hover { background: var(--surface-hover); color: var(--ink); }
 
-/* The compare table and the narrative cards are the only tables outside a
-   panel, so they need their own rules rather than inheriting `.panel table`. */
-.modal table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
-.modal th, .modal td {
-  padding: var(--s-2) var(--s-3); text-align: right;
-  border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums;
-}
-.modal th:first-child, .modal td:first-child { text-align: left; }
-.modal th {
-  font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em;
-  color: var(--ink-2); font-weight: 600;
-}
-.modal tr.best td { color: var(--success-ink); font-weight: 600; }
+.modal table th, .modal table td { text-align: right; }
+.modal table th:first-child, .modal table td:first-child { text-align: left; }
+.modal tr.best td { color: var(--success-ink); font-weight: 700; }
 
-/* Replaces three `style="..."` attributes in map.js that the CSP was throwing
-   away, so the narrative cards had been rendering as an unstyled stack. */
-.card-row { display: flex; gap: var(--s-6); flex-wrap: wrap; }
+.card-row { display: flex; gap: var(--s-lg); flex-wrap: wrap; }
 .card-row > .card { flex: 1 1 16rem; min-width: 16rem; }
-.card h3 { font-size: var(--fs-small); margin: 0 0 2px; }
-.card .caption { margin: 0 0 var(--s-2); border: none; padding: 0; }
-.section-label {
-  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--ink-2); margin: 0 0 var(--s-2);
-}
+.card h3 { font-size: var(--fs-label-md); margin: 0 0 2px; }
+.card .caption { margin: 0 0 var(--s-sm); border: none; padding: 0; }
 
 /* =====================================================================
    12. Map
    ===================================================================== */
 
 .map-layout {
-  display: grid; grid-template-columns: 16rem 1fr 20rem; gap: var(--s-3);
-  height: calc(100vh - 190px); min-height: 32rem;
+  display: grid; grid-template-columns: 280px minmax(0, 1fr) 320px;
+  gap: var(--s-sm); flex: 1; min-height: 0;
 }
 
-/* Scoped to the map. The sidebar used to share the bare class `.controls` with
-   the panel toolbars, and lost. */
 .map-controls {
-  padding: var(--s-4); overflow-y: auto;
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow-1);
+  border-radius: var(--radius); overflow-y: auto;
+  display: flex; flex-direction: column;
 }
-.field { margin-bottom: var(--s-5); }
-.field > label {
-  display: block; font-size: var(--fs-micro); font-weight: 600;
-  text-transform: uppercase; letter-spacing: .06em;
-  color: var(--ink-2); margin-bottom: var(--s-2);
+.map-controls .field {
+  padding: var(--s-md); border-bottom: 1px solid var(--line); margin: 0;
 }
+.map-controls .field:has(#budget) { padding-bottom: var(--s-md); }
 .field output {
-  display: block; font-size: var(--fs-title); font-weight: 650;
-  font-variant-numeric: tabular-nums; margin-bottom: var(--s-2);
-  letter-spacing: -.01em;
+  display: block; font-size: var(--fs-display); font-weight: 600;
+  letter-spacing: -.02em; line-height: 1.2; margin-bottom: var(--s-sm);
+  font-variant-numeric: tabular-nums; color: var(--accent);
 }
 .scale {
-  display: flex; justify-content: space-between;
-  font-size: var(--fs-micro); color: var(--ink-3); margin-top: 2px;
-  font-variant-numeric: tabular-nums;
+  display: flex; justify-content: space-between; margin-top: var(--s-xs);
+  font-size: var(--fs-label-sm); color: var(--ink-2); font-variant-numeric: tabular-nums;
 }
-.map-controls button.ghost + button.ghost { margin-top: var(--s-2); }
+.map-actions { padding: var(--s-md); display: grid; gap: var(--s-sm); }
 
-.map-legend {
-  margin-top: var(--s-6); border-top: 1px solid var(--line); padding-top: var(--s-4);
-}
-.map-legend h3 {
-  font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--ink-2); margin: 0 0 var(--s-2);
-}
+.map-legend { padding: var(--s-md); border-top: 1px solid var(--line); margin-top: auto; }
 .map-legend div {
-  display: flex; align-items: center; gap: var(--s-2);
-  font-size: var(--fs-caption); margin-bottom: var(--s-1); color: var(--ink-2);
+  display: flex; align-items: center; gap: var(--s-sm);
+  font-size: var(--fs-body-sm); margin-bottom: var(--s-xs); color: var(--ink-2);
 }
-.sw {
-  width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none;
-  border: 1px solid var(--line-strong);
-}
-.sw.funded   { background: var(--funded); border-color: var(--funded-edge); }
+.sw { width: 12px; height: 12px; display: inline-block; flex: none; border-radius: 2px; }
+.sw.funded   { background: var(--funded); }
 .sw.unfunded { background: var(--unfunded); }
 .sw.anomaly  { background: transparent; border: 2px solid var(--anomaly); border-radius: 50%; }
-.note { font-size: var(--fs-micro); color: var(--ink-3); margin: var(--s-2) 0 0; line-height: 1.5; }
+.note { font-size: var(--fs-label-sm); color: var(--ink-3); margin: var(--s-sm) 0 0; line-height: 1.5; }
 
 .mapwrap {
   position: relative; overflow: hidden;
   border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--map-ground); box-shadow: var(--shadow-1);
+  background: var(--map-ground);
 }
 #map { width: 100%; height: 100%; display: block; cursor: grab; background: var(--map-ground); }
 #map.dragging { cursor: grabbing; }
+#map:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: -2px; }
 
+/* Translucent overlay chips in the data font, bold figure then label. */
 .summary {
-  position: absolute; top: var(--s-3); left: var(--s-3); right: var(--s-3); z-index: 2;
-  display: flex; gap: var(--s-2); flex-wrap: wrap;
-  pointer-events: none;
+  position: absolute; top: var(--s-margin); left: var(--s-margin); right: var(--s-margin);
+  z-index: 2; display: flex; gap: var(--s-sm); flex-wrap: wrap;
+  pointer-events: none; max-width: 80%;
 }
 .metric {
-  background: var(--header-bg); border: 1px solid var(--line);
-  border-radius: var(--radius-sm); padding: var(--s-2) var(--s-3); min-width: 6.5rem;
-  box-shadow: var(--shadow-1);
+  background: var(--overlay); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s-xs) var(--s-sm);
+  font-size: var(--fs-body-md); color: var(--ink); box-shadow: var(--shadow-1);
+  display: flex; align-items: baseline; gap: var(--s-xs);
 }
 @supports (backdrop-filter: blur(12px)) {
-  .metric { backdrop-filter: saturate(180%) blur(12px); }
+  .metric { backdrop-filter: blur(12px); }
 }
-.metric .k {
-  display: block; font-size: var(--fs-lead); font-weight: 650;
-  font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+.metric .k { font-weight: 700; font-variant-numeric: tabular-nums; }
+.metric .v { text-transform: none; letter-spacing: 0; font-size: var(--fs-body-md); font-weight: 400; }
+
+.map-zoom {
+  position: absolute; right: var(--s-md); bottom: var(--s-xl); z-index: 2;
+  display: grid; gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
 }
-.metric .v {
-  font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--ink-2);
+.map-zoom button {
+  width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 0;
+  background: var(--overlay); color: var(--ink); border: 0;
+  font-size: var(--fs-body-sm); font-weight: 600;
+}
+.map-zoom button:hover { background: var(--surface-hover); }
+
+/* A fixed 80px bar with a measured label - see updateScaleBar() for why it is
+   that way round rather than a round number and a stretched bar. */
+.map-scale {
+  position: absolute; right: var(--s-md); bottom: var(--s-md); z-index: 2;
+  display: flex; align-items: center; gap: var(--s-xs);
+  background: var(--overlay); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 2px var(--s-xs);
+  font-size: var(--fs-label-sm); color: var(--ink-2);
+  font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.map-scale-bar {
+  width: 80px; height: 6px; flex: none;
+  border: 1px solid var(--ink-2); border-top: 0;
 }
 
 .maphint {
-  position: absolute; bottom: var(--s-3); left: var(--s-3); right: var(--s-3);
-  font-size: var(--fs-micro); color: var(--ink-2); line-height: 1.5;
-  background: var(--header-bg); border: 1px solid var(--line);
-  border-radius: var(--radius-sm); padding: var(--s-1) var(--s-2);
-  pointer-events: none;
+  position: absolute; bottom: var(--s-md); left: var(--s-md); right: 11rem;
+  margin: 0; font-size: var(--fs-label-sm); color: var(--ink-2); line-height: 1.5;
+  background: var(--overlay); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s-xs) var(--s-sm); pointer-events: none;
 }
+
+/* ---- the context layer -------------------------------------------- */
+
+/* The streets and neighbouring footprints the portfolio sits among, so a
+   building can be located against something. This is a BACKGROUND: every value
+   here is chosen to stay below the portfolio in the visual stack, because the
+   moment the surroundings compete with the fifty buildings the map stops
+   answering the question it exists to answer.
+
+   Strokes are set in geometry units and scaled by the group transform, so
+   `vector-effect: non-scaling-stroke` keeps a road one pixel wide at every
+   zoom instead of growing into a slab. */
+.ctx-building { fill: var(--ctx-building); stroke: none; pointer-events: none; }
+.ctx-water { fill: var(--ctx-water); stroke: none; pointer-events: none; }
+.ctx-park { fill: var(--ctx-park); stroke: none; pointer-events: none; }
+.ctx-road {
+  fill: none; stroke: var(--ctx-road); vector-effect: non-scaling-stroke;
+  stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
+}
+.ctx-road.major { stroke-width: 2.4; stroke: var(--ctx-road-major); }
+.ctx-road.mid   { stroke-width: 1.4; }
+.ctx-road.minor { stroke-width: 1; }
+
+/* Detail by zoom. At the opening view the minor streets are a grey wash that
+   hides the ones anybody would navigate by, and the neighbouring footprints
+   are specks — so neither is drawn until they mean something. */
+#map[data-zoom="far"] .ctx-road.minor,
+#map[data-zoom="far"] .ctx-building { display: none; }
+#map[data-zoom="mid"] .ctx-road.minor { opacity: .55; }
 
 .bldg { stroke: var(--bldg-edge); stroke-width: .6; cursor: pointer; }
 .bldg:hover { stroke: var(--ink); stroke-width: 1.6; }
-/* Funded is an outline as well as a fill: the two states have to differ by
-   something other than hue. */
 .bldg.funded { stroke: var(--funded-edge); stroke-width: 1.1; }
-.bldg.selected { stroke: var(--accent); stroke-width: 2.4; }
+.bldg.selected { stroke: var(--accent-bright); stroke-width: 2.4; }
 .district-label {
-  fill: var(--ink-2); font-size: 11px; letter-spacing: .08em;
+  fill: var(--ink-3); font-size: 11px; letter-spacing: .08em;
   text-transform: uppercase; font-family: var(--font); font-weight: 600;
 }
 .anom-ring { fill: none; stroke: var(--anomaly); stroke-width: 1.8; }
 
-/* ---- the building detail column ------------------------------------ */
+/* ---- the selected building --------------------------------------- */
 
 .detail {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); overflow-y: auto; padding: var(--s-4);
-  box-shadow: var(--shadow-1);
+  border-radius: var(--radius); overflow-y: auto;
 }
-.detail h2 { font-size: var(--fs-lead); margin: 0 0 2px; }
-.detail .code { font-size: var(--fs-caption); color: var(--ink-2); margin-bottom: var(--s-3); }
-.empty h2 { font-size: var(--fs-lead); margin: 0 0 var(--s-2); }
-.empty p { font-size: var(--fs-caption); color: var(--ink-2); line-height: 1.6; }
+.detail > * { padding: var(--s-md); }
+.detail h2 {
+  margin: 0; font-size: var(--fs-head-lg); font-weight: 700; letter-spacing: -.01em;
+}
+.detail .code {
+  font-size: var(--fs-label-sm); letter-spacing: .02em; text-transform: uppercase;
+  color: var(--ink-2); margin-top: var(--s-xs);
+}
+.empty h2 { font-size: var(--fs-body-lg); margin: 0 0 var(--s-sm); }
+.empty p { font-size: var(--fs-body-sm); color: var(--ink-2); line-height: 1.55; }
 
-/* Two columns of small facts. Distinct from the `.facts` definition list used
-   by the dashboards, which was the third name collision in this file. */
+/* The reference's 2x3 fact grid, cells separated by hairlines rather than by
+   whitespace — which is what lets it stay dense and still parse. */
 .detail .facts {
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-1) var(--s-3);
-  margin-bottom: var(--s-4); font-size: var(--fs-caption);
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--line); border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line); padding: 0; margin: 0;
 }
-.detail .facts div { font-size: var(--fs-caption); }
-.detail .facts span { color: var(--ink-2); }
+.detail .facts div {
+  background: var(--surface); padding: var(--s-sm) var(--s-md);
+  font-size: var(--fs-body-md); font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.detail .facts span {
+  display: block; font-size: var(--fs-label-sm); font-weight: 500;
+  letter-spacing: .02em; text-transform: uppercase; color: var(--ink-2);
+  margin-bottom: 2px;
+}
 
+.opt-list { display: grid; gap: var(--s-sm); padding: 0 var(--s-md) var(--s-md); }
 .opt {
-  border: 1px solid var(--line); border-radius: var(--radius-sm);
-  padding: var(--s-2) var(--s-3); margin-bottom: var(--s-2); background: var(--surface-3);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--s-sm); background: var(--surface);
+  position: relative; overflow: hidden;
 }
-.opt.chosen { border-color: var(--funded); background: var(--success-soft); }
-.opt .name { font-size: var(--fs-small); font-weight: 600; margin-bottom: var(--s-1); }
-.opt .row {
-  display: flex; justify-content: space-between; gap: var(--s-2);
-  font-size: var(--fs-micro); color: var(--ink-2); font-variant-numeric: tabular-nums;
+.opt:hover { border-color: var(--control-line); }
+/* Chosen: a green border, a green tint and a 4px left bar. */
+.opt.chosen { border-color: var(--success); background: var(--success-soft); }
+.opt.chosen::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 4px; background: var(--success);
 }
+.opt .head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: var(--s-sm); margin-bottom: var(--s-xs);
+}
+.opt .name { font-size: var(--fs-label-md); font-weight: 600; color: var(--ink); }
+.opt.chosen .head, .opt.chosen .foot { padding-left: var(--s-xs); }
 .opt .tag {
-  font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em;
-  color: var(--success-ink); font-weight: 700;
+  font-size: var(--fs-body-md); font-weight: 700; color: var(--success-ink);
+  white-space: nowrap;
 }
-.opt.negative { opacity: .65; }
-.opt.negative .name::after { content: " — net negative"; color: var(--danger-ink); font-weight: 400; }
+.opt .foot { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--s-sm); }
+.opt .row {
+  display: grid; gap: 2px; font-size: var(--fs-label-sm); color: var(--ink-2);
+}
+.opt .row b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.opt .rank {
+  font-size: 10px; font-weight: 500; padding: 1px var(--s-xs);
+  border: 1px solid var(--line); border-radius: 2px;
+  background: var(--surface); color: var(--ink); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.opt.negative { opacity: .55; }
+.opt.negative .name { text-decoration: line-through; }
+.opt.negative .tag { color: var(--danger-ink); font-size: var(--fs-label-sm); }
 
 /* =====================================================================
    13. Responsive
    ===================================================================== */
 
-/* Defer the compact layout as long as the full one still fits, so the screen
-   people are used to survives an ordinary window resize. */
-@media (max-width: 1180px) {
-  .map-layout { grid-template-columns: 14rem 1fr; height: calc(100vh - 190px); }
+@media (max-width: 1280px) {
+  .map-layout { grid-template-columns: 260px minmax(0, 1fr); }
   .map-layout .detail { display: none; }
+  .two-col { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 860px) {
-  .bar { padding: var(--s-3) var(--s-4); }
-  .bar .sub { display: none; }
-  body.signed-in main { padding: var(--s-4) var(--s-3) var(--s-8); }
-  .panel { padding: var(--s-4); }
-  .map-layout { grid-template-columns: 1fr; height: auto; }
+@media (max-width: 1024px) {
+  .sidebar { width: 64px; }
+  .sidebar .nav-label, .sidebar-brand-text { display: none; }
+  .nav-item, .status { justify-content: center; padding-left: 0; padding-right: 0; }
+  .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+  .sidebar .appearance { flex-direction: column; margin: var(--s-sm) auto 0; }
+  #nav-toggle { display: none; }
+}
+
+@media (max-width: 760px) {
+  body.signed-in { overflow: auto; }
+  .shell { flex-direction: column; height: auto; }
+  .sidebar {
+    width: 100%; flex-direction: row; align-items: center; height: auto;
+    padding: var(--s-sm); gap: var(--s-sm); overflow-x: auto;
+    border-right: 0; border-bottom: 1px solid var(--line);
+  }
+  .sidebar-brand { padding: 0 var(--s-sm) 0 0; }
+  .nav { flex-direction: row; flex: 0 0 auto; }
+  .nav-item {
+    border-left: 0; border-bottom: 4px solid transparent;
+    padding: var(--s-sm); min-height: 40px;
+  }
+  .nav-item[aria-current="page"] { border-left-color: transparent; border-bottom-color: var(--success); }
+  .sidebar-foot {
+    flex-direction: row; margin: 0 0 0 auto; padding: 0; border-top: 0; align-items: center;
+  }
+  .sidebar-foot .status { display: none; }
+  .appearance { flex-direction: row; margin: 0; }
+  .workspace { height: auto; overflow: visible; }
+  main { overflow: visible; padding: var(--s-md); }
+  .page-head { padding: var(--s-md); }
+  .map-layout { grid-template-columns: 1fr; }
   .map-layout .mapwrap { height: 70vh; }
   .map-layout .detail { display: block; }
-  .summary { position: static; padding: var(--s-2) 0 0; }
-  .metric { flex: 1 1 6.5rem; }
+  .summary { position: static; padding: var(--s-sm) 0 0; max-width: none; }
+  .login-facts dl { grid-template-columns: 1fr; }
 }
 
-/* The empty shell before the first paint. Anything more here would be markup
-   describing data the caller may not be allowed to see. */
-body.booting .login-wrap { background: var(--bg); }
+/* The empty shell before the first paint. */
+body.booting .login-wrap, body.signed-out { background: var(--bg); }

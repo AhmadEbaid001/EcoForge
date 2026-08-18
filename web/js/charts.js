@@ -28,6 +28,37 @@ const ICONS = {
   light: '<circle cx="12" cy="12" r="4.2"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2' +
          'M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/>',
   dark: '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>',
+
+  /* One per navigation destination. Every one of these is a real screen: there
+   * is no Search, no notification bell and no settings gear here, because there
+   * is nothing behind them. An icon for a feature that does not exist is worse
+   * than no icon. */
+  overview: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/>' +
+            '<rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/>' +
+            '<rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/>' +
+            '<rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
+  map: '<path d="M9 4.5 3.5 6.8v12.7L9 17.2l6 2.3 5.5-2.3V4.5L15 6.8z"/>' +
+       '<path d="M9 4.5v12.7M15 6.8v12.7"/>',
+  forecasts: '<path d="M3.5 20V4"/><path d="M3.5 20h17"/>' +
+             '<path d="M6.5 15.5 10 11l3 3 4.5-6.5"/>',
+  alerts: '<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5z"/>' +
+          '<path d="M13.7 19a2 2 0 0 1-3.4 0"/>',
+  runs: '<path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17"/>' +
+        '<path d="M7 4.5v4M14 9.5v5M18 15.5v4"/>',
+  integrity: '<path d="M12 3.5 5 6.2v5.3c0 4.3 2.9 7.6 7 8.9 4.1-1.3 7-4.6 7-8.9V6.2z"/>' +
+             '<path d="m9 12 2.2 2.2L15.5 10"/>',
+  admin: '<circle cx="9" cy="8.5" r="3.2"/>' +
+         '<path d="M3.5 19.5c0-3 2.5-4.8 5.5-4.8s5.5 1.8 5.5 4.8"/>' +
+         '<path d="M16.5 6.5h4M16.5 10h4M16.5 13.5h2.5"/>',
+  account: '<circle cx="12" cy="8.5" r="3.5"/>' +
+           '<path d="M5 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/>',
+  signout: '<path d="M14.5 8V5.5a1.5 1.5 0 0 0-1.5-1.5H6a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 6 20h7a1.5 1.5 0 0 0 1.5-1.5V16"/>' +
+           '<path d="M9.5 12h10m0 0-3-3m3 3-3 3"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  /* The reference's brand glyph was Material's `electric_bolt`. */
+  bolt: '<path class="filled" d="M13 2 4.5 13.2H11l-1.2 8.8L19.5 10.8H13z"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/>',
 };
 
 export function icon(name) {
@@ -46,6 +77,94 @@ export function compact(n) {
 }
 
 const PAD = { top: 14, right: 16, bottom: 26, left: 54 };
+
+/* ------------------------------------------------------- responsive charts */
+
+/* A chart is an SVG string, drawn once, at 760px.
+ *
+ * It scales - the viewBox sees to that - but scaling is not redrawing. Tick
+ * density, label spacing and the number of gridlines were all decided for 760
+ * pixels, so on a wide monitor the axis is sparse and stretched, and on a narrow
+ * one the labels crowd into each other. The map has redrawn on resize since it was
+ * written; the charts never have.
+ *
+ * Rather than make every call site manage a ResizeObserver, each chart registers
+ * how to redraw itself at a given width, and `hydrateCharts` connects the ones
+ * that are now in the document. Call sites keep returning strings and know nothing
+ * about any of this.
+ */
+const pendingCharts = new Map();
+let chartSeq = 0;
+
+function registerChart(draw) {
+  const id = `chart-${++chartSeq}`;
+  pendingCharts.set(id, draw);
+  return `<div class="chart-host" data-chart-id="${id}">${draw(DEFAULT_WIDTH)}</div>`;
+}
+
+function debounceRedraw(fn) {
+  let timer = null;
+  return () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(fn, 120);
+  };
+}
+
+/* Below this the axis has no room for its labels whatever the container says. */
+const MIN_CHART_WIDTH = 320;
+/* Generous: a single view renders at most a handful. */
+const MAX_PENDING = 32;
+const DEFAULT_WIDTH = 760;
+
+export function hydrateCharts(root, signal) {
+  const hosts = [...root.querySelectorAll('[data-chart-id]')]
+    .filter((host) => !host.__redraw);
+  if (!hosts.length) return;
+
+  /* Two triggers, because they catch different things.
+   *
+   * `window.resize` is the common case - someone drags the window, or turns a
+   * tablet - and it fires in every browser and every automation harness.
+   * ResizeObserver catches what resize cannot: the container changing width while
+   * the window does not, which is exactly what happens when the sidebar collapses
+   * to its icon rail. Neither alone covers both. */
+  const redrawAll = () => hosts.forEach((host) => host.__redraw?.());
+  window.addEventListener('resize', debounceRedraw(redrawAll), { signal });
+
+  hosts.forEach((host) => {
+    const draw = pendingCharts.get(host.dataset.chartId);
+    if (!draw) return;
+    /* Consumed on connect: the registry holds closures over chart data, and a
+     * view that renders and is navigated away from would otherwise leave them
+     * alive for the life of the page. */
+    pendingCharts.delete(host.dataset.chartId);
+
+    let last = 0;
+    host.__redraw = () => {
+      const width = Math.max(MIN_CHART_WIDTH, Math.round(host.getBoundingClientRect().width));
+      /* A redraw changes nothing about the host's own width, but observing an
+       * element while writing into it is how a ResizeObserver loop starts. The
+       * threshold makes it converge, and it also stops a one-pixel scrollbar
+       * change from rebuilding every chart on the screen. */
+      if (Math.abs(width - last) < 24) return;
+      last = width;
+      host.innerHTML = draw(width);
+    };
+    host.__redraw();
+
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(() => host.__redraw());
+      observer.observe(host);
+      signal?.addEventListener('abort', () => observer.disconnect());
+    }
+  });
+
+  /* Registrations for hosts that were never inserted - a view that threw between
+   * building its HTML and writing it - would otherwise accumulate for the life of
+   * the page. Anything still pending after a hydrate pass has no host. */
+  if (pendingCharts.size > MAX_PENDING) pendingCharts.clear();
+}
+
 
 function scale(values, size, pad0, pad1, invert = false) {
   const min = Math.min(...values);
@@ -76,7 +195,11 @@ function emptyChart(width, height, message) {
 }
 
 /* A time series, one or more lines. series = [{label, points: [[iso, y], ...]}] */
-export function lineChart(series, { width = 760, height = 240, unit = '' } = {}) {
+export function lineChart(series, options = {}) {
+  return registerChart((width) => drawLine(series, { ...options, width }));
+}
+
+function drawLine(series, { width = DEFAULT_WIDTH, height = 240, unit = '' } = {}) {
   const withData = series.filter((s) => s.points && s.points.length);
   if (!withData.length) return emptyChart(width, height, 'no data in this window');
 
@@ -118,7 +241,11 @@ export function lineChart(series, { width = 760, height = 240, unit = '' } = {})
 }
 
 /* Stacked bars per day. days = [{date, ...counts}], keys names the stack order. */
-export function stackedBars(days, keys, { width = 760, height = 200 } = {}) {
+export function stackedBars(days, keys, options = {}) {
+  return registerChart((width) => drawBars(days, keys, { ...options, width }));
+}
+
+function drawBars(days, keys, { width = DEFAULT_WIDTH, height = 200 } = {}) {
   if (!days.length) return emptyChart(width, height, 'no alerts in this window');
 
   const totals = days.map((d) => keys.reduce((sum, k) => sum + (d[k] || 0), 0));
