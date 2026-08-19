@@ -652,43 +652,121 @@ async function selectBuilding(id) {
    * reader to count - and it means the chosen option can be seen NOT to be
    * rank 1, which happens under a district cap and is exactly the case worth
    * being able to interrogate. */
-  const rows = data.options.slice(0, 12).map((o, i) => {
+  /* Every option, not a top-N slice.
+   *
+   * The claim this product makes is that the best retrofit is building-specific, and
+   * that claim is only arguable if a sceptic can see what LOST. Truncating the list
+   * would leave the panel showing a recommendation and asking to be believed. Rank is
+   * still numbered, so a chosen option that is not rank 1 - which happens under a
+   * district cap, and is exactly the case worth interrogating - is visible as such. */
+  const rows = data.options.map((o, i) => {
     const negative = o.lifetime_benefit_kgco2e <= 0;
+    const life = o.service_life_yr
+      ? `${o.service_life_yr} yr life`
+      : 'life not stated';
     return `
-    <div class="opt ${o.chosen ? 'chosen' : ''} ${negative ? 'negative' : ''}">
-      <div class="head">
-        <span class="name">${escapeHtml(o.label)}</span>
-        ${o.chosen ? '<span class="tag">Allocated</span>'
-          : negative ? '<span class="tag">Net negative</span>' : ''}
-      </div>
-      <div class="foot">
-        <div class="row">
-          <span>Cost: <b>${compact(o.cost_egp)} EGP</b></span>
-          <span>Saves: <b>${compact(o.annual_kwh_saving)} kWh/yr</b></span>
-          <span>Benefit: <b>${fmt(o.score_per_kegp, 0)} /kEGP</b></span>
-        </div>
-        <span class="rank">Rank #${i + 1}</span>
-      </div>
-    </div>`;
+    <tr class="${o.chosen ? 'is-chosen' : ''} ${negative ? 'is-negative' : ''}">
+      <td class="opt-name">
+        <span class="opt-mark" aria-hidden="true">${o.chosen ? MARK.check : negative ? MARK.cross : MARK.dash}</span>
+        <span class="opt-label">${escapeHtml(o.label)}</span>
+        <span class="opt-sub">#${i + 1} &middot; ${escapeHtml(life)} &middot;
+          ${compact(o.lifetime_benefit_kgco2e)} kgCO&#8322;e over its lifetime</span>
+        ${negative ? `<span class="opt-why">Embodied carbon exceeds the saving, so this
+          can never be chosen.</span>` : ''}
+      </td>
+      <td class="num">${compact(o.cost_egp)}</td>
+      <td class="num">${compact(o.annual_kwh_saving)}</td>
+      <td class="num strong">${fmt(o.score_per_kegp, 0)}</td>
+    </tr>`;
   }).join('');
+
+  const anomalies = anomalyCount(b.id);
+  const chosen = data.options.find((o) => o.chosen);
+
+  /* Why THIS option won here, in the building's own terms.
+   *
+   * A ranked table says which option scored highest; it does not say what about this
+   * building made it score highest. Naming the two attributes that actually drive the
+   * condition multipliers - HVAC age and insulation quality - is what turns the table
+   * from an assertion into an argument, and it is the sentence the whole
+   * building-specific claim rests on. */
+  const why = chosen
+    ? `<p class="detail-why">${escapeHtml(chosen.label)} wins here because this
+       building has a ${b.hvac_age_yr}-year-old ${escapeHtml(b.hvac_type || 'HVAC')} system
+       and ${escapeHtml(b.insulation_quality)} insulation. Change the budget or the
+       district cap and this row can change &mdash; the ranking is per building, not a
+       portfolio-wide priority list.</p>`
+    : `<p class="detail-why">Nothing was funded here under the current budget, method
+       and cap. The ranking below is still what the optimizer weighed.</p>`;
 
   $('detail-empty').hidden = true;
   const body = $('detail-body');
   body.hidden = false;
   body.innerHTML = `
-    <h2>${escapeHtml(b.name)}</h2>
-    <div class="code">${escapeHtml(b.code)} · ${escapeHtml(b.district)}</div>
+    <div class="detail-head">
+      <h2>${escapeHtml(b.name)}</h2>
+      <span class="chip ${chosen ? 'funded' : 'unfunded'}">
+        <span aria-hidden="true">${chosen ? MARK.check : MARK.dash}</span>
+        ${chosen ? 'Funded' : 'Not funded'}</span>
+    </div>
+    <div class="code">${escapeHtml(b.code)} &middot; ${escapeHtml(b.district)}</div>
+
+    ${anomalies ? `<p class="detail-alert" role="note">
+      <span aria-hidden="true">${MARK.triangle}</span>
+      ${anomalies} open ${anomalies === 1 ? 'alert' : 'alerts'} on this meter. Its
+      metered consumption is what every figure below is costed against, so treat them
+      as provisional until the alerts are resolved.</p>` : ''}
+
     <div class="facts">
       <div><span>Use</span>${escapeHtml(b.occupancy_pattern)}</div>
       <div><span>Insulation</span>${escapeHtml(b.insulation_quality)}</div>
-      <div><span>HVAC age</span>${b.hvac_age_yr} yr</div>
-      <div><span>Roof</span>${fmt(b.roof_area_m2)} m²</div>
-      <div><span>Floor</span>${fmt(b.floor_area_m2)} m²</div>
-      <div><span>Consumption</span>${compact(b.annual_kwh)} kWh/yr</div>
+      <div><span>HVAC age</span>${b.hvac_age_yr} yr${b.hvac_type ? ` &middot; ${escapeHtml(b.hvac_type)}` : ''}</div>
+      <div><span>Roof</span>${fmt(b.roof_area_m2)} m&sup2;</div>
+      <div><span>Floor</span>${fmt(b.floor_area_m2)} m&sup2;</div>
+      <div><span>Annual energy</span>${compact(b.annual_kwh)} kWh/yr</div>
     </div>
-    <h3 class="section-label">Options considered
+
+    <h3 class="section-label">Every option the optimizer weighed
       <span class="count">${data.options.length}</span></h3>
-    <div class="opt-list">${rows || '<p class="note">No applicable interventions.</p>'}</div>`;
+    <p class="detail-method">Benefit is kWh saved &times; the option&rsquo;s lifetime
+      &times; ${GRID_FACTOR} kgCO&#8322;e/kWh, less the embodied carbon of the works.
+      These are estimates, not measured savings.</p>
+
+    <div class="opt-table-wrap">
+      <table class="opt-table">
+        <thead><tr>
+          <th scope="col">Option</th>
+          <th scope="col" class="num">Cost EGP</th>
+          <th scope="col" class="num">kWh/yr</th>
+          <th scope="col" class="num">Benefit /k EGP</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="4">No applicable interventions.</td></tr>'}</tbody>
+      </table>
+    </div>
+    ${why}`;
+}
+
+/* The grid emission factor the benefit figures are built on. Stated on screen rather
+ * than left implicit, because it is one of the numbers still awaiting a citation and
+ * a reader is entitled to see which constant a recommendation rests on. */
+const GRID_FACTOR = '0.45';
+
+/* Shape as well as colour, everywhere a state is shown. The severity marks and the
+ * funded/not-funded pair are the same glyphs the rest of the platform uses. */
+const MARK = {
+  check: '<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M2 7.5l3.5 3.5L12 3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  dash: '<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 7h8" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  cross: '<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  triangle: '<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M7 1.5l5.5 10h-11Z" fill="currentColor"/></svg>',
+};
+
+/* Open alerts for one building, read from the geometry the map already holds rather
+ * than re-fetched: the map's own anomaly rings are drawn from this, so the panel and
+ * the marks can never disagree about whether a meter is under question. */
+function anomalyCount(buildingId) {
+  const feature = (state.geo?.features || [])
+    .find((f) => f.properties.id === buildingId);
+  return feature ? (feature.properties.anomalies || 0) : 0;
 }
 
 /* ---------------------------------------------------------------- compare */

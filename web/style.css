@@ -1135,6 +1135,95 @@ label.check {
 .chart-table-wrap th, .chart-table-wrap td { padding: var(--s-xs) var(--s-sm); }
 
 /* =====================================================================
+   8b. The allocation map's evidence panel
+   ===================================================================== */
+
+/* "Every option the optimizer weighed" is the product's argument, so it is a
+   table rather than a stack of cards: four aligned columns are what let a
+   reader compare six options at a glance, which is the whole point of showing
+   the ones that lost. */
+
+.detail-head {
+  display: flex; align-items: baseline; gap: var(--s-sm);
+  flex-wrap: wrap; margin-bottom: 2px;
+}
+.detail-head h2 { margin: 0; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: var(--s-xs);
+  padding: 2px var(--s-sm); border-radius: var(--radius-pill);
+  font-size: var(--fs-label-sm); font-weight: 600; letter-spacing: .02em;
+  border: 1px solid transparent; flex: none;
+}
+.chip.funded { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.chip.unfunded { background: var(--surface-3); color: var(--ink-2); border-color: var(--line); }
+
+/* An open alert means the consumption figure every option is costed against is
+   itself under question. That is a caveat on the whole panel, so it sits above
+   the facts rather than beside the building's name. */
+.detail-alert {
+  display: flex; align-items: flex-start; gap: var(--s-sm);
+  margin: var(--s-md) 0 0; padding: var(--s-sm) var(--s-md);
+  background: var(--danger-soft); color: var(--danger-ink);
+  border: 1px solid var(--danger); border-radius: var(--radius);
+  font-size: var(--fs-body-sm);
+}
+.detail-alert svg { flex: none; margin-top: 3px; }
+
+.detail-method {
+  margin: var(--s-xs) 0 var(--s-sm);
+  font-size: var(--fs-label-sm); color: var(--ink-3); line-height: 1.5;
+}
+
+.detail-why {
+  margin: var(--s-md) 0 0; padding-top: var(--s-md);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-body-sm); color: var(--ink-2); line-height: 1.55;
+}
+
+.opt-table-wrap { overflow-x: auto; }
+.opt-table { width: 100%; border-collapse: collapse; font-size: var(--fs-body-sm); }
+.opt-table th {
+  text-align: left; padding: var(--s-xs) var(--s-sm);
+  font-size: var(--fs-label-sm); font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ink-3);
+  border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.opt-table td {
+  padding: var(--s-sm); border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.opt-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.opt-table .strong { font-weight: 700; color: var(--ink); }
+.opt-table tbody tr:last-child td { border-bottom: none; }
+
+.opt-name { display: grid; grid-template-columns: auto 1fr; gap: 0 var(--s-xs); }
+.opt-mark { grid-row: 1; color: var(--ink-3); display: inline-flex; align-items: center; }
+.opt-label { grid-row: 1; font-weight: 600; }
+.opt-sub, .opt-why {
+  grid-column: 2; font-size: var(--fs-label-sm); color: var(--ink-3);
+  line-height: 1.45; margin-top: 2px;
+}
+
+/* The chosen row, marked three ways: fill, weight and a check glyph. Colour is
+   never the only carrier. */
+.opt-table tr.is-chosen { background: var(--accent-soft); }
+.opt-table tr.is-chosen .opt-mark { color: var(--accent); }
+.opt-table tr.is-chosen .opt-label { color: var(--accent); font-weight: 700; }
+
+/* Net-negative options are struck through rather than hidden. They are part of
+   the argument: an option that emits more to build than it ever saves is the
+   clearest possible evidence that the ranking is doing real work. */
+.opt-table tr.is-negative .opt-label {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  color: var(--ink-3);
+}
+.opt-table tr.is-negative .opt-mark { color: var(--danger); }
+.opt-table tr.is-negative .num { color: var(--ink-3); }
+.opt-table tr.is-negative .opt-why { color: var(--danger-ink); }
+
+/* =====================================================================
    9. Tables — the core of the system
    ===================================================================== */
 

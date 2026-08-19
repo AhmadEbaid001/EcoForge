@@ -704,3 +704,23 @@ def test_an_unknown_severity_is_rejected_rather_than_matching_nothing(client):
     response = client.post("/api/v1/anomalies/acknowledge",
                            json={"building_id": "b015", "severity": "catastrophic"})
     assert response.status_code == 422
+
+
+def test_candidates_carry_what_the_evidence_panel_states(client):
+    """The map's option table names an option's service life and the building's HVAC
+    type, so both have to be in the payload rather than inferred on the client.
+
+    Service life is the SHORTEST in a bundle, because that is the one deciding how
+    often the option is bought again inside the 30-year horizon - and it is what makes
+    a cheap ten-year option legible next to a dearer one that lasts thirty.
+    """
+    body = client.get("/api/v1/buildings/b001/candidates").json()
+
+    assert body["building"]["hvac_type"], "the panel names the HVAC type beside its age"
+
+    options = body["options"]
+    assert options, "b001 should have applicable interventions"
+    assert all("service_life_yr" in o for o in options)
+    lives = [o["service_life_yr"] for o in options if o["service_life_yr"] is not None]
+    assert lives, "at least one option should state a service life"
+    assert all(1 <= life <= 60 for life in lives), lives

@@ -816,6 +816,7 @@ def building_candidates(
             (i.candidate_key for i in items if i.building_id == building_id), None
         )
 
+    lives = {iv.id: iv.service_life_yr for iv in context.catalog}
     options = sorted(
         (c for c in context.candidates if c.building_id == building_id),
         key=lambda c: c.score_per_kegp,
@@ -829,6 +830,10 @@ def building_candidates(
             "occupancy_pattern": building.occupancy_pattern,
             "insulation_quality": building.insulation_quality,
             "hvac_age_yr": building.hvac_age_yr,
+            # The age drives the condition multiplier; the type is what an
+            # engineer reads it against, and the evidence panel names both when
+            # it explains why one option beat the others at this building.
+            "hvac_type": building.hvac_type,
             "roof_area_m2": building.roof_area_m2,
             "floor_area_m2": building.floor_area_m2,
             "annual_kwh": building.annual_kwh,
@@ -845,6 +850,14 @@ def building_candidates(
                 "lifetime_benefit_kgco2e": c.lifetime_benefit_kgco2e,
                 "score_per_kegp": c.score_per_kegp,
                 "chosen": c.key == chosen_key,
+                # Shortest service life in the bundle, which is the one that decides
+                # how often the option has to be bought again inside the 30-year
+                # horizon. The evidence panel states it beside the lifetime carbon so
+                # a reader can see WHY a cheap option with a ten-year life does not
+                # beat a dearer one that lasts thirty.
+                "service_life_yr": min(
+                    (lives[i] for i in c.intervention_ids if i in lives), default=None
+                ),
             }
             for c in options
         ],
