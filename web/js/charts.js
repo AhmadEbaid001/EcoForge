@@ -35,37 +35,83 @@ const ICONS = {
          'M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/>',
   dark: '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>',
 
-  /* One per navigation destination. Every one of these is a real screen: there
-   * is no Search, no notification bell and no settings gear here, because there
-   * is nothing behind them. An icon for a feature that does not exist is worse
-   * than no icon. */
-  overview: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/>' +
-            '<rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/>' +
-            '<rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/>' +
-            '<rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
-  map: '<path d="M9 4.5 3.5 6.8v12.7L9 17.2l6 2.3 5.5-2.3V4.5L15 6.8z"/>' +
-       '<path d="M9 4.5v12.7M15 6.8v12.7"/>',
-  forecasts: '<path d="M3.5 20V4"/><path d="M3.5 20h17"/>' +
-             '<path d="M6.5 15.5 10 11l3 3 4.5-6.5"/>',
-  alerts: '<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5z"/>' +
-          '<path d="M13.7 19a2 2 0 0 1-3.4 0"/>',
-  runs: '<path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17"/>' +
-        '<path d="M7 4.5v4M14 9.5v5M18 15.5v4"/>',
-  integrity: '<path d="M12 3.5 5 6.2v5.3c0 4.3 2.9 7.6 7 8.9 4.1-1.3 7-4.6 7-8.9V6.2z"/>' +
-             '<path d="m9 12 2.2 2.2L15.5 10"/>',
-  admin: '<circle cx="9" cy="8.5" r="3.2"/>' +
-         '<path d="M3.5 19.5c0-3 2.5-4.8 5.5-4.8s5.5 1.8 5.5 4.8"/>' +
-         '<path d="M16.5 6.5h4M16.5 10h4M16.5 13.5h2.5"/>',
-  account: '<circle cx="12" cy="8.5" r="3.5"/>' +
-           '<path d="M5 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/>',
+  /* One per navigation destination, and the paths are the handoff's own. Every
+   * one of these is a real screen: there is no Search, no notification bell and
+   * no settings gear here, because there is nothing behind them. An icon for a
+   * feature that does not exist is worse than no icon.
+   *
+   * Alerts is a triangle rather than a bell, deliberately: the triangle is the
+   * shape this product uses for critical severity everywhere else, so the rail
+   * item and the row it leads to are drawn in the same language. */
+  overview: '<path d="M4 20V9l8-5 8 5v11M9.5 20v-6h5v6"/>',
+  map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14"/>',
+  alerts: '<path d="M12 4l9 16H3zM12 10v4M12 17.2v.1"/>',
+  forecasts: '<path d="M3 17l5-6 4 3 4-7 5 5"/>',
+  runs: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  integrity: '<path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6zM9 12l2.5 2.5L16 10"/>',
+  admin: '<path d="M12 3l2 2h3v3l2 2-2 2v3h-3l-2 2-2-2H7v-3l-2-2 2-2V5h3zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/>',
+  account: '<path d="M12 4a4 4 0 110 8 4 4 0 010-8zM4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   signout: '<path d="M14.5 8V5.5a1.5 1.5 0 0 0-1.5-1.5H6a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 6 20h7a1.5 1.5 0 0 0 1.5-1.5V16"/>' +
            '<path d="M9.5 12h10m0 0-3-3m3 3-3 3"/>',
+  check: '<path d="M4 12.5l5 5L20 6.5"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/>'
+     + '<circle cx="12" cy="12" r="3.2"/>',
+  'eye-off': '<path d="M4 4l16 16"/>'
+     + '<path d="M9.5 6.2A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3.3 4"/>'
+     + '<path d="M6.3 8.1A17 17 0 0 0 2.5 12S6 18.5 12 18.5a9.7 9.7 0 0 0 3.3-.6"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  /* The same triangle as critical severity, at 24 units. Stale data and a
+   * critical alert are both "this needs looking at", and drawing them as one
+   * shape is the point of having a shape language at all. */
+  warning: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>',
+  lock: '<rect x="4.5" y="10.5" width="15" height="9.5" rx="1.5"/>' + '<path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
   refresh: '<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/>',
   table: '<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/>' +
          '<path d="M3.5 9.5h17M9.5 9.5v10"/>',
 };
+
+/* The shape language. Colour is never the only carrier of meaning here, so
+ * every severity, state and verdict pairs its hue with a distinct shape AND a
+ * word. These are the handoff's own paths, on a 14-unit box, and they are the
+ * same six marks wherever they appear - a legend, a table cell, a map pin, a
+ * chart key.
+ *
+ * This is not decoration. `--crit` and `--high` are close enough for
+ * deuteranopia that the alerts chart stacks two bars a colourblind reader
+ * cannot tell apart; the shape is what actually separates them.
+ */
+const MARKS = {
+  critical: 'M7 1.5l5.5 10h-11Z',      // triangle
+  high:     'M2.5 2.5h9v9h-9Z',        // square
+  medium:   'M2 5.5h10v3H2Z',          // bar
+  check:    'M2 7.5l3.5 3.5L12 3',     // funded, pass, intact
+  dash:     'M3 7h8',                  // not funded, neutral
+  cross:    'M3 3l8 8M11 3l-8 8',      // fail, disabled, struck out
+};
+
+/* Filled for the three severities, stroked for the three verdicts: a triangle
+ * has to read as a solid mass at 11px, and a check drawn as a filled shape is
+ * a blob. */
+const FILLED = new Set(['critical', 'high', 'medium']);
+
+export function mark(name, { size = 14 } = {}) {
+  const d = MARKS[name];
+  if (!d) return '';
+  const paint = FILLED.has(name)
+    ? 'fill="currentColor" stroke="none"'
+    : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"';
+  return `<svg class="mark" viewBox="0 0 14 14" width="${size}" height="${size}" ${paint}` +
+         ` aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
+}
+
+/* Shape, then word, then colour - in that order of load-bearing-ness. */
+export function sevChip(severity) {
+  const key = String(severity || '').toLowerCase();
+  if (!MARKS[key]) return escapeHtml(severity || '—');
+  const label = key.charAt(0).toUpperCase() + key.slice(1);
+  return `<span class="sev ${key}">${mark(key, { size: 11 })}${label}</span>`;
+}
 
 export function icon(name) {
   const body = ICONS[name];
@@ -729,8 +775,11 @@ function drawBars(days, keys, { width = DEFAULT_WIDTH, height = 200, id = 'x' } 
            `text-anchor="${anchor}">${escapeHtml(String(days[at].date).slice(5))}</text>`;
   }).join('');
 
-  const legend = `<div class="chart-legend">${keys.map((k, i) =>
-    `<span class="key b${i}">${escapeHtml(k)}</span>`).join('')}</div>`;
+  const legend = `<div class="chart-legend">${keys.map((k, i) => {
+    const shape = MARKS[k] ? mark(k, { size: 11 }) : '';
+    return `<span class="key b${i}${shape ? ' shaped' : ''}">${shape}${
+      escapeHtml(k)}</span>`;
+  }).join('')}</div>`;
 
   const html = `${legend}<svg class="chart" viewBox="0 0 ${width} ${height}" tabindex="0"
     role="img" aria-label="alerts per day, ${escapeHtml(String(days[0].date))} to ${escapeHtml(String(days[days.length - 1].date))}">
@@ -831,17 +880,34 @@ export function sparkline(values, { width = 120, height = 28 } = {}) {
  * its own: up is not always good - these tiles count faults as often as they count
  * savings - so the direction is stated and the reader decides what it means.
  */
-export function statTile(label, value, hint = '', { spark = null, trend = null } = {}) {
+/* label / figure / note, and an optional row of shape-marked chips under it for
+ * a figure that splits - the open-alert count into its three severities, say.
+ * `chips` is markup and `hint` is text: the note is written here and the chips
+ * are built from `mark()`, so neither is ever user input. */
+export function statTile(label, value, hint = '', { spark = null, trend = null, chips = '' } = {}) {
   const direction = trend === null ? '' : trend > 0 ? 'up' : trend < 0 ? 'down' : 'flat';
   const arrow = { up: '▲', down: '▼', flat: '■' }[direction] || '';
   const delta = direction
     ? `<span class="stat-trend ${direction}"><span aria-hidden="true">${arrow}</span> ` +
       `${escapeHtml(Math.abs(trend).toFixed(0))}%</span>`
     : '';
+  /* Label, figure, note, then anything supplementary - in that order, always.
+   *
+   * The sparkline used to sit between the figure and the note, so the note started
+   * 36px lower on the one card that had a sparkline than on the three that did
+   * not. Four cards in a row with their descriptions on four different baselines
+   * is what makes a dashboard look assembled rather than designed. The spark and
+   * the severity split are the supplementary parts and they go in a footer that is
+   * pushed to the bottom of the card, which lines them up too. */
   return `<div class="stat">
-    <div class="stat-value">${escapeHtml(value)}${delta}</div>
-    <div class="stat-label">${escapeHtml(label)}</div>
-    ${spark ? `<div class="stat-spark">${sparkline(spark)}</div>` : ''}
-    ${hint ? `<div class="stat-hint">${escapeHtml(hint)}</div>` : ''}
+    <div class="stat-head">
+      <div class="stat-value">${escapeHtml(value)}${delta}</div>
+      <div class="stat-label">${escapeHtml(label)}</div>
+      ${hint ? `<div class="stat-hint">${escapeHtml(hint)}</div>` : ''}
+    </div>
+    ${spark || chips ? `<div class="stat-foot">
+      ${spark ? `<div class="stat-spark">${sparkline(spark)}</div>` : ''}
+      ${chips ? `<div class="stat-chips">${chips}</div>` : ''}
+    </div>` : ''}
   </div>`;
 }

@@ -25,43 +25,160 @@ import { escapeHtml, icon } from './charts.js';
 
 /* --------------------------------------------------------------- page header */
 
-/* Writes the workspace header, which lives OUTSIDE the scrolling pane, and
- * returns the status slot for the view to place inside it.
+const $ = (id) => document.getElementById(id);
+
+/* Writes the two left-hand zones of the workspace header. The two on the right -
+ * the data clock with its Re-read button, and the text-size and theme controls -
+ * are written once by the shell and deliberately NOT re-rendered here: a clock
+ * that started again on every navigation would reset the very age it exists to
+ * report.
  *
- * h1 is the product name in the sidebar, so a view title is an h2 and a panel
- * heading is an h3. Screen readers navigate by heading level; skipping one
- * makes the outline lie about the structure.
+ * h1 is the wordmark in the rail, so a screen title is an h2 and a panel heading
+ * is an h3. Screen readers navigate by heading level; skipping one makes the
+ * outline lie about the structure.
  */
-export function pageHead({ title, description, actions = '', meta = '' }) {
-  const host = document.getElementById('page-head');
-  if (host) {
-    host.innerHTML = `
-      <div class="page-head">
-        <div class="page-head-text">
-          <h2>${escapeHtml(title)}</h2>
-          ${description ? `<p>${escapeHtml(description)}</p>` : ''}
-        </div>
-        <div class="page-head-side">${meta}${actions}</div>
-      </div>`;
+export function pageHead({ root, title, description, descriptionHtml, actions = '' }) {
+  /* A view that has been navigated away from can still be waiting on a request.
+   * When it lands it rebuilds its own markup - and its own page header with it -
+   * over the top of the screen you actually asked for. Its root node has been
+   * detached by then, which is the one reliable signal that this call belongs to
+   * a screen nobody is looking at. */
+  if (root && !root.isConnected) return '';
+
+  const text = $('page-head-text');
+  if (text) {
+    /* `description` is escaped. It reads like prose and it is the parameter anyone
+     * adding a screen will reach for, so it must be the safe one - a purpose
+     * sentence that one day interpolates a building name or a username would
+     * otherwise be an injection point that looks like a caption.
+     *
+     * `descriptionHtml` is the deliberate exception, for the one sentence that
+     * carries a link into another screen. Naming it differently is the whole
+     * protection: you cannot pass markup by accident. */
+    text.innerHTML = `
+      <h2>${escapeHtml(title)}</h2>
+      ${descriptionHtml
+        ? `<p>${descriptionHtml}</p>`
+        : description ? `<p>${escapeHtml(description)}</p>` : ''}`;
   }
-  return '<div class="view-status" data-status role="status" aria-atomic="true"></div>';
+  const slot = $('page-head-actions');
+  if (slot) slot.innerHTML = actions;
+  /* Returned for the views that still place their own status line inline; the
+   * result strip proper lives under the header, in #strips. */
+  return '';
 }
 
-/* The data clock, stated rather than implied.
+/* ------------------------------------------------------------- data clock */
+
+/* One clock for the whole read, in the header, ticking every second.
  *
- * The simulator runs at 720x, so a screen left open for a minute is showing
- * twelve hours of stale data. Nothing polls - that is a known open item - so the
- * honest thing is to say when the numbers were read and offer to read them
- * again, instead of presenting a stopped clock as a live one. */
-export function freshness(dataClock) {
-  const stamp = dataClock ? dataClock.replace('T', ' ').slice(0, 16) : 'unknown';
-  return `
-    <span class="freshness" title="Data time, not wall-clock time: the simulator runs at 720x">
-      ${icon('clock')}
-      <span class="freshness-label">Data clock</span>
-      <span>${escapeHtml(stamp)}</span>
-    </span>
-    <button type="button" class="ghost" data-refresh>${icon('refresh')}Refresh</button>`;
+ * The simulator runs at 720x real time, so a screen left open for forty-five
+ * real seconds is showing nine hours of data time that has already gone past.
+ * That is not a property of any one panel, which is why there are no per-panel
+ * freshness badges: it is a property of the read.
+ *
+ * Nothing polls. A dashboard that re-fetches on a timer during a demonstration
+ * competes for the same solver the person is dragging a slider against, and it
+ * moves numbers under someone who is talking about them. What this does instead
+ * is age the stamp honestly - the reading is from then, this is how long ago
+ * that was in the unit that matters, and Re-read is right there as a real button
+ * rather than an item in a menu.
+ *
+ * Numbers are never blanked when they go stale. They were true when they were
+ * read, and the strip says exactly how long ago that was.
+ */
+const STALE_AFTER_S = 45;
+const SIM_SPEED = 720;
+
+const clock = { readAt: Date.now(), dataClock: null, timer: null };
+
+/* Data time, in the unit a person would use: minutes under an hour, hours under
+ * two days, then days. */
+function dataAge(realSeconds) {
+  const minutes = Math.round((realSeconds * SIM_SPEED) / 60);
+  if (minutes < 60) return `${minutes} minutes`;
+  if (minutes < 2880) return `${(minutes / 60).toFixed(1)} hours`;
+  return `${Math.round(minutes / 1440)} days`;
+}
+
+function tickClock() {
+  const box = $('data-clock');
+  if (!box) return;
+
+  const seconds = Math.round((Date.now() - clock.readAt) / 1000);
+  const stale = seconds > STALE_AFTER_S;
+
+  $('clock-text').textContent = `Read at ${new Date(clock.readAt).toLocaleTimeString('en-GB')}`
+    + ` · ${seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`}`;
+  $('clock-tag').textContent = stale ? 'stale' : 'fresh';
+  box.classList.toggle('stale', stale);
+  /* The data clock proper - the simulated timestamp the readings carry - is a
+   * different quantity from when the browser read them, and only one of the two
+   * earns a place in the header at 0.75rem. The other is here. */
+  box.title = clock.dataClock
+    ? `Data time of this read: ${String(clock.dataClock).replace('T', ' ').slice(0, 19)}`
+    : 'Data time, not wall-clock time: the simulator runs at 720x real time';
+
+  const host = $('strips');
+  if (!host) return;
+  const existing = $('stale-strip');
+  if (!stale) { existing?.remove(); return; }
+
+  const message = `<strong>Numbers are stale.</strong> Read ${dataAge(seconds)} of data time
+    ago — the simulator runs at 720× real time. Nothing here has moved since, so every
+    figure below describes the portfolio as it was at that moment.`;
+
+  if (existing) {
+    existing.querySelector('.strip-text').innerHTML = message;
+    return;
+  }
+  const strip = document.createElement('div');
+  strip.className = 'strip stale';
+  strip.id = 'stale-strip';
+  strip.setAttribute('role', 'alert');
+  strip.innerHTML = `
+    ${icon('warning')}
+    <span class="strip-text">${message}</span>
+    <span class="strip-act">
+      <button type="button" class="amber-outline" data-refresh>Re-read now</button>
+    </span>`;
+  host.prepend(strip);
+}
+
+/* Called by a view once its data is in, so that the clock ages from the moment
+ * the screen was actually read rather than the moment somebody asked for it. */
+export function markRead(dataClockIso) {
+  clock.readAt = Date.now();
+  if (dataClockIso) clock.dataClock = dataClockIso;
+  tickClock();
+}
+
+export function startClock() {
+  window.clearInterval(clock.timer);
+  clock.timer = window.setInterval(tickClock, 1000);
+  tickClock();
+}
+
+/* Re-read exists twice - in the header and in the stale strip - and the strip
+ * is built after the fact, so binding the buttons directly would miss it. One
+ * delegated listener on the document, and each view registers what re-reading
+ * means for it. */
+let rereadHandler = null;
+/* The listener is on `document`, so it outlives every screen - and `showApp()`
+ * runs again on each sign-in and after a forced password change. Binding
+ * unconditionally added a second listener on the second sign-in of a page load,
+ * and Re-read then fired the view's reload twice: two sets of requests racing
+ * to write into the same screen. Bound once, like the clock's interval. */
+let rereadBound = false;
+
+export const onReread = (fn) => { rereadHandler = fn; };
+
+export function wireReread() {
+  if (rereadBound) return;
+  rereadBound = true;
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('[data-refresh]')) rereadHandler?.();
+  });
 }
 
 /* ------------------------------------------------------------------- status */
@@ -70,21 +187,28 @@ export function freshness(dataClock) {
  * than a bare number, because a screen reader announcing "34" tells nobody
  * what happened. */
 export function setStatus(root, { kind = 'ok', message, actionLabel = '', actionAttr = '' } = {}) {
-  const slot = root.querySelector('[data-status]');
-  if (!slot) return null;
-  if (!message) { slot.innerHTML = ''; return null; }
+  const host = $('strips') || root.querySelector('[data-status]');
+  if (!host) return null;
 
-  const box = { ok: 'ok-box', warn: 'warn-box', error: 'error-box', hint: 'hint-box' }[kind];
-  slot.innerHTML = `
-    <div class="${box} status-line">
-      <span>${escapeHtml(message)}</span>
-      <span class="status-actions">
-        ${actionLabel ? `<button type="button" class="ghost small" ${actionAttr}>${escapeHtml(actionLabel)}</button>` : ''}
-        <button type="button" class="close-inline" data-dismiss aria-label="Dismiss this message">&times;</button>
-      </span>
-    </div>`;
-  slot.querySelector('[data-dismiss]').addEventListener('click', () => { slot.innerHTML = ''; });
-  return slot;
+  document.getElementById('result-strip')?.remove();
+  if (!message) return null;
+
+  const strip = document.createElement('div');
+  strip.className = `strip ${kind === 'error' ? 'failed' : 'result'}`;
+  strip.id = 'result-strip';
+  strip.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  strip.innerHTML = `
+    ${icon(kind === 'error' ? 'warning' : 'check')}
+    <span class="strip-text">${escapeHtml(message)}</span>
+    <span class="strip-act">
+      ${actionLabel
+        ? `<button type="button" class="undo" ${actionAttr}>${escapeHtml(actionLabel)}</button>`
+        : ''}
+      <button type="button" class="quiet" data-dismiss>Dismiss</button>
+    </span>`;
+  strip.querySelector('[data-dismiss]').addEventListener('click', () => strip.remove());
+  host.append(strip);
+  return strip;
 }
 
 export const clearStatus = (root) => setStatus(root, {});
@@ -155,7 +279,8 @@ export function dataTable({ columns, rows, sortKey, sortDir = 'desc', selectable
   }).join('');
 
   const body = sorted.map((row) => `
-    <tr${row._id !== undefined ? ` data-row="${escapeHtml(row._id)}"` : ''}>
+    <tr${row._id !== undefined ? ` data-row="${escapeHtml(row._id)}"` : ''}${
+      row._cls ? ` class="${escapeHtml(row._cls)}"` : ''}>
       ${selectable ? `<td class="col-select"><input type="checkbox" data-select="${escapeHtml(row._id)}"
         aria-label="${escapeHtml(rowLabel ? rowLabel(row) : 'Select this row')}"></td>` : ''}
       ${columns.filter((c) => c.key !== '_select').map((c) =>
@@ -253,13 +378,14 @@ export function pickerValue(input, options) {
  * Resolves to the form's values, or null if dismissed.
  */
 export function openDialog({ title, description = '', fields = [], submitLabel,
-                             submitKind = 'primary', validate }) {
+                             submitKind = 'primary', validate, confirmText = '',
+                             confirmHint = '', tone = '' }) {
   return new Promise((resolve) => {
     const opener = document.activeElement;
     const host = document.createElement('div');
     host.className = 'modal';
     host.innerHTML = `
-      <div class="modal-inner narrow" role="dialog" aria-modal="true"
+      <div class="modal-inner narrow ${tone}" role="dialog" aria-modal="true"
            aria-label="${escapeHtml(title)}">
         <button class="close" type="button" data-close aria-label="Cancel">&times;</button>
         <h2>${escapeHtml(title)}</h2>
@@ -277,9 +403,19 @@ export function openDialog({ title, description = '', fields = [], submitLabel,
                           ? ` minlength="${f.minlength}"` : ''}>
                  ${f.hint ? `<span class="hint">${escapeHtml(f.hint)}</span>` : ''}</label>`
           ).join('')}
+          ${confirmText ? `
+            <!-- Typing the count is the protection, not a second click. The
+                 number is the thing the reader has to have actually looked at,
+                 and it is the one detail a mis-click cannot supply. -->
+            <label for="dlg-confirm">Type <strong>${escapeHtml(confirmText)}</strong> to confirm
+              <input id="dlg-confirm" name="__confirm" type="text" autocomplete="off"
+                     inputmode="numeric" spellcheck="false">
+              ${confirmHint ? `<span class="hint">${escapeHtml(confirmHint)}</span>` : ''}
+            </label>` : ''}
           <div data-error></div>
           <div class="form-actions">
-            <button type="submit" class="${submitKind}">${escapeHtml(submitLabel)}</button>
+            <button type="submit" class="${submitKind}"${confirmText ? ' disabled' : ''}
+              >${escapeHtml(submitLabel)}</button>
             <button type="button" class="ghost" data-close>Cancel</button>
             ${fields.some((f) => f.type === 'password')
               ? '<button type="button" class="ghost small" data-generate>Suggest a password</button>'
@@ -290,6 +426,13 @@ export function openDialog({ title, description = '', fields = [], submitLabel,
 
     const form = host.querySelector('[data-form]');
     const errors = host.querySelector('[data-error]');
+    const confirmField = host.querySelector('#dlg-confirm');
+    if (confirmField) {
+      const submitButton = form.querySelector('button[type="submit"]');
+      confirmField.addEventListener('input', () => {
+        submitButton.disabled = confirmField.value.trim() !== confirmText;
+      });
+    }
     const FOCUSABLE = 'button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])';
 
     const close = (value) => {
@@ -357,5 +500,7 @@ export function openDialog({ title, description = '', fields = [], submitLabel,
 /* A confirmation that names what is about to happen and what it costs. Used for
  * the changes that are not obviously reversible - a role change, disabling an
  * account, closing thirty thousand alerts. */
-export const confirmAction = ({ title, description, confirmLabel }) =>
-  openDialog({ title, description, fields: [], submitLabel: confirmLabel, submitKind: 'danger' });
+export const confirmAction = ({ title, description, confirmLabel, confirmText = '',
+                               confirmHint = '' }) =>
+  openDialog({ title, description, fields: [], submitLabel: confirmLabel,
+               submitKind: 'danger', tone: 'critical', confirmText, confirmHint });

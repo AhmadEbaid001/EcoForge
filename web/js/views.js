@@ -19,12 +19,13 @@
 
 import { api, ApiError } from './api.js';
 import {
-  compact, escapeHtml, lineChart, proportionBar, stackedBars, statTile,
+  compact, escapeHtml, icon, lineChart, mark, proportionBar, sevChip, stackedBars,
+  statTile,
 } from './charts.js';
 import {
-  clearStatus, confirmAction, dataTable, emptyState, freshness, openDialog,
-  pageHead, picker, pickerValue, selectWrap, setStatus, skeletonChart,
-  skeletonRows, skeletonTiles, wirePicker, wireSort,
+  clearStatus, confirmAction, dataTable, emptyState, markRead, onReread,
+  openDialog, pageHead, picker, pickerValue, selectWrap, setStatus,
+  skeletonChart, skeletonRows, skeletonTiles, wirePicker, wireSort,
 } from './ui.js';
 
 const can = (user, role) => {
@@ -45,20 +46,17 @@ async function guard(root, work) {
   } catch (error) {
     /* An error inside an already-rendered view goes to the status slot, so the
      * screen the person was reading does not vanish underneath the message. */
-    const slot = root.querySelector('[data-status]');
-    if (slot) {
-      const detail = error instanceof ApiError ? error.detail : String(error);
-      setStatus(root, { kind: 'error', message: detail });
-    } else {
-      root.innerHTML = errorBox(error);
-    }
+    const detail = error instanceof ApiError ? error.detail : String(error);
+    if (root.childElementCount) setStatus(root, { kind: 'error', message: detail });
+    else root.innerHTML = errorBox(error);
   }
 }
 
-/* Wires the Refresh button that `freshness()` renders. It lives in the
- * workspace header, which is outside the view's own container. */
+/* Re-read lives in the shell - in the header beside the clock, and again in the
+ * stale strip when there is one - so a view says what re-reading MEANS for it
+ * rather than binding a button it does not own. */
 function wireRefresh(root, reload) {
-  document.querySelector('[data-refresh]')?.addEventListener('click', () => reload());
+  onReread(reload);
 }
 
 const buildingOptions = (buildings) =>
@@ -117,7 +115,42 @@ function halfOverHalf(values) {
   return ((after - before) / before) * 100;
 }
 
+/* What the database calls a solver and an objective, and what a person calls
+ * them. `cpsat` and `lca_carbon` are correct values and are not English; they
+ * were reaching the screen inside sentences, which reads as a leak rather than
+ * as a fact. The map's controls already name all seven of these, and these are
+ * the same names - one vocabulary, whichever screen you are on. */
+const SOLVER_LABEL = {
+  cpsat: 'exact optimization (CP-SAT)',
+  greedy_upgrade: 'greedy plus an upgrade pass',
+  greedy: 'plain greedy',
+  equal_split: 'equal split — the status quo',
+};
+
+const OBJECTIVE_LABEL = {
+  lca_carbon: 'life-cycle carbon',
+  raw_kwh: 'first-year energy',
+  egp_saved: 'first-year money',
+};
+
+const solverLabel = (id) => SOLVER_LABEL[id] || String(id || '—');
+const objectiveLabel = (id) => OBJECTIVE_LABEL[id] || String(id || '—');
+
+/* Worst first, everywhere. The API hands back a plain object whose key order is
+ * whatever the GROUP BY produced, and an ordinal scale printed in arbitrary order
+ * stops being a scale. */
+const SEVERITY_ORDER = ['critical', 'high', 'medium'];
+
 /* ------------------------------------------------------------------ overview */
+
+/* The purpose sentence names the question the screen answers AND what it does
+ * not: nothing on the overview is a decision. The money is allocated on the map,
+ * and the sentence links there rather than leaving a reader to find it in the
+ * rail. It is written once because it appears twice - in the skeleton and in the
+ * loaded screen - and two copies drift. */
+const OVERVIEW_PURPOSE = 'Says whether the platform is healthy and what it last '
+  + 'decided. Nothing here is a decision &mdash; the money is allocated on the '
+  + '<a href="#/map">allocation map</a>.';
 
 export const overview = {
   title: 'Overview',
@@ -126,9 +159,9 @@ export const overview = {
   state: { days: 30 },
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({
+      ${pageHead({ root,
         title: 'Portfolio overview',
-        description: 'What the platform is measuring, and the allocation it last recommended.',
+        descriptionHtml: OVERVIEW_PURPOSE,
       })}
       ${skeletonTiles(4)}${skeletonChart()}`;
 
@@ -148,64 +181,94 @@ export const overview = {
 
       const panels = (loadData, dailyData) => `
         <div class="stat-row">
-          ${statTile('Buildings', compact(summary.buildings))}
-          ${statTile('Readings stored', compact(summary.readings))}
+          ${statTile('Buildings', compact(summary.buildings),
+                     'Public buildings in New Cairo, all of them costed.')}
+          ${statTile('Readings stored', compact(summary.readings),
+                     'Half-hourly meter readings, every one signed on arrival.')}
           ${statTile('Open alerts', compact(summary.open_anomalies),
-                     Object.entries(summary.open_by_severity || {})
-                       .map(([k, v]) => `${k} ${v}`).join(' · '),
+                     'Rounded, because the count moves while you are reading it.',
                      { spark: dailyTotals(dailyData.days),
-                       trend: halfOverHalf(dailyTotals(dailyData.days)) })}
-          ${statTile('Costed on measurement', `${fromForecast}/${summary.buildings}`,
-                     'F3: buildings whose annual kWh comes from the forecast')}
+                       trend: halfOverHalf(dailyTotals(dailyData.days)),
+                       chips: SEVERITY_ORDER
+                         .filter((k) => (summary.open_by_severity || {})[k])
+                         .map((k) => `<span class="stat-chip ${k}">${
+                           sevChip(k)} ${compact(summary.open_by_severity[k])}</span>`)
+                         .join('') })}
+          ${statTile('Costed on measurement', `${fromForecast} of ${summary.buildings}`,
+                     'Buildings whose annual kWh comes from their own metered '
+                     + 'consumption rather than a floor-area rule of thumb. It is the '
+                     + 'figure every retrofit here is costed against.')}
         </div>
 
-        <section class="panel">
-          <header>
-            <h3>Portfolio demand</h3>
-            <span class="muted small">point at the chart, or focus it and use the arrow keys</span>
-          </header>
-          ${lineChart([{ label: 'Portfolio demand', points: loadData.points }], { unit: 'kW' })}
-          <p class="caption">The simulator runs at 720&times;, so data time runs ahead of
-          the wall clock — every window in the platform is measured in data time for
-          that reason, and the clock above says which moment this was read at.</p>
-        </section>
+        <div class="two-col">
+          <section class="panel">
+            <header>
+              <h3>Portfolio demand</h3>
+              <span class="scope">${state.days} days, hourly, kW summed across
+                ${summary.buildings} buildings</span>
+            </header>
+            ${lineChart([{ label: 'Portfolio demand', points: loadData.points }], { unit: 'kW' })}
+            <p class="caption">Point at the chart, or focus it and use the arrow keys.
+            The simulator runs at 720&times;, so data time runs ahead of the wall clock —
+            every window in the platform is measured in data time for that reason, and
+            the clock above says which moment this was read at.</p>
+          </section>
 
-        <section class="panel">
-          <header>
-            <h3>Alerts per day</h3>
-            <span class="muted small">stacked critical, high, medium</span>
-          </header>
-          ${stackedBars(dailyData.days, ['critical', 'high', 'medium'])}
-        </section>`;
+          <section class="panel">
+            <header>
+              <h3>Alerts per day</h3>
+              <span class="scope">${state.days} days, stacked by severity</span>
+            </header>
+            ${stackedBars(dailyData.days, ['critical', 'high', 'medium'], { height: 240 })}
+            <p class="caption">Every one of these is a reading that deviated from what
+            the forecaster expected. They are listed, worst first, in the
+            <a href="#/alerts">alert inbox</a>.</p>
+          </section>
+        </div>`;
 
       root.innerHTML = `
-        ${pageHead({
+        ${pageHead({ root,
           title: 'Portfolio overview',
-          description: 'What the platform is measuring, and the allocation it last recommended.',
-          meta: freshness(summary.data_clock),
+          descriptionHtml: OVERVIEW_PURPOSE,
         })}
 
         ${rangeControl(state.days)}
         <div id="ov-panels">${panels(load, daily)}</div>
 
         <section class="panel">
-          <header><h3>Most recent allocation</h3></header>
+          <header>
+            <h3>Most recent allocation</h3>
+            <!-- Said out loud, because the figures underneath look exactly like
+                 live ones and are not: this is what was decided and stored, not
+                 what the optimizer would answer now. -->
+            <span class="scope">stored, not live</span>
+          </header>
           ${run ? `
             <div class="stat-row compact">
               ${statTile('Budget', compact(run.budget_egp) + ' EGP')}
               ${statTile('Funded', run.buildings_funded + ' buildings')}
               ${statTile('Spent', compact(run.total_cost_egp) + ' EGP')}
+              ${statTile('Share of budget spent', run.budget_egp
+                  ? `${((run.total_cost_egp / run.budget_egp) * 100).toFixed(0)}%` : '—')}
               ${statTile('Lifetime benefit', compact(run.total_benefit_kgco2e) + ' kgCO₂e')}
+              ${statTile('District cap', run.max_funded_per_district
+                  ? `${run.max_funded_per_district} per district` : 'none')}
             </div>
-            <p class="caption">${escapeHtml(run.solver)} on ${escapeHtml(run.objective)},
-            ${fmtDateTime(run.created_at)}.</p>`
+            <p class="caption">Solved by <strong>${escapeHtml(solverLabel(run.solver))}</strong>,
+            ranked by <strong>${escapeHtml(objectiveLabel(run.objective))}</strong>, at data time
+            ${fmtDateTime(run.created_at)}. The lifetime carbon figure is an estimate,
+            not a measurement.</p>
+            <div class="panel-actions">
+              <a class="btn primary" href="#/map">Open it on the map</a>
+            </div>`
             : emptyState({
                 title: 'No allocation has been run yet',
-                body: 'Open the Map tab, set a budget and a method, and the optimizer will '
-                    + 'store its recommendation here.',
+                body: 'Open the allocation map, set a budget and a method, and the '
+                    + 'optimizer will store its recommendation here.',
               })}
         </section>`;
 
+      markRead(summary.data_clock);
       wireRefresh(root, () => overview.render(root, ctx));
 
       wireRange(root, async (days) => {
@@ -229,13 +292,21 @@ export const overview = {
 
 /* ----------------------------------------------------------------- forecasts */
 
+/* Names the question and the one thing this screen cannot answer, in the same
+ * breath. There is no per-building error metric anywhere in this system, so a
+ * reader who comes here looking for one is told immediately rather than after
+ * hunting the screen for it. */
+const FORECASTS_PURPOSE = 'What each building is costed against, and which model '
+  + 'produced it. There is no per-building error figure here — the screen reports '
+  + 'which model was selected and lets you compare the two lines by eye.';
+
 export const forecasts = {
   title: 'Forecasts',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({
+      ${pageHead({ root,
         title: 'Load forecasting',
-        description: 'Which model is costing each building, and where it is wrong.',
+        description: FORECASTS_PURPOSE,
       })}
       ${skeletonChart()}`;
 
@@ -243,41 +314,61 @@ export const forecasts = {
       const [metrics, buildings] = await Promise.all([
         api.get('/metrics/forecast'), api.get('/buildings'),
       ]);
-      const options = buildingOptions(buildings);
-      const state = { building: options[0]?.value };
+      /* A blank first entry, so the box starts empty rather than showing the
+       * name of a building nobody picked and no chart is drawn for. */
+      const options = [{ value: '', label: '' }, ...buildingOptions(buildings)];
+      const byId = new Map(buildings.map((b) => [b.id, b]));
+      /* Nothing is picked on arrival. Drawing an arbitrary building would put a
+       * chart on screen that nobody asked about, and the empty state below says
+       * what the panel will hold - which is the more useful first frame. */
+      const state = { building: '' };
 
       /* No per-building error is shown, because /metrics/forecast does not carry
        * one: it aggregates by model_version. A MAPE chip here would be a number
-       * this screen invented. */
+       * this screen invented, and the purpose sentence says so out loud. */
 
       root.innerHTML = `
-        ${pageHead({
+        ${pageHead({ root,
           title: 'Load forecasting',
-          description: 'Which model is costing each building, and where it is wrong.',
+          description: FORECASTS_PURPOSE,
         })}
 
         <section class="panel">
-          <header><h3>Which forecaster is in use</h3></header>
+          <header>
+            <h3>Which forecaster won, per building</h3>
+            <span class="scope">one bar over all ${buildings.length}, segments labelled
+              in place</span>
+          </header>
           ${proportionBar((metrics.by_model || []).map((m) => ({
-            label: `${m.model_version} (${m.buildings})`, value: m.buildings,
+            label: m.model_version, value: m.buildings,
           })))}
-          <p class="caption">A portfolio where the seasonal-naive baseline wins on many
-          buildings is telling you the load is close to perfectly weekly. That is
-          information, not a failure — and it is why the baseline is kept rather than
-          hidden.</p>
+          <p class="caption">The seasonal-naive baseline winning on most of the portfolio
+          is <strong>information, not a shortfall</strong>. Those buildings have a load
+          shape stable enough that last week predicts this week, and a heavier model
+          would only add variance to the very figure the optimizer costs against. It is
+          why the baseline is kept and reported rather than quietly replaced.</p>
         </section>
 
         <section class="panel">
           <header>
             <h3>Actual against forecast</h3>
+            <span class="scope" id="fc-scope">no building selected</span>
             <div class="toolbar">
               ${picker({ id: 'fc-building', label: 'Building', options, value: state.building })}
             </div>
           </header>
-          <div id="fc-chart">${skeletonChart()}</div>
-          <p class="caption">Two weeks of hourly readings against what the model expected.
-          A single error figure says the model is good without letting anyone see where
-          it is wrong.</p>
+          <div id="fc-chart">${emptyState({
+            title: 'Pick a building',
+            body: 'This panel then draws two weeks of hourly metered readings against '
+                + 'what the model expected for the same hours — the metered line solid, '
+                + 'the forecast dashed. Comparing them by eye is the point: a single '
+                + 'error figure would say the model is good without letting anyone see '
+                + 'where it is wrong.',
+          })}</div>
+          <div class="stroke-legend" id="fc-legend" hidden>
+            <span class="key"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--ink)" stroke-width="1.8" fill="none"/></svg>Metered actual</span>
+            <span class="key"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 3" fill="none"/></svg>Forecast</span>
+          </div>
         </section>`;
 
       const input = root.querySelector('#fc-building');
@@ -286,10 +377,20 @@ export const forecasts = {
         const target = root.querySelector('#fc-chart');
         target.innerHTML = skeletonChart();
         const data = await api.forecast(state.building, 336);
+        const b = byId.get(state.building);
         target.innerHTML = lineChart([
           { label: 'Actual', points: data.actual },
           { label: 'Forecast', points: data.forecast },
         ], { unit: 'kW' });
+        root.querySelector('#fc-legend').hidden = false;
+        /* Name, code, district, the model that won here, and the figure this
+         * building is costed at - so the chart is anchored to a building rather
+         * than floating as "a forecast". */
+        root.querySelector('#fc-scope').textContent = b
+          ? `${b.name} · ${b.code} · ${b.district} · ${
+              data.model_version || 'no model recorded'} · costed at ${
+              compact(b.annual_kwh)} kWh/yr`
+          : '';
       };
 
       /* A datalist reports every keystroke as a change, so resolve the text and
@@ -300,13 +401,15 @@ export const forecasts = {
         state.building = value;
         guard(root, draw);
       });
-
-      await draw();
     });
   },
 };
 
 /* ------------------------------------------------------------------- alerts */
+
+const ALERTS_PURPOSE = 'Readings that deviate from what the forecaster expected, '
+  + 'worst first. The API returns at most 100 per request and cannot page, so this '
+  + 'is a slice — narrow the filter to change which slice.';
 
 export const alerts = {
   title: 'Alerts',
@@ -319,15 +422,18 @@ export const alerts = {
     const analyst = can(ctx.user, 'analyst');
 
     root.innerHTML = `
-      ${pageHead({
+      ${pageHead({ root,
         title: 'Alert inbox',
-        description: 'Readings that deviate from what the forecaster expected, worst first.',
+        description: ALERTS_PURPOSE,
       })}
       ${skeletonRows(8)}`;
 
     await guard(root, async () => {
-      const buildings = await api.get('/buildings');
+      const [buildings, firstSummary] = await Promise.all([
+        api.get('/buildings'), api.summary(),
+      ]);
       const options = [{ value: '', label: 'All buildings' }, ...buildingOptions(buildings)];
+      const summaryTotal = firstSummary.open_anomalies;
 
       /* One sentence, stated rather than implied. The list is a capped slice of
        * about thirty thousand rows; acknowledging one used to refill it from the
@@ -352,15 +458,24 @@ export const alerts = {
           render: (r) => `<b>${escapeHtml(r.building_code)}</b>` },
         { key: 'ts', label: 'Detected (data time)', sortable: true,
           render: (r) => `<span class="tabular">${fmtDateTime(r.ts)}</span>` },
+        /* Observed goes bold only past a 50% deviation. Bolding it on every row
+         * makes the weight mean "this is the observed column" instead of "look
+         * at this one". */
         { key: 'expected_kw', label: 'Expected vs observed (kW)', num: true, sortable: true,
-          render: (r) => `${compact(r.expected_kw)} / <b>${compact(r.observed_kw)}</b>` },
+          render: (r) => {
+            const far = r.expected_kw
+              ? Math.abs(r.observed_kw - r.expected_kw) / Math.abs(r.expected_kw) > 0.5
+              : false;
+            return `${compact(r.expected_kw)} / ${far
+              ? `<b>${compact(r.observed_kw)}</b>` : compact(r.observed_kw)}`;
+          } },
         { key: 'robust_z', label: 'Deviation z', num: true, sortable: true,
           value: (r) => (r.robust_z === null ? null : Math.abs(r.robust_z)),
           render: (r) => (r.robust_z === null ? '—'
             : `<span class="sev-figure ${escapeHtml(r.severity)}">${
                 r.robust_z > 0 ? '+' : ''}${r.robust_z.toFixed(1)}</span>`) },
         { key: 'severity', label: 'Severity', sortable: true,
-          render: (r) => `<span class="sev ${escapeHtml(r.severity)}">${escapeHtml(r.severity)}</span>` },
+          render: (r) => sevChip(r.severity) },
         { key: 'acknowledged', label: 'Status', sortable: true,
           render: (r) => (r.acknowledged
             ? '<span class="chip closed">Closed</span>'
@@ -398,7 +513,8 @@ export const alerts = {
         });
         root.querySelector('#alert-foot').innerHTML =
           `<span>${escapeHtml(countLine(state.rows.length))}</span>
-           <span class="muted">Sorting applies to the rows shown, not to the whole inbox.</span>`;
+           <span class="muted">Sorting applies to the rows shown, not to the whole inbox.
+           Robust z is a modified z score on the forecast residual; it has no units.</span>`;
 
         wireSort(body, state, paint);
 
@@ -438,22 +554,31 @@ export const alerts = {
         }
       };
 
+      /* The bar stays. A control that appears only once a condition is met
+       * teaches nobody that the condition exists - the disabled button says what
+       * is missing instead, which is the whole point of a disabled state. */
       const paintActionBar = () => {
         const bar = root.querySelector('#alert-actions');
         const n = state.selected.size;
-        if (!n) { bar.hidden = true; bar.innerHTML = ''; return; }
         bar.hidden = false;
         bar.innerHTML = `
-          <span><strong>${n}</strong> selected</span>
-          <button type="button" class="primary" data-ack-selected>Acknowledge ${n} selected</button>
-          <button type="button" class="ghost small" data-clear-selection>Clear selection</button>`;
+          <span>${n ? `<strong>${n}</strong> selected` : 'Nothing selected'}</span>
+          <span class="bulk-actions">
+            <button type="button" class="primary" data-ack-selected${n ? '' : ' disabled'}>${
+              n ? `Acknowledge ${n} selected` : 'Tick a row to acknowledge it'}</button>
+            ${n ? '<button type="button" class="quiet" data-clear-selection>Clear selection</button>' : ''}
+            <button type="button" class="destructive" id="alert-ack-bulk">
+              Close every alert matching this filter&hellip;</button>
+          </span>`;
 
-        bar.querySelector('[data-clear-selection]').addEventListener('click', () => {
+        bar.querySelector('[data-clear-selection]')?.addEventListener('click', () => {
           state.selected = new Set();
           paint();
         });
+        wireBulkClose(bar.querySelector('#alert-ack-bulk'));
         bar.querySelector('[data-ack-selected]').addEventListener('click', async () => {
           const ids = [...state.selected];
+          if (!ids.length) return;
           await guard(root, async () => {
             await api.acknowledge({ ids });
             state.selected = new Set();
@@ -467,7 +592,10 @@ export const alerts = {
        * rather than a message claiming one exists. */
       const offerUndo = (ids, message) => {
         setStatus(root, {
-          kind: 'ok', message, actionLabel: 'Undo', actionAttr: 'data-undo',
+          kind: 'ok',
+          message: `${message} by ${ctx.user.username} at ${new Date().toLocaleTimeString('en-GB')}.`,
+          actionLabel: `Undo — put ${ids.length} back to open`,
+          actionAttr: 'data-undo',
         });
         root.querySelector('[data-undo]')?.addEventListener('click', async () => {
           await guard(root, async () => {
@@ -488,36 +616,41 @@ export const alerts = {
         state.rows = rows;
         state.total = summary.open_anomalies;
         state.bySeverity = summary.open_by_severity || {};
-        /* Rendered by pageHead() into the workspace header, which is a
-         * SIBLING of this view's container - so it is looked up on the
-         * document, not on `root`. */
-        const clock = document.querySelector('#alert-clock');
-        if (clock) clock.innerHTML = freshness(summary.data_clock);
+        markRead(summary.data_clock);
         wireRefresh(root, load);
         paint();
       };
 
-      /* The reference's layout: a filter strip of its own above the table,
-       * groups separated by a 1px rule, the destructive action pushed to the
-       * far right as quiet text — then the table filling the rest of the pane
-       * and scrolling inside its own container. */
+      /* A filter strip of its own above the table, then the table. The cap is
+       * stated permanently rather than discovered: a hundred rows out of thirty
+       * thousand looks like the whole inbox unless the screen says otherwise. */
       root.innerHTML = `
-        ${pageHead({
+        ${pageHead({ root,
           title: 'Alert inbox',
-          description: 'Readings that deviate from what the forecaster expected, worst first.',
-          meta: '<span id="alert-clock"></span>',
+          description: ALERTS_PURPOSE,
         })}
+
+        <div class="note-panel" role="note">
+          ${icon('warning')}
+          <p>The API returns at most 100 alerts per request and cannot page, so this is
+          the newest 100 of about <strong>${compact(summaryTotal)}</strong> open.
+          <strong>There is no page 2.</strong> To reach the rest, narrow the filter — or
+          use <em>Close every alert matching this filter</em>, which acts on all of them
+          and not only the rows shown.</p>
+        </div>
 
         <div class="panel toolbar-panel">
           <div class="toolbar">
             <div class="group">
-              <label class="inline-label" for="alert-sev">Severity</label>
-              ${selectWrap(`<select id="alert-sev" class="inline">
-                <option value="">All severities</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-              </select>`)}
+              <span class="inline-label" id="sev-label">Severity</span>
+              <!-- Three, and there is no "low". The detector does not produce
+                   one, so offering the filter would be offering a filter that
+                   always returns nothing. -->
+              <div class="sev-toggles" role="group" aria-labelledby="sev-label">
+                ${['critical', 'high', 'medium'].map((s) => `
+                  <button type="button" class="sev-toggle ${s}" data-sev="${s}"
+                          aria-pressed="false">${sevChip(s)}</button>`).join('')}
+              </div>
             </div>
             <span class="rule"></span>
             <div class="group">
@@ -525,25 +658,50 @@ export const alerts = {
             </div>
             <span class="rule"></span>
             <label class="check"><input type="checkbox" id="alert-open" checked> Open only</label>
+            <button type="button" class="quiet" id="alert-clear">Clear filters</button>
           </div>
-          ${analyst ? `<button id="alert-ack-bulk" type="button" class="link">
-            Close a whole group…</button>` : ''}
+          <p class="caption standalone">Filters are applied by the server before the
+          100-row cap, so narrowing one genuinely changes which alerts you see rather
+          than just hiding rows.</p>
         </div>
 
-        <div id="alert-actions" class="action-bar" hidden></div>
+        ${analyst ? '<div id="alert-actions" class="action-bar"></div>' : `
+        <div class="note-panel" role="note">
+          ${icon('lock')}
+          <p>Alerts are read-only for your role. Acknowledging one is an analyst action
+          and is recorded against the username that did it, so it cannot be done on
+          someone else's behalf. Ask an analyst, or an administrator to change your
+          role — either change is written to the audit log.</p>
+        </div>`}
 
         <section class="panel flex">
           <div id="alert-body" class="table-host"></div>
           <div id="alert-foot" class="table-foot"></div>
-        </section>
+        </section>`;
 
-        <p class="caption standalone">Acknowledging is reversible — every close offers an
-        undo, and closing a whole group at once needs a filter, because an unfiltered
-        acknowledge would close every alert in the portfolio and is refused by the API.</p>`;
+      /* One severity at a time: the API takes a single `severity`, and a
+       * multi-select that silently ORs client-side would be filtering the
+       * hundred rows it was given rather than the thirty thousand it was not. */
+      root.querySelectorAll('[data-sev]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const wanted = button.dataset.sev === state.severity ? '' : button.dataset.sev;
+          state.severity = wanted;
+          root.querySelectorAll('[data-sev]').forEach((b) =>
+            b.setAttribute('aria-pressed', String(b.dataset.sev === wanted)));
+          state.selected = new Set();
+          clearStatus(root);
+          guard(root, load);
+        });
+      });
 
-      root.querySelector('#alert-sev').addEventListener('change', (e) => {
-        state.severity = e.target.value;
+      root.querySelector('#alert-clear').addEventListener('click', () => {
+        state.severity = '';
+        state.building = '';
+        state.onlyOpen = true;
         state.selected = new Set();
+        root.querySelectorAll('[data-sev]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+        root.querySelector('#alert-building').value = 'All buildings';
+        root.querySelector('#alert-open').checked = true;
         clearStatus(root);
         guard(root, load);
       });
@@ -566,8 +724,8 @@ export const alerts = {
         guard(root, load);
       });
 
-      const bulk = root.querySelector('#alert-ack-bulk');
-      if (bulk) {
+      function wireBulkClose(bulk) {
+        if (!bulk) return;
         bulk.addEventListener('click', async () => {
           /* This closes every alert matching the filter, not the hundred on
            * screen - which is what the old "Acknowledge all shown" claimed. It
@@ -579,7 +737,7 @@ export const alerts = {
               message: 'Filter by severity or building first. Closing everything at once is '
                      + 'deliberately not one click.',
             });
-            root.querySelector('#alert-sev').focus();
+            root.querySelector('[data-sev]')?.focus();
             return;
           }
           const scope = [
@@ -589,13 +747,21 @@ export const alerts = {
           const count = state.severity && !state.building
             ? state.bySeverity[state.severity] : null;
 
+          /* The count has to be TYPED. A second click is protection against a
+           * slip of the hand and nothing else; typing the number is the one
+           * thing that cannot be done without having read it. */
           const ok = await confirmAction({
-            title: 'Close a whole group of alerts',
+            title: 'Close every alert matching this filter',
             description: `This closes every open alert matching ${scope}`
-              + `${count ? ` — ${compact(count)} of them` : ''}, not only the rows on screen. `
-              + 'It cannot be undone from here, because the ids of the rows off screen were '
-              + 'never loaded. Re-open them with a filtered un-acknowledge.',
-            confirmLabel: 'Close them all',
+              + (count ? ` — ${count.toLocaleString('en-US')} of them across the whole `
+                       + 'portfolio' : '')
+              + ', not only the rows on screen. It will be recorded as '
+              + `${ctx.user.username}. It cannot be undone from this screen, because the `
+              + 'ids of the rows off screen were never loaded. Acknowledging instead is '
+              + 'reversible, and reaches the rows you can see.',
+            confirmLabel: count ? `Close ${count.toLocaleString('en-US')} alerts` : 'Close them all',
+            confirmText: count ? String(count) : '',
+            confirmHint: count ? 'The exact number, digits only.' : '',
           });
           if (!ok) return;
 
@@ -609,7 +775,8 @@ export const alerts = {
             await load();
             setStatus(root, {
               kind: 'ok',
-              message: `Closed ${compact(result?.changed ?? 0)} alerts matching ${scope}.`,
+              message: `Closed ${compact(result?.changed ?? 0)} alerts matching ${scope}, `
+                     + `by ${ctx.user.username}. This one cannot be undone here.`,
             });
           });
         });
@@ -622,15 +789,25 @@ export const alerts = {
 
 /* --------------------------------------------------------------------- runs */
 
+/* This screen is provenance, not history-as-a-feature. It exists so a run can be
+ * re-found and reproduced from its input hash, which is also why the hash gets a
+ * control of its own rather than being quietly truncated. */
+const RUNS_PURPOSE = 'Every allocation the optimizer has stored, and the 64-character '
+  + 'hash of the inputs that produced it. Same hash, same allocation.';
+
 export const runs = {
   title: 'Allocations',
   async render(root, ctx) {
-    const state = { rows: [], sortKey: 'created_at', sortDir: 'desc' };
+    /* Truncated by default: at 64 characters the hash is wider than every other
+     * column put together and pushes the figures off a 1024px window. The
+     * control says which you are looking at, and the footer says what each
+     * choice costs you. */
+    const state = { rows: [], sortKey: 'created_at', sortDir: 'desc', hashFull: false };
 
     root.innerHTML = `
-      ${pageHead({
+      ${pageHead({ root,
         title: 'Stored allocations',
-        description: 'Every recommendation the optimizer has produced, and the inputs it used.',
+        description: RUNS_PURPOSE,
       })}
       ${skeletonRows(6)}`;
 
@@ -643,21 +820,28 @@ export const runs = {
         { key: 'budget_egp', label: 'Budget EGP', num: true, sortable: true,
           render: (r) => compact(r.budget_egp) },
         { key: 'objective', label: 'Objective', sortable: true,
-          render: (r) => escapeHtml(r.objective) },
+          render: (r) => escapeHtml(objectiveLabel(r.objective)) },
+        /* Exact optimization is check-marked and bold wherever it appears: it is
+         * the method that is provably right, and a reader scanning twenty-five
+         * rows should not have to read the word to find it. */
         { key: 'solver', label: 'Method', sortable: true,
-          render: (r) => escapeHtml(r.solver) },
+          render: (r) => (r.solver === 'cpsat'
+            ? `<span class="method-exact">${mark('check', { size: 11 })}exact optimization</span>`
+            : escapeHtml(solverLabel(r.solver))) },
         { key: 'buildings_funded', label: 'Funded', num: true, sortable: true,
           render: (r) => r.buildings_funded },
         { key: 'total_cost_egp', label: 'Spent EGP', num: true, sortable: true,
           render: (r) => compact(r.total_cost_egp) },
         { key: 'total_benefit_kgco2e', label: 'Lifetime kgCO₂e', num: true, sortable: true,
           render: (r) => compact(r.total_benefit_kgco2e) },
-        /* The full hash was a column of forty characters that pushed everything
-         * else off a narrow window. Enough to compare by eye, all of it on hover
-         * and in the accessible name. */
-        { key: 'inputs_hash', label: 'Inputs', cls: 'mono',
-          render: (r) => `<span class="hash" title="${escapeHtml(r.inputs_hash)}">${
-            escapeHtml(String(r.inputs_hash).slice(0, 10))}…</span>` },
+        { key: 'inputs_hash', label: 'Input hash', cls: 'mono',
+          render: (r) => (state.hashFull
+            ? `<span class="hash-all">${escapeHtml(r.inputs_hash)}</span>`
+            : `<span class="hash" title="${escapeHtml(r.inputs_hash)}">${
+                escapeHtml(String(r.inputs_hash).slice(0, 10))}&hellip;</span>`) },
+        { key: '_provenance', label: '', cls: 'row-actions',
+          render: (r) => `<button type="button" class="secondary small"
+            data-prov="${escapeHtml(r.run_id)}">Provenance</button>` },
       ];
 
       const paint = () => {
@@ -670,104 +854,328 @@ export const runs = {
                   + 'hash of the inputs that produced it.',
             });
         wireSort(body, state, paint);
+        body.querySelectorAll('[data-prov]').forEach((button) => {
+          button.addEventListener('click', () =>
+            showProvenance(state.rows.find((r) => r.run_id === button.dataset.prov)));
+        });
       };
 
       root.innerHTML = `
-        ${pageHead({
+        ${pageHead({ root,
           title: 'Stored allocations',
-          description: 'Every recommendation the optimizer has produced, and the inputs it used.',
-          actions: '<button type="button" class="ghost" data-refresh>Refresh</button>',
+          description: RUNS_PURPOSE,
         })}
         <section class="panel">
-          <header><h3>Runs</h3><span class="muted small">${state.rows.length} stored</span></header>
+          <header>
+            <h3>Runs</h3>
+            <span class="scope">${state.rows.length} stored, newest first</span>
+            <div class="segmented" role="group" aria-label="Input hash length" id="hash-mode">
+              <button type="button" class="seg-btn" data-hash="short" aria-pressed="true">First 10</button>
+              <button type="button" class="seg-btn" data-hash="full" aria-pressed="false">All 64</button>
+            </div>
+          </header>
           <div id="runs-body"></div>
-          <p class="caption">Every run records the hash of the catalog, parameters and
-          consumption that produced it, so a stored recommendation can be reproduced
-          against the inputs as they were rather than as they are now.</p>
+          <p class="caption" id="hash-note"></p>
         </section>`;
 
+      const hashNote = () => {
+        root.querySelector('#hash-note').innerHTML = state.hashFull
+          ? 'Showing all 64 characters, which is the only form you can actually check '
+            + 'one run against another with — at the cost of a table that scrolls '
+            + 'sideways. Lifetime kgCO&#8322;e is an estimate, not a measurement.'
+          : 'Showing the first 10 characters, which fits and is enough to tell two runs '
+            + 'apart by eye — but not enough to <em>prove</em> two runs are the same. '
+            + 'Switch to all 64, or open Provenance, for that. Lifetime kgCO&#8322;e is '
+            + 'an estimate, not a measurement.';
+      };
+
+      root.querySelectorAll('[data-hash]').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.hashFull = button.dataset.hash === 'full';
+          root.querySelectorAll('[data-hash]').forEach((b) =>
+            b.setAttribute('aria-pressed', String(b === button)));
+          hashNote();
+          paint();
+        });
+      });
+
+      hashNote();
       paint();
       wireRefresh(root, () => runs.render(root, ctx));
     });
   },
 };
 
+/* One run, in full, with the hash it can be re-found by.
+ *
+ * The explanation matters as much as the value: a 64-character string with no
+ * statement of what it covers is a decoration. It covers the fifty building
+ * records, their consumption figures, the budget, the objective, the district
+ * cap and the method — so the same hash means the same allocation, and a
+ * different one means an input moved and the two runs are not comparable. */
+function showProvenance(run) {
+  if (!run) return;
+  const host = document.createElement('div');
+  host.className = 'modal';
+  const opener = document.activeElement;
+
+  const close = () => {
+    host.remove();
+    if (opener && opener.isConnected) opener.focus();
+  };
+
+  host.innerHTML = `
+    <div class="modal-inner narrow" role="dialog" aria-modal="true" tabindex="-1"
+         aria-label="Provenance of this allocation">
+      <button class="close" type="button" data-close aria-label="Close">&times;</button>
+      <h2>Provenance</h2>
+      <div class="prov-body">
+        <dl class="facts">
+          <div><dt>Stored at (data time)</dt><dd>${escapeHtml(fmtDateTime(run.created_at))}</dd></div>
+          <div><dt>Budget</dt><dd>${compact(run.budget_egp)} EGP</dd></div>
+          <div><dt>Objective</dt><dd>${escapeHtml(objectiveLabel(run.objective))}</dd></div>
+          <div><dt>Method</dt><dd>${escapeHtml(solverLabel(run.solver))}</dd></div>
+          <div><dt>District cap</dt><dd>${run.max_funded_per_district
+            ? `${run.max_funded_per_district} per district` : 'none'}</dd></div>
+          <div><dt>Buildings funded</dt><dd>${run.buildings_funded}</dd></div>
+          <div><dt>Spent</dt><dd>${compact(run.total_cost_egp)} EGP</dd></div>
+          <div><dt>Lifetime benefit</dt><dd>${compact(run.total_benefit_kgco2e)} kgCO&#8322;e</dd></div>
+          <div><dt>Solve time</dt><dd>${Math.round(run.solve_ms)} ms</dd></div>
+          <div><dt>Status</dt><dd>${escapeHtml(run.status)}</dd></div>
+        </dl>
+
+        <h3 class="section-label">Input hash</h3>
+        <p class="hash-block" id="prov-hash">${escapeHtml(run.inputs_hash)}</p>
+        <div class="form-actions">
+          <button type="button" class="secondary" data-copy>Copy the hash</button>
+          <span class="hint" id="prov-copied" role="status"></span>
+        </div>
+
+        <p class="caption">This hash covers the fifty building records, their
+        consumption figures, the budget, the objective, the district cap and the
+        method. The same hash means the same allocation. A different hash means an
+        input moved, and the two runs are not comparable &mdash; whatever their
+        totals happen to look like.</p>
+      </div>
+    </div>`;
+
+  host.querySelector('[data-close]').addEventListener('click', close);
+  host.addEventListener('click', (event) => { if (event.target === host) close(); });
+  host.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.stopPropagation(); close(); }
+  });
+
+  host.querySelector('[data-copy]').addEventListener('click', async () => {
+    const said = host.querySelector('#prov-copied');
+    try {
+      await navigator.clipboard.writeText(run.inputs_hash);
+      said.textContent = 'Copied all 64 characters.';
+    } catch {
+      /* Clipboard access can be refused, and a button that silently does
+       * nothing is worse than one that says so. The hash is selectable above. */
+      said.textContent = 'The browser refused clipboard access — select the hash above.';
+    }
+  });
+
+  document.body.appendChild(host);
+  host.querySelector('.modal-inner').focus();
+}
+
 /* ---------------------------------------------------------------- integrity */
+
+/* Two columns: the thing you ask, and the answer.
+ *
+ * The BROKEN state is designed as carefully as the intact one, deliberately. An
+ * intact verdict is a green tick nobody reads twice; a break is the moment this
+ * whole subsystem exists for, and it has to say what broke, where, what is still
+ * true, and why there is no button here that fixes it.
+ */
+const INTEGRITY_PURPOSE = 'Whether the stored readings are the ones that were signed '
+  + 'on arrival. The walk reads and never writes.';
 
 export const integrity = {
   title: 'Integrity',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({
+      ${pageHead({ root,
         title: 'Reading integrity',
-        description: 'Whether the stored measurements are the ones that were signed on arrival.',
+        description: INTEGRITY_PURPOSE,
       })}
       ${skeletonRows(4)}`;
 
     await guard(root, async () => {
       const buildings = await api.get('/buildings');
-      const options = buildingOptions(buildings);
-      const state = { building: options[0]?.value };
+      /* Nothing selected on arrival: a chain walk is ~51,000 rows of work, and
+       * starting one for a building nobody asked about is both a lie about what
+       * the screen is for and a second of the server's time. */
+      const options = [{ value: '', label: '' }, ...buildingOptions(buildings)];
+      const byId = new Map(buildings.map((b) => [b.id, b]));
+      const state = { building: '', phase: 'idle' };
 
       root.innerHTML = `
-        ${pageHead({
+        ${pageHead({ root,
           title: 'Reading integrity',
-          description: 'Whether the stored measurements are the ones that were signed on arrival.',
+          description: INTEGRITY_PURPOSE,
         })}
 
-        <section class="panel">
-          <header>
-            <h3>Chain verification</h3>
-            <div class="toolbar">
-              ${picker({ id: 'int-building', label: 'Building', options, value: state.building })}
-              <button type="button" class="ghost small" data-verify>Verify again</button>
+        <div class="two-col aside-first">
+          <section class="panel">
+            <header><h3>Verify a building</h3></header>
+            <div class="verify-panel">
+              ${picker({ id: 'int-building', label: 'Building', options, value: '' })}
+              <button type="button" class="primary" data-verify disabled>
+                Pick a building first</button>
+              <p class="note">The walk reads and never writes. Nothing on this screen can
+              alter a reading, a signature or the anchor file.</p>
+
+              <!-- Three words this screen cannot avoid using, defined before it
+                   uses them. A verdict in vocabulary the reader does not share
+                   is not a verdict. -->
+              <dl class="glossary">
+                <div><dt>Chain walk</dt><dd>Re-reading every stored reading for the
+                  building in order and checking that each one still hashes to the value
+                  the next one recorded for it.</dd></div>
+                <div><dt>Anchor file</dt><dd>A copy of the chain head written outside the
+                  database volume, so deleting rows from the database cannot quietly
+                  delete the evidence that they existed.</dd></div>
+                <div><dt>Anchor agrees with database</dt><dd>The head in that file and the
+                  head the database currently reports are the same value &mdash; nobody
+                  rebuilt the chain and updated only one of the two.</dd></div>
+              </dl>
             </div>
-          </header>
-          <div id="int-body">${skeletonRows(4)}</div>
-          <p class="caption">Each reading is signed and chained to the one before it, so
-          a modified row breaks the walk at exactly that row. A deleted tail breaks
-          nothing — there is nothing after it left to check — which is why chain heads
-          are also written to a file outside the database volume and compared here.</p>
-        </section>`;
+          </section>
+
+          <section class="panel">
+            <header>
+              <h3>Result</h3>
+              <span class="scope" id="int-scope">nothing verified yet</span>
+            </header>
+            <div id="int-body" class="result-panel"></div>
+          </section>
+        </div>`;
 
       const input = root.querySelector('#int-building');
+      const button = root.querySelector('[data-verify]');
       wirePicker(input);
+
+      const idle = () => {
+        root.querySelector('#int-body').innerHTML = emptyState({
+          title: 'Nothing verified yet',
+          body: 'Pick a building and press verify. The walk re-reads every stored reading '
+              + 'for it in order, checks the signature chain, and compares the result '
+              + 'against the anchor file held outside the database volume.',
+        });
+      };
+
       const draw = async () => {
         const body = root.querySelector('#int-body');
-        body.innerHTML = skeletonRows(4);
+        const b = byId.get(state.building);
+        /* The panel already holds the height it will have when the result
+         * arrives, so nothing below it jumps when the walk finishes. */
+        body.innerHTML = `
+          <div class="running" aria-busy="true" aria-live="polite">
+            <p>Walking the reading chain for <strong>${escapeHtml(b ? b.code : '')}</strong>&hellip;</p>
+            <div class="progress"><span class="progress-bar"></span></div>
+            <p class="note">Reading only. This can take a moment: it is every stored
+            reading for the building, in order.</p>
+          </div>`;
+
         const report = await api.verifyChain(state.building);
         const ok = report.chain_ok && report.checkpoint_ok !== false;
+        root.querySelector('#int-scope').textContent = b
+          ? `${b.code} · ${b.district}` : '';
+
+        const check = (pass, name, note) => `
+          <div class="check ${pass === null ? 'unknown' : pass ? 'pass' : 'fail'}">
+            <span class="check-mark">${mark(pass === null ? 'dash' : pass ? 'check' : 'cross', { size: 15 })}</span>
+            <span class="check-text">
+              <span class="check-name">${name}</span>
+              <span class="check-note">${note}</span>
+            </span>
+            <span class="check-verdict">${pass === null ? 'Not anchored' : pass ? 'Pass' : 'Fail'}</span>
+          </div>`;
+
         body.innerHTML = `
-          <div class="verdict ${ok ? 'good' : 'bad'}">${ok ? 'Intact' : 'Broken'}</div>
-          <dl class="facts">
-            <dt>Rows checked</dt><dd>${compact(report.rows)}</dd>
-            <dt>Chain walk</dt><dd>${report.chain_ok ? 'verifies' : 'broken'}</dd>
-            <dt>External anchor</dt><dd>${
-              report.checkpoint_ok === null ? 'not anchored yet'
-              : report.checkpoint_ok ? `matches (sequence ${compact(report.checkpoint_seq)})`
-              : 'does NOT match — the tail has been deleted'}</dd>
-            <dt>Anchor vs database copy</dt><dd>${
-              report.anchor_matches_database === null ? '—'
-              : report.anchor_matches_database ? 'agree' : 'DISAGREE'}</dd>
-          </dl>
-          ${report.break ? `<div class="error-box" role="alert">First break:
-            ${escapeHtml(report.break.reason)} at sequence ${report.break.seq}</div>` : ''}
-          ${report.hint ? `<div class="hint-box">${escapeHtml(report.hint)}</div>` : ''}
-          ${ok ? '' : `<div class="hint-box">A break is evidence, not an error to dismiss.
-            The sequence number above is where the stored chain stops agreeing with itself;
-            compare it against the anchor file outside the database volume before anything
-            is rewritten.</div>`}`;
+          <div class="verdict ${ok ? 'good' : 'bad'}">
+            <span class="verdict-shield">${icon(ok ? 'integrity' : 'warning')}</span>
+            <span class="verdict-text">
+              <span class="verdict-word">${ok ? 'Intact' : 'Broken'}</span>
+              <span class="verdict-gloss">${ok
+                ? 'Every stored reading for this building is the one that was signed when '
+                  + 'it arrived. Nobody has changed them.'
+                : 'The stored readings for this building can no longer be proved to be the '
+                  + 'ones that were signed when they arrived.'}</span>
+            </span>
+            <span class="verdict-rows"><strong>${compact(report.rows)}</strong> rows checked</span>
+          </div>
+
+          <div class="checks">
+            ${check(report.chain_ok, 'Chain walk verifies',
+                    'Every reading still hashes to the value the next one recorded for it.')}
+            ${check(report.checkpoint_ok, 'External anchor file matches',
+                    report.checkpoint_ok === null
+                      ? 'No anchor has been written for this building yet, so a deleted '
+                        + 'tail could not be detected.'
+                      : `The head written outside the database volume matches the chain${
+                          report.checkpoint_seq ? ` at sequence ${compact(report.checkpoint_seq)}` : ''}.`)}
+            ${check(report.anchor_matches_database, 'Anchor and database agree',
+                    'The two copies of the chain head are the same value, so the chain was '
+                    + 'not rebuilt with only one of them updated.')}
+          </div>
+
+          ${report.break ? `
+            <div class="break-panel" role="alert">
+              <h4 class="plain">Where it first failed</h4>
+              <dl class="facts">
+                <div><dt>First failing sequence</dt><dd>${report.break.seq}</dd></div>
+                <div><dt>Verified up to</dt><dd>${compact(Math.max(0, report.break.seq - 1))}</dd></div>
+                <div><dt>Rows after the break</dt><dd>${compact(Math.max(0, report.rows - report.break.seq))}</dd></div>
+                <div><dt>Building</dt><dd>${escapeHtml(b ? b.code : '')}</dd></div>
+              </dl>
+              <p>There are two things that produce this, and the platform cannot tell you
+              which: a reading was altered after it was signed, or the chain was rebuilt
+              from this point onward. Either way the break is at the sequence above.</p>
+              <p>The readings are still on disk and are still shown everywhere else in
+              this platform. What they have lost is not their value but their proof —
+              they can no longer be shown to be unaltered. <strong>There is deliberately
+              no button here that fixes this.</strong> A platform that can silently repair
+              a chain can also silently erase the thing the break is telling you.</p>
+            </div>` : ''}
+
+          ${report.hint ? `<p class="note">${escapeHtml(report.hint)}</p>` : ''}
+
+          <div class="form-actions">
+            <button type="button" class="secondary" data-verify-again>Verify again</button>
+            <a class="btn secondary" href="#/alerts">See this building&rsquo;s alerts</a>
+          </div>
+
+          <p class="caption">${ok
+            ? 'This says nothing about whether the meter was accurate. It says only that '
+              + 'nobody changed what the meter sent. Whether the meter itself behaved is '
+              + 'the alert inbox&rsquo;s question.'
+            : 'Whether the meter itself behaved is a separate question, and one the alert '
+              + 'inbox answers.'}</p>`;
+
+        body.querySelector('[data-verify-again]').addEventListener('click',
+          () => guard(root, draw));
+      };
+
+      const sync = () => {
+        const b = byId.get(state.building);
+        button.disabled = !state.building;
+        button.textContent = b ? `Verify ${b.code}` : 'Pick a building first';
       };
 
       input.addEventListener('change', () => {
         const value = pickerValue(input, options);
-        if (!value || value === state.building) return;
+        if (value === null || value === state.building) return;
         state.building = value;
-        guard(root, draw);
+        sync();
       });
-      root.querySelector('[data-verify]').addEventListener('click', () => guard(root, draw));
+      button.addEventListener('click', () => guard(root, draw));
 
-      await draw();
+      sync();
+      idle();
     });
   },
 };
@@ -785,14 +1193,50 @@ function passwordProblem({ password, confirm }) {
   return null;
 }
 
+const ADMIN_PURPOSE = 'Accounts, what this deployment is currently exposed to, and '
+  + 'who did what. Admin role only.';
+
 export const admin = {
   title: 'Administration',
+  /* `requiredRole` is what dims this item in the rail, and the rail keeps it for
+   * everyone: an item that vanishes teaches nobody what they cannot see. The
+   * view itself decides what to render, and for a non-admin that is an
+   * explanation rather than a locked door. */
   requiredRole: 'admin',
   async render(root, ctx) {
+    if (!can(ctx.user, 'admin')) {
+      root.innerHTML = `
+        ${pageHead({ root, title: 'Administration', description: ADMIN_PURPOSE })}
+        <div class="note-panel" role="note">
+          ${icon('lock')}
+          <p><strong>Administration needs the admin role, and yours is
+          ${escapeHtml(ctx.user.role)}.</strong> Nothing here is hidden from you as a
+          matter of secrecy; it is simply a set of controls your role cannot use.</p>
+        </div>
+        <section class="panel">
+          <header><h3>What this screen holds</h3></header>
+          <ul class="prose-list">
+            <li><strong>Security posture</strong> — what this deployment is currently
+            exposed to: the session cookie flags, the timeouts, the minimum password
+            length, and the recent failed sign-in attempts.</li>
+            <li><strong>Accounts</strong> — the list of people who can sign in, their
+            roles, and the actions that create, disable and reset them.</li>
+            <li><strong>Audit log</strong> — the most recent authenticated actions,
+            including the ones that were refused.</li>
+          </ul>
+          <p class="caption">Your own password and the list of places this account is
+          signed in are on the <a href="#/account">account screen</a>, which needs no
+          admin role. If you need one of the things above, ask an administrator to do
+          it or to change your role — a role change is written to the audit log with
+          both usernames, yours and theirs.</p>
+        </section>`;
+      return;
+    }
+
     root.innerHTML = `
-      ${pageHead({
+      ${pageHead({ root,
         title: 'Administration',
-        description: 'Accounts, what the deployment is currently exposed to, and who did what.',
+        description: ADMIN_PURPOSE,
       })}
       ${skeletonRows(6)}`;
 
@@ -810,44 +1254,67 @@ export const admin = {
           render: (r) => escapeHtml(r.action) },
         { key: 'target', label: 'Target', render: (r) => escapeHtml(r.target || '—') },
         { key: 'outcome', label: 'Outcome', sortable: true,
+          /* Denied stands out: the row is critical-soft, the word is bold and it
+           * carries the cross. A refused action is the one line in an audit log
+           * anybody scans for. */
           render: (r) => (r.outcome === 'denied'
-            ? '<span class="sev critical">denied</span>'
+            ? `<span class="sev critical">${mark('cross', { size: 11 })}Denied</span>`
             : `<span class="muted">${escapeHtml(r.outcome)}</span>`) },
         { key: 'ip', label: 'Address', cls: 'mono', render: (r) => escapeHtml(r.ip || '—') },
       ];
-      const auditState = { sortKey: 'ts', sortDir: 'desc' };
+      const auditState = { sortKey: 'ts', sortDir: 'desc', deniedOnly: false };
 
       root.innerHTML = `
-        ${pageHead({
+        ${pageHead({ root,
           title: 'Administration',
-          description: 'Accounts, what the deployment is currently exposed to, and who did what.',
+          description: ADMIN_PURPOSE,
           actions: '<button id="user-add" type="button" class="primary">Add account</button>',
         })}
 
-        ${posture.warnings.length ? `<div class="warn-box" role="alert">
-          ${posture.warnings.map((w) => escapeHtml(w)).join('<br>')}</div>` : ''}
-
         <section class="panel">
           <header><h3>Security posture</h3>
-            <span class="muted small">what this deployment is exposed to right now</span></header>
+            <span class="scope">what this deployment is exposed to right now</span></header>
+
+          <!-- The Secure flag gets a callout of its own because it is the one
+               item on this screen that changes what an attacker can do, and a
+               row in a fact grid reads exactly like the four rows that do not
+               matter. -->
+          ${posture.cookie_secure ? '' : `
+          <div class="posture-alert" role="alert">
+            <h4 class="plain">The session cookie is being sent without the Secure flag.</h4>
+            <p>Without it the browser will send the session cookie over plain HTTP as well
+            as HTTPS. Anyone able to watch the network between a signed-in browser and
+            this server — the same wifi, the same switch, anything in between — can read
+            that cookie and use it to act as that person, without ever needing their
+            password. Turn it on before this is reachable over a network you do not
+            control.</p>
+          </div>`}
+
           <dl class="facts">
-            <dt>Session cookie Secure flag</dt>
+            <div><dt>Session cookie Secure flag</dt>
             <dd>${posture.cookie_secure
-              ? '<span class="sev medium">on</span>'
-              : '<span class="sev high">OFF — required on any networked deployment</span>'}</dd>
-            <dt>Idle timeout</dt><dd>${posture.session_idle_timeout_hours} hours</dd>
-            <dt>Absolute session lifetime</dt><dd>${posture.session_absolute_lifetime_days} days</dd>
-            <dt>Minimum password length</dt><dd>${posture.password_min_length}</dd>
-            <dt>Accounts</dt><dd>${posture.users}</dd>
+              ? `<span class="sev medium">${mark('check', { size: 11 })}On</span>`
+              : `<span class="sev critical">${mark('cross', { size: 11 })}Off</span>`}</dd></div>
+            <div><dt>Idle timeout</dt><dd>${posture.session_idle_timeout_hours} hours</dd></div>
+            <div><dt>Absolute session lifetime</dt><dd>${posture.session_absolute_lifetime_days} days</dd></div>
+            <div><dt>Minimum password length</dt><dd>${posture.password_min_length} characters</dd></div>
+            <div><dt>Accounts</dt><dd>${posture.users}${
+              users.filter((u) => !u.is_active).length
+                ? `, ${users.filter((u) => !u.is_active).length} disabled` : ', none disabled'}</dd></div>
           </dl>
-          ${posture.recent_failed_logins.length ? `<h4>Recent failed logins</h4>
+
+          ${posture.recent_failed_logins.length ? `<h4 class="section-label">Recent failed sign-ins</h4>
             <div class="table-wrap"><table>
               <thead><tr><th>When</th><th>Username tried</th><th>Address</th></tr></thead>
               <tbody>${posture.recent_failed_logins.map((f) => `<tr>
                 <td class="mono">${fmtDateTime(f.ts)}</td><td>${escapeHtml(f.username)}</td>
                 <td class="mono">${escapeHtml(f.ip)}</td></tr>`).join('')}</tbody>
-            </table></div>`
-            : '<p class="muted small">No failed logins recorded.</p>'}
+            </table></div>
+            <p class="caption">A username appearing here does <strong>not</strong> mean the
+            account exists. Sign-in answers the same way for a wrong password, an unknown
+            account and a disabled one — that is deliberate, and it means this list cannot
+            tell you which of the three each row was either.</p>`
+            : '<p class="caption">No failed sign-ins recorded.</p>'}
         </section>
 
         <section class="panel">
@@ -855,11 +1322,18 @@ export const admin = {
           <div class="table-wrap"><table>
             <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th>
               <th>Last login</th><th><span class="sr-only">Actions</span></th></tr></thead>
-            <tbody>${users.map((u) => `<tr>
-              <td>${escapeHtml(u.username)}</td>
+            <!-- The two cells an admin cannot use on their own row show a lock
+                 and the reason, not a greyed-out control. A disabled select
+                 invites a click and explains nothing; the words do both. -->
+            <tbody>${users.map((u) => {
+              const self = u.id === ctx.user.id || u.username === ctx.user.username;
+              return `<tr>
+              <td class="mono">${escapeHtml(u.username)}${
+                self ? '<span class="badge">you</span>' : ''}</td>
               <td>${escapeHtml(u.display_name)}</td>
-              <td>
-                ${selectWrap(`<select class="inline" data-role="${escapeHtml(u.id)}"
+              <td>${self && u.role === 'admin'
+                ? `<span class="locked-cell">${mark('cross', { size: 11 })}admin — your own</span>`
+                : selectWrap(`<select class="inline" data-role="${escapeHtml(u.id)}"
                         data-current="${escapeHtml(u.role)}"
                         data-username="${escapeHtml(u.username)}"
                         aria-label="Role for ${escapeHtml(u.username)}">
@@ -867,22 +1341,24 @@ export const admin = {
                     `<option value="${r}"${r === u.role ? ' selected' : ''}>${r}</option>`).join('')}
                 </select>`)}
               </td>
-              <td>${u.is_active
-                ? '<span class="dot-label"><span class="dot ok"></span>active</span>'
-                : '<span class="dot-label"><span class="dot bad"></span>disabled</span>'}
-                ${u.must_change_password
-                  ? '<span class="badge">must change password</span>' : ''}</td>
+              <td>${u.must_change_password
+                ? `<span class="state-cell warn">${mark('dash', { size: 11 })}Must set password</span>`
+                : u.is_active
+                  ? `<span class="state-cell ok">${mark('check', { size: 11 })}Active</span>`
+                  : `<span class="state-cell bad">${mark('cross', { size: 11 })}Disabled</span>`}</td>
               <td class="mono">${fmtDateTime(u.last_login_at)}</td>
               <td class="row-actions">
-                <button class="ghost small" type="button" data-toggle="${escapeHtml(u.id)}"
+                ${self
+                  ? `<span class="locked-cell">${mark('cross', { size: 11 })}cannot disable your own account</span>`
+                  : `<button class="secondary small" type="button" data-toggle="${escapeHtml(u.id)}"
                   data-active="${u.is_active}" data-username="${escapeHtml(u.username)}"
                   aria-label="${u.is_active ? 'Disable' : 'Enable'} ${escapeHtml(u.username)}"
-                  >${u.is_active ? 'Disable' : 'Enable'}</button>
-                <button class="ghost small" type="button" data-reset="${escapeHtml(u.id)}"
+                  >${u.is_active ? 'Disable' : 'Enable'}</button>`}
+                <button class="secondary small" type="button" data-reset="${escapeHtml(u.id)}"
                   data-username="${escapeHtml(u.username)}"
                   aria-label="Reset the password for ${escapeHtml(u.username)}">Reset password</button>
               </td>
-            </tr>`).join('')}</tbody>
+            </tr>`; }).join('')}</tbody>
           </table></div>
           <p class="caption">An admin cannot remove their own admin role or disable
           their own account: leaving a deployment with no administrator is recoverable
@@ -890,7 +1366,13 @@ export const admin = {
         </section>
 
         <section class="panel">
-          <header><h3>Audit log</h3><span class="muted small">most recent 50 events</span></header>
+          <header>
+            <h3>Audit log</h3>
+            <span class="scope">the 50 most recent events — this is the whole log the API
+              returns, not a page of it</span>
+            <button type="button" class="seg-btn deny-toggle" id="denied-only"
+                    aria-pressed="false">Denied only</button>
+          </header>
           <div id="audit-body"></div>
         </section>`;
 
@@ -906,14 +1388,28 @@ export const admin = {
 
       const paintAudit = () => {
         const body = root.querySelector('#audit-body');
-        body.innerHTML = auditRows.length
-          ? dataTable({ columns: auditColumns, rows: auditRows,
+        const rows = auditState.deniedOnly
+          ? auditRows.filter((r) => r.outcome === 'denied')
+          : auditRows;
+        body.innerHTML = rows.length
+          ? dataTable({ columns: auditColumns,
+                        rows: rows.map((r) => ({ ...r,
+                          _cls: r.outcome === 'denied' ? 'denied-row' : '' })),
                         sortKey: auditState.sortKey, sortDir: auditState.sortDir })
-          : emptyState({ title: 'Nothing recorded yet',
-                         body: 'Every authenticated action appears here as it happens.' });
+          : emptyState({
+              title: auditState.deniedOnly ? 'Nothing was refused' : 'Nothing recorded yet',
+              body: auditState.deniedOnly
+                ? 'No action in the 50 most recent events was denied.'
+                : 'Every authenticated action appears here as it happens.' });
         wireSort(body, auditState, paintAudit);
       };
       paintAudit();
+
+      root.querySelector('#denied-only').addEventListener('click', (event) => {
+        auditState.deniedOnly = !auditState.deniedOnly;
+        event.currentTarget.setAttribute('aria-pressed', String(auditState.deniedOnly));
+        paintAudit();
+      });
 
       /* A role change used to fire on `change` with no confirmation and no
        * visible result: the select moved, a request went out, and the only way
@@ -1021,86 +1517,208 @@ export const admin = {
 
 /* ------------------------------------------------------------------ account */
 
+/* Enough of a user-agent string to recognise a session by, and no more. This is
+ * not device fingerprinting: the question the column answers is "was that me, in
+ * that browser, on that machine" and a version number does not help answer it.
+ * The full string stays in the title attribute. */
+function browserName(agent) {
+  const ua = String(agent || '');
+  if (!ua) return '—';
+  const engine = /Edg\//.test(ua) ? 'Edge'
+    : /OPR\//.test(ua) ? 'Opera'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Safari\//.test(ua) ? 'Safari'
+    : 'Unknown browser';
+  const platform = /Windows/.test(ua) ? 'Windows'
+    : /Macintosh|Mac OS/.test(ua) ? 'macOS'
+    : /Android/.test(ua) ? 'Android'
+    : /iPhone|iPad/.test(ua) ? 'iOS'
+    : /Linux/.test(ua) ? 'Linux'
+    : '';
+  return platform ? `${engine} on ${platform}` : engine;
+}
+
+const ACCOUNT_PURPOSE = 'Your password, and every place this account is currently '
+  + 'signed in. Changing the password is what ends the other sessions.';
+
 export const account = {
   title: 'Account',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({
+      ${pageHead({ root,
         title: 'Your account',
-        description: 'Change your password, and see everywhere this account is signed in.',
+        description: ACCOUNT_PURPOSE,
       })}
       ${skeletonRows(4)}`;
 
     await guard(root, async () => {
       const sessions = await api.mySessions();
+      const others = Math.max(0, sessions.length - 1);
 
       root.innerHTML = `
-        ${pageHead({
+        ${pageHead({ root,
           title: 'Your account',
-          description: 'Change your password, and see everywhere this account is signed in.',
+          description: ACCOUNT_PURPOSE,
         })}
 
-        <div class="two-col">
+        <div class="two-col aside-first">
           <section class="panel">
             <header><h3>Change password</h3></header>
+
+            <!-- Said before the fields, not after the submit. Changing the
+                 password is also the only way to end another session in this
+                 platform, so somebody may be here to do exactly that - and
+                 somebody else may not have realised it happens at all. -->
+            <div class="posture-alert" role="note">
+              <h4 class="plain">Changing your password signs out every other session.</h4>
+              <p>${others === 0
+                ? 'There are no others right now, so this will only affect the browser '
+                  + 'you are using.'
+                : `There ${others === 1 ? 'is 1 other' : `are ${others} others`} right now. `
+                  + `${others === 1 ? 'It' : 'They'} will stop working immediately.`}</p>
+            </div>
+
             <form id="pw-form" class="form">
               <label for="pw-current">Current password
-                <input type="password" id="pw-current" autocomplete="current-password" required></label>
+                <span class="password-field">
+                  <input type="password" id="pw-current" class="mono"
+                         autocomplete="current-password" required>
+                  <button type="button" class="reveal" data-reveal="pw-current"
+                          aria-pressed="false" aria-label="Show the current password">
+                    ${icon('eye')}</button>
+                </span></label>
+
               <label for="pw-new">New password
-                <input type="password" id="pw-new" autocomplete="new-password"
+                <input type="password" id="pw-new" class="mono" autocomplete="new-password"
                        minlength="${MIN_PASSWORD}" required>
-                <span class="hint">At least ${MIN_PASSWORD} characters.</span></label>
+                <span class="meter" id="pw-meter" aria-hidden="true"><span></span></span>
+                <span class="hint" id="pw-hint">At least ${MIN_PASSWORD} characters.</span></label>
+
               <label for="pw-confirm">Repeat the new password
-                <input type="password" id="pw-confirm" autocomplete="new-password" required></label>
+                <input type="password" id="pw-confirm" class="mono"
+                       autocomplete="new-password" required>
+                <span class="hint" id="pw-match"></span></label>
+
               <div id="pw-result"></div>
               <div class="form-actions">
-                <button type="submit" class="primary">Change password</button>
+                <button type="submit" class="primary" id="pw-submit" disabled>
+                  Fill in every field</button>
               </div>
-              <p class="caption">This signs out every other session for this account — a
-              password change is what you do when you think a credential has been taken.</p>
+              <p class="caption">The three fields are named so a password manager can fill
+              them and save the new one.</p>
             </form>
           </section>
 
           <section class="panel">
-            <header><h3>Where you are signed in</h3>
-              <span class="muted small">${sessions.length} active</span></header>
+            <header>
+              <h3>Where this account is signed in</h3>
+              <span class="scope">${sessions.length} active</span>
+            </header>
             ${sessions.length ? `<div class="table-wrap"><table>
               <thead><tr><th>Started</th><th>Last seen</th><th>Address</th><th>Browser</th></tr></thead>
-              <tbody>${sessions.map((s) => `<tr>
-                <td class="mono">${fmtDateTime(s.created_at)}</td>
+              <tbody>${sessions.map((s) => `<tr${s.current ? ' class="chosen"' : ''}>
+                <td class="mono">${fmtDateTime(s.created_at)}${s.current
+                  ? `<span class="state-cell ok">${mark('check', { size: 11 })}this one</span>` : ''}</td>
                 <td class="mono">${fmtDateTime(s.last_seen_at)}</td>
                 <td class="mono">${escapeHtml(s.ip || '—')}</td>
-                <td class="muted small">${escapeHtml((s.user_agent || '').slice(0, 60))}</td>
+                <td class="muted small wrap" title="${escapeHtml(s.user_agent || '')}"
+                  >${escapeHtml(browserName(s.user_agent))}</td>
               </tr>`).join('')}</tbody>
             </table></div>` : emptyState({
-              title: 'No other sessions',
-              body: 'This is the only place this account is currently signed in.' })}
-            <p class="caption">A session you do not recognise is a reason to change the
-            password: doing so ends every other one.</p>
+              title: 'Only this session',
+              body: 'This account is signed in here and nowhere else. Others appear when '
+                  + 'you sign in from another browser or machine, and drop off by '
+                  + 'themselves after the 8-hour idle limit or the 7-day absolute one.' })}
+            <p class="caption">A session you do not recognise is a reason to change your
+            password <strong>now</strong>, because that is what ends the others. There is
+            no per-session sign-out in this platform, and this screen will not pretend
+            there is.</p>
           </section>
         </div>`;
+
+      /* Reveal, on the one field where it earns its place: the current password
+       * is the one people mistype and then cannot tell why they were refused. */
+      root.querySelectorAll('[data-reveal]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const field = root.querySelector(`#${button.dataset.reveal}`);
+          const shown = field.type === 'text';
+          field.type = shown ? 'password' : 'text';
+          button.innerHTML = icon(shown ? 'eye' : 'eye-off');
+          button.setAttribute('aria-pressed', String(!shown));
+          button.setAttribute('aria-label',
+            shown ? 'Show the current password' : 'Hide the current password');
+          field.focus();
+        });
+      });
+
+      /* Live, because a rule that only fires on submit is a rule the person
+       * finds out about after they have already committed to a password. */
+      const fresh = root.querySelector('#pw-new');
+      const again = root.querySelector('#pw-confirm');
+      const current = root.querySelector('#pw-current');
+      const meter = root.querySelector('#pw-meter');
+      const hint = root.querySelector('#pw-hint');
+      const match = root.querySelector('#pw-match');
+
+      const check = () => {
+        const value = fresh.value;
+        const long = value.length >= MIN_PASSWORD;
+        meter.dataset.state = !value ? 'empty' : long ? 'ok' : 'short';
+        meter.style.setProperty('--fill',
+          `${Math.min(100, (value.length / MIN_PASSWORD) * 100)}%`);
+        hint.textContent = !value
+          ? `At least ${MIN_PASSWORD} characters.`
+          : long
+            ? `${value.length} characters — long enough.`
+            : `${value.length} of ${MIN_PASSWORD} characters.`;
+        hint.className = `hint ${long ? 'ok' : 'warn'}`;
+
+        match.textContent = !again.value ? ''
+          : again.value === value ? 'The two match.' : 'The two do not match yet.';
+        match.className = `hint ${again.value && again.value === value ? 'ok' : 'warn'}`;
+
+        /* The label says what is missing rather than the button going quiet.
+         * "Must differ from the current one" is checked here as well as on
+         * submit, because finding out afterwards means choosing again. */
+        const submit = root.querySelector('#pw-submit');
+        const same = value !== '' && value === current.value;
+        const ready = current.value && long && again.value === value && !same;
+        submit.disabled = !ready;
+        submit.textContent = ready ? 'Change password and sign out other sessions'
+          : !current.value ? 'Enter your current password'
+          : !long ? 'The new password is too short'
+          : same ? 'The new password must differ from the current one'
+          : 'The two new passwords must match';
+      };
+      [current, fresh, again].forEach((field) => field.addEventListener('input', check));
+      check();
 
       root.querySelector('#pw-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const result = root.querySelector('#pw-result');
         /* Checked here as well as by the server, because a mismatch that only
          * surfaces as a rejected request has already sent the password. */
-        const problem = passwordProblem({
-          password: root.querySelector('#pw-new').value,
-          confirm: root.querySelector('#pw-confirm').value,
-        });
+        const problem = fresh.value === current.value
+          ? 'The new password must differ from the current one.'
+          : passwordProblem({ password: fresh.value, confirm: again.value });
         if (problem) {
           result.innerHTML = `<div class="error-box" role="alert">${escapeHtml(problem)}</div>`;
-          root.querySelector('#pw-new').focus();
+          fresh.focus();
           return;
         }
         try {
-          await api.changePassword(
-            root.querySelector('#pw-current').value,
-            root.querySelector('#pw-new').value);
+          await api.changePassword(current.value, fresh.value);
           result.innerHTML = '';
-          setStatus(root, { kind: 'ok', message: 'Password changed. Other sessions are signed out.' });
+          setStatus(root, {
+            kind: 'ok',
+            message: `Password changed by ${ctx.user.username} at `
+                   + `${new Date().toLocaleTimeString('en-GB')}. `
+                   + `${others ? `${others} other session${others === 1 ? '' : 's'} signed out.`
+                              : 'No other sessions were open.'}`,
+          });
           root.querySelector('#pw-form').reset();
+          check();
           ctx.onPasswordChanged?.();
         } catch (error) {
           result.innerHTML = errorBox(error);

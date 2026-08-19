@@ -14,10 +14,11 @@
 'use strict';
 
 import { api, setPasswordChangeHandler, setUnauthenticatedHandler } from './api.js';
-import { mark, wordmark } from './brand.js';
+import { wordmark } from './brand.js';
 import { escapeHtml, hydrateCharts, icon } from './charts.js';
+import { markRead, startClock, wireReread } from './ui.js';
 
-import { checkHealth, mapView } from './map.js';
+import { mapView } from './map.js';
 import { account, admin, alerts, forecasts, integrity, overview, runs } from './views.js';
 
 const VIEWS = {
@@ -31,7 +32,26 @@ const VIEWS = {
   account,
 };
 
-const ORDER = ['overview', 'map', 'forecasts', 'alerts', 'runs', 'integrity', 'admin'];
+/* The rail, in the handoff's order. Eight items and always all eight: the
+ * admin row stays for a non-admin, dimmed, and the screen behind it explains
+ * what Administration holds and who can open it. A navigation item that
+ * vanishes for some people teaches them nothing about what they cannot see.
+ *
+ * The rail label is not the screen title. "Allocations" fits under a 20px icon
+ * at .5625rem; "Stored allocations" does not, and the header says it in full
+ * one line to the right. */
+const ORDER = ['overview', 'map', 'alerts', 'forecasts', 'runs', 'integrity', 'admin', 'account'];
+
+const NAV_LABEL = {
+  overview: 'Overview',
+  map: 'Allocation map',
+  alerts: 'Alert inbox',
+  forecasts: 'Forecasting',
+  runs: 'Allocations',
+  integrity: 'Integrity',
+  admin: 'Admin',
+  account: 'Account',
+};
 
 const ROLE_LADDER = ['viewer', 'analyst', 'admin'];
 const can = (user, role) => ROLE_LADDER.indexOf(user.role) >= ROLE_LADDER.indexOf(role);
@@ -112,7 +132,57 @@ function wireAppearance(container) {
   });
 }
 
+/* ------------------------------------------------------------- text scale */
+
+/* The projector affordance. Three steps, and each one sets the ROOT font size,
+ * which every length in the stylesheet is expressed against - so the whole
+ * interface grows, map chrome and all. It is the same design at a different
+ * size, not a second design for a big room.
+ *
+ * Writing `documentElement.style.fontSize` is a CSSOM property write, not an
+ * inline style attribute in the markup, so `style-src 'self'` does not stop it.
+ */
+const SCALE_KEY = 'gemp.textScale';
+const SCALES = [100, 125, 150];
+
+function storedScale() {
+  try {
+    const value = Number(window.localStorage.getItem(SCALE_KEY));
+    return SCALES.includes(value) ? value : 100;
+  } catch {
+    return 100;
+  }
+}
+
+function applyScale(percent) {
+  document.documentElement.style.fontSize = `${(16 * percent) / 100}px`;
+  try { window.localStorage.setItem(SCALE_KEY, String(percent)); } catch { /* ignore */ }
+  document.querySelectorAll('[data-scale]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.scale) === percent));
+  });
+}
+
+function textScaleSwitch() {
+  const current = storedScale();
+  const buttons = SCALES.map((value) => `
+    <button type="button" data-scale="${value}" aria-pressed="${value === current}"
+            aria-label="Text size ${value} percent">${value}%</button>`).join('');
+  return `<div class="textscale" role="group" aria-label="Text size">${buttons}</div>`;
+}
+
+function wireTextScale(container) {
+  container.querySelectorAll('[data-scale]').forEach((button) => {
+    button.addEventListener('click', () => applyScale(Number(button.dataset.scale)));
+  });
+}
+
 /* ------------------------------------------------------------------- login */
+
+/* Failed attempts since this page was loaded. The server counts them too and
+ * throttles on them; this is only so the screen can say "that is the third
+ * attempt" instead of showing the same sentence three times and looking as
+ * though nothing happened. */
+let attempts = 0;
 
 function showLogin(message = '') {
   document.body.className = 'signed-out';
@@ -123,68 +193,84 @@ function showLogin(message = '') {
     window.history.replaceState(null, '', window.location.pathname);
   }
 
-  /* The reference's sign-in screen: a slim product bar, one centred card, a
-   * second card stating what the deployment is, and a footer rule.
+  /* One centred column, and nothing else on the page.
    *
-   * Its second card listed an encryption algorithm, a FIPS level, a node
-   * identifier and a version number. None of those are things this system can
-   * support, and a compliance claim in front of judges has to be one the code
-   * can back. The four below are: the Administration screen reports every one
-   * of them, and `test_auth.py` pins them. */
+   * There is deliberately NO panel of security properties here. An earlier
+   * version listed the session model, the idle timeout, the password hash and
+   * the audit log; every one of those was true and pinned by a test, and they
+   * still do not belong on a sign-in screen. A hash algorithm named in front of
+   * an unauthenticated visitor reassures nobody who could check it and tells
+   * anybody who is attacking it which shape to attack. The Administration
+   * screen reports all four, to people who have signed in.
+   */
   $('root').innerHTML = `
     <div class="login-wrap">
       <header class="login-bar">
-        <p class="wordmark brand-wordmark">${wordmark('GEMP')}</p>
-        <span class="chip">Restricted access</span>
+        ${textScaleSwitch()}
         ${appearanceSwitch()}
       </header>
 
       <div class="login-body">
         <div class="login-col">
-          <form class="login" id="login-form">
-            <h2>Sign in</h2>
-            <p class="lede">Green Energy Monitoring Platform — budget-constrained
-            retrofit prioritization.</p>
+          <!-- The mark and the sentence are one lockup, centred together. Left
+               aligning a 15rem mark inside a 26rem column reads as a mark that
+               missed its mark. -->
+          <div class="login-lockup">
+            <p class="wordmark brand-wordmark">${wordmark('GEMP')}</p>
+            <p class="lede">Allocates a fixed budget across fifty public buildings in New
+            Cairo, and shows the evidence for every building it chose.</p>
+          </div>
 
-            ${message ? `<div class="error-box" role="alert">${escapeHtml(message)}</div>` : ''}
+          <form class="login panel" id="login-form">
+            <h2>Sign in</h2>
+
+            ${message ? `<div class="error-box" role="alert">
+              <p>${escapeHtml(message)}</p>
+              <p class="small">The server answers the same way whether the password is
+              wrong, the account does not exist, or it has been disabled &mdash; so this
+              message cannot tell you which, and nor can we.</p>
+              <p class="small">${attempts === 1 ? 'That was the first attempt'
+                : `That is ${attempts} attempts`} from this browser. Each one is recorded
+              with the username tried and the address it came from.</p>
+            </div>` : ''}
 
             <label for="login-user">Username
-              <input id="login-user" name="username" type="text"
-                     autocomplete="username" required autofocus></label>
+              <input id="login-user" name="username" type="text" class="mono"
+                     autocomplete="username" autocapitalize="none" spellcheck="false"
+                     required autofocus></label>
 
             <label for="login-pass">Password
               <span class="password-field">
-                <input id="login-pass" name="password" type="password"
+                <input id="login-pass" name="password" type="password" class="mono"
                        autocomplete="current-password" required>
                 <button type="button" class="reveal" id="login-reveal"
-                        aria-pressed="false">Show</button>
+                        aria-pressed="false" aria-label="Show password">
+                  ${icon('eye')}
+                </button>
               </span>
+              <span class="hint" id="reveal-state">The password is hidden.</span>
               <span class="caps-hint" id="caps-hint" role="status">Caps Lock is on.</span>
             </label>
 
-            <button type="submit" class="primary" id="login-submit">Sign in</button>
+            <!-- Disabled until there is something to send, with a label that says
+                 what is missing rather than going silent. -->
+            <button type="submit" class="primary" id="login-submit" disabled>
+              Enter a username and password</button>
           </form>
-
-          <section class="login-facts">
-            <h3>Authorized personnel only</h3>
-            <dl>
-              <div><dt>Sessions</dt><dd>Server-side, revocable</dd></div>
-              <div><dt>Idle timeout</dt><dd>8 hours</dd></div>
-              <div><dt>Password hashing</dt><dd>scrypt</dd></div>
-              <div><dt>Audit log</dt><dd>Every action</dd></div>
-            </dl>
-          </section>
         </div>
       </div>
 
       <footer class="login-foot">
-        <span>Accounts are created by an administrator. No self-service registration,
-        no default account.</span>
+        <span>Accounts are created by an administrator. There is no self-service
+        registration, no default account, and no email reset &mdash; a forgotten
+        password has to be reset by an administrator in person.</span>
         <span>Team Ecoforge &middot; RoboDam2026</span>
       </footer>
     </div>`;
 
   wireAppearance($('root'));
+  wireTextScale($('root'));
+  applyScale(storedScale());
 
   /* Caps Lock is the commonest reason a correct password is refused, and the
    * server deliberately will not say which reason it was - so the page has to
@@ -198,23 +284,39 @@ function showLogin(message = '') {
   $('login-pass').addEventListener('keyup', watchCaps);
   $('login-user').addEventListener('keyup', watchCaps);
 
+  const submit = $('login-submit');
+  const ready = () => {
+    const filled = $('login-user').value.trim() && $('login-pass').value;
+    submit.disabled = !filled;
+    submit.textContent = filled ? 'Sign in' : 'Enter a username and password';
+  };
+  $('login-user').addEventListener('input', ready);
+  $('login-pass').addEventListener('input', ready);
+
+  /* A revealed password is readable by the room, and on this project the room
+   * is a demonstration hall with a projector. The state is stated, not left to
+   * be inferred from an icon. */
   const reveal = $('login-reveal');
   reveal.addEventListener('click', () => {
     const field = $('login-pass');
     const shown = field.type === 'text';
     field.type = shown ? 'password' : 'text';
-    reveal.textContent = shown ? 'Show' : 'Hide';
+    reveal.innerHTML = icon(shown ? 'eye' : 'eye-off');
     reveal.setAttribute('aria-pressed', String(!shown));
+    reveal.setAttribute('aria-label', shown ? 'Show password' : 'Hide password');
+    $('reveal-state').textContent = shown
+      ? 'The password is hidden.'
+      : 'The password is visible on screen — mind the room.';
     field.focus();
   });
 
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    const button = $('login-submit');
-    button.disabled = true;
-    button.textContent = 'Signing in…';
+    submit.disabled = true;
+    submit.textContent = 'Signing in…';
     try {
       const result = await api.login($('login-user').value, $('login-pass').value);
+      attempts = 0;
       state.user = result.user;
       if (result.must_change_password) {
         showPasswordChange();
@@ -225,33 +327,105 @@ function showLogin(message = '') {
       /* The server deliberately returns the same message for a wrong password, an
        * unknown account and a disabled one. Passing it through unchanged keeps that
        * property instead of helpfully guessing which it was. */
-      showLogin(error.detail || 'sign in failed');
+      attempts += 1;
+      showLogin(error.detail || 'Those details were not accepted.');
     }
   });
 }
 
+/* The first-login state. Nothing else in GEMP is reachable from here, and the
+ * panel says so rather than leaving somebody to discover it by clicking a rail
+ * that is not there. */
 function showPasswordChange() {
   document.body.className = 'signed-out';
   $('root').innerHTML = `
     <div class="login-wrap">
-      <form class="login" id="change-form">
-        <h1>Choose a new password</h1>
-        <p class="caption">This account was created with a temporary password. It has to
-        be replaced before anything else can be used.</p>
-        <div id="change-error"></div>
-        <label for="cp-current">Current password
-          <input id="cp-current" type="password" autocomplete="current-password" required autofocus></label>
-        <label for="cp-new">New password
-          <input id="cp-new" type="password" autocomplete="new-password" minlength="12" required>
-          <span class="hint">At least 12 characters.</span></label>
-        <button type="submit" class="primary">Set password</button>
-      </form>
+      <header class="login-bar">
+        ${textScaleSwitch()}
+        ${appearanceSwitch()}
+      </header>
+
+      <div class="login-body">
+        <div class="login-col">
+          <div class="login-lockup">
+            <p class="wordmark brand-wordmark">${wordmark('GEMP')}</p>
+          </div>
+
+          <form class="login panel first-login" id="change-form">
+            <h2>${icon('lock')}Set a new password before you continue</h2>
+            <p class="lede">This account was created with a temporary password, which
+            works once. Nothing else in GEMP is reachable until it is replaced — the
+            server refuses every other request while the account is in this state.</p>
+
+            <div id="change-error"></div>
+
+            <label for="cp-current">Temporary password
+              <input id="cp-current" type="password" class="mono"
+                     autocomplete="current-password" required autofocus></label>
+
+            <label for="cp-new">New password
+              <input id="cp-new" type="password" class="mono" autocomplete="new-password"
+                     minlength="12" required>
+              <span class="meter" id="cp-meter" aria-hidden="true"><span></span></span>
+              <span class="hint" id="cp-hint">At least 12 characters.</span></label>
+
+            <label for="cp-confirm">Repeat the new password
+              <input id="cp-confirm" type="password" class="mono"
+                     autocomplete="new-password" required>
+              <span class="hint" id="cp-match"></span></label>
+
+            <button type="submit" class="primary" id="cp-submit" disabled>
+              Fill in every field</button>
+            <p class="caption">There is no email reset. If you lose this password an
+            administrator has to set another one and hand it over directly.</p>
+          </form>
+        </div>
+      </div>
     </div>`;
+
+  wireAppearance($('root'));
+  wireTextScale($('root'));
+  applyScale(storedScale());
+
+  const fresh = $('cp-new');
+  const again = $('cp-confirm');
+  const current = $('cp-current');
+  const submit = $('cp-submit');
+  const meter = $('cp-meter');
+
+  /* Validated as it is typed, and before submit. A temporary password is
+   * usually being copied from a piece of paper, and finding out on the round
+   * trip that the two fields differ means typing both again. */
+  const check = () => {
+    const value = fresh.value;
+    const long = value.length >= 12;
+    const matches = again.value !== '' && again.value === value;
+
+    meter.dataset.state = !value ? 'empty' : long ? 'ok' : 'short';
+    meter.style.setProperty('--fill', `${Math.min(100, (value.length / 12) * 100)}%`);
+    $('cp-hint').textContent = !value ? 'At least 12 characters.'
+      : long ? `${value.length} characters — long enough.`
+             : `${value.length} of 12 characters.`;
+    $('cp-hint').className = `hint ${long ? 'ok' : 'warn'}`;
+    $('cp-match').textContent = !again.value ? ''
+      : matches ? 'The two match.' : 'The two do not match yet.';
+    $('cp-match').className = `hint ${matches ? 'ok' : 'warn'}`;
+
+    const ready = current.value && long && matches;
+    submit.disabled = !ready;
+    submit.textContent = ready ? 'Set password and sign in'
+      : !current.value ? 'Enter the temporary password'
+      : !long ? 'The new password is too short'
+      : 'The two new passwords must match';
+  };
+
+  [current, fresh, again].forEach((field) => field.addEventListener('input', check));
+  check();
 
   $('change-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
-      await api.changePassword($('cp-current').value, $('cp-new').value);
+      await api.changePassword(current.value, fresh.value);
       const session = await api.session();
       state.user = session.user;
       await showApp();
@@ -272,74 +446,85 @@ function showPasswordChange() {
 async function showApp() {
   document.body.className = 'signed-in';
 
-  const visible = ORDER
-    .filter((key) => !VIEWS[key].requiredRole || can(state.user, VIEWS[key].requiredRole));
-
-  const navItems = visible.map((key) => `
-    <button class="nav-item" type="button" data-view="${key}">
-      ${icon(key)}<span class="nav-label">${escapeHtml(VIEWS[key].title)}</span>
-    </button>`).join('');
+  /* Every item, for everyone. Administration is dimmed rather than dropped when
+   * the role cannot open it, and its screen says what it holds and who to ask. */
+  const navItems = ORDER.map((key) => {
+    const locked = VIEWS[key].requiredRole && !can(state.user, VIEWS[key].requiredRole);
+    return `
+    <button class="nav-item${locked ? ' locked' : ''}" type="button" data-view="${key}">
+      ${icon(key)}<span class="nav-label">${escapeHtml(NAV_LABEL[key])}</span>
+    </button>`;
+  }).join('');
 
   const who = escapeHtml(state.user.display_name || state.user.username);
 
   $('root').innerHTML = `
-    <!-- Ten navigation items stand between the top of the document and the
+    <!-- Eight navigation items stand between the top of the document and the
          content, on every single view change. Without a way past them a keyboard
-         user tabs through the whole sidebar to reach the table they came for, and
+         user tabs through the whole rail to reach the table they came for, and
          does it again the next time. WCAG 2.4.1 calls this bypassing blocks; it is
          one link and it is only visible when it has focus. -->
     <a class="skip-link" href="#view">Skip to content</a>
     <div class="shell">
-      <aside class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-          <!-- Shown only once the sidebar collapses to its 64px rail, where the
-               wordmark does not fit. Same artwork, cropped to the G. -->
-          <span class="brand-mark">${mark('GEMP')}</span>
-          <div class="sidebar-brand-text">
-            <h1 class="brand-wordmark">${wordmark('GEMP')}</h1>
-            <p class="sub">Team Ecoforge</p>
+      <nav class="rail" aria-label="GEMP sections">
+        <div class="rail-logo">${wordmark('GEMP')}</div>
+        ${navItems}
+        <div class="rail-spacer"></div>
+        <!-- What you are, above a hairline. Not a decoration: which of these
+             screens will accept an action from you is decided by this word, and
+             two of them say so in their own copy. -->
+        <div class="rail-foot">
+          <div class="rail-identity">
+            <span class="rail-who" title="${who}">${who}</span>
+            <span class="rail-role">${escapeHtml(state.user.role)}</span>
           </div>
+          <button class="rail-signout" type="button" id="sign-out">
+            ${icon('signout')}<span>Sign out</span>
+          </button>
         </div>
-
-        <nav class="nav" aria-label="Views">${navItems}</nav>
-
-        <div class="sidebar-foot">
-          <div class="status" id="status" role="status">
-            <span class="nav-slot"><span class="dot" id="health-dot"></span></span>
-            <span id="health-text" class="nav-label">connecting</span>
-          </div>
-          <button class="nav-item" type="button" data-view="account"
-                  aria-label="Account settings for ${who}">
-            ${icon('account')}
-            <span class="nav-label nav-user">
-              <span class="nav-user-name">${who}</span>
-              <span class="badge role">${escapeHtml(state.user.role)}</span>
-            </span>
-          </button>
-          <button class="nav-item" type="button" id="sign-out">
-            ${icon('signout')}<span class="nav-label">Sign out</span>
-          </button>
-          <button class="nav-item" type="button" id="nav-toggle"
-                  aria-controls="sidebar" aria-expanded="true">
-            ${icon('menu')}<span class="nav-label">Collapse</span>
-          </button>
-          ${appearanceSwitch()}
-        </div>
-      </aside>
+      </nav>
 
       <div class="workspace">
-        <!-- The page header sits OUTSIDE the scrolling pane, which is what
-             keeps it and the sidebar still while fourteen rows of alerts move
-             underneath them. Views write into it through ui.pageHead(). -->
-        <div id="page-head"></div>
+        <!-- Four zones, identical on all nine screens: what this screen is, the
+             question it answers, when its numbers were read, and the two
+             controls that decide whether the room can read them.
+
+             The right-hand zone is written ONCE, here, and survives every
+             navigation. Views write only into the two slots on the left through
+             ui.pageHead(); a clock that were re-rendered per view would reset
+             its own age every time somebody changed screen, which is precisely
+             the lie it exists to prevent. -->
+        <div class="page-head">
+          <div class="page-head-text" id="page-head-text"></div>
+          <div class="page-head-side">
+            <span id="page-head-actions"></span>
+            <span class="clock" id="data-clock" role="status">
+              ${icon('clock')}
+              <span class="clock-text" id="clock-text">Read just now</span>
+              <span class="clock-tag" id="clock-tag">fresh</span>
+            </span>
+            <button type="button" class="secondary" data-refresh>
+              ${icon('refresh')}Re-read
+            </button>
+            ${textScaleSwitch()}
+            ${appearanceSwitch()}
+          </div>
+        </div>
+        <!-- The two strips live between the header and the content so that
+             neither can cover a control that has focus. -->
+        <div id="strips"></div>
         <!-- tabindex="-1" so the skip link can actually move focus here. A
              fragment link alone scrolls the page without moving the focus ring,
-             so the next Tab press carries on from the sidebar regardless. -->
+             so the next Tab press carries on from the rail regardless. -->
         <main id="view" tabindex="-1"></main>
       </div>
     </div>`;
 
   wireAppearance($('root'));
+  wireTextScale($('root'));
+  applyScale(storedScale());
+  startClock();
+  wireReread();
 
   document.querySelectorAll('[data-view]').forEach((button) => {
     button.addEventListener('click', () => navigate(button.dataset.view));
@@ -350,29 +535,8 @@ async function showApp() {
     showLogin();
   });
 
-  /* Collapsing is a choice the person made, so it outlives a navigation. */
-  const toggle = $('nav-toggle');
-  const applyCollapse = (collapsed) => {
-    document.body.classList.toggle('nav-collapsed', collapsed);
-    toggle.setAttribute('aria-expanded', String(!collapsed));
-    try { window.localStorage.setItem(NAV_KEY, collapsed ? 'collapsed' : 'open'); } catch { /* ignore */ }
-  };
-  toggle.addEventListener('click', () =>
-    applyCollapse(!document.body.classList.contains('nav-collapsed')));
-  try {
-    applyCollapse(window.localStorage.getItem(NAV_KEY) === 'collapsed');
-  } catch { applyCollapse(false); }
-
-  /* The status light belongs to the shell, so the shell asks. It used to be the map
-   * view's job, which meant every other screen showed "connecting" indefinitely on a
-   * system that had connected. Not awaited: the shell must not wait on a health probe
-   * before showing the view somebody asked for. */
-  checkHealth();
-
   await navigate(fromHash() || 'overview');
 }
-
-const NAV_KEY = 'gemp.nav';
 
 function fromHash() {
   const key = window.location.hash.replace(/^#\/?/, '');
@@ -382,7 +546,10 @@ function fromHash() {
 async function navigate(key) {
   const view = VIEWS[key];
   if (!view) return;
-  if (view.requiredRole && !can(state.user, view.requiredRole)) return;
+  /* `requiredRole` dims the rail item; it does not block the navigation. The
+   * screen behind it explains what it holds and who can open it, which is the
+   * whole reason the item is still in the rail. Refusing to navigate would
+   * leave the previous screen on display with a rail item that looks broken. */
 
   state.view = key;
   window.location.hash = `#/${key}`;
@@ -394,9 +561,13 @@ async function navigate(key) {
     else item.removeAttribute('aria-current');
   });
   /* Cleared here rather than by each view, so a view that throws before it
-   * renders cannot leave the previous screen's title above the error. */
-  const head = $('page-head');
-  if (head) head.innerHTML = '';
+   * renders cannot leave the previous screen's title above the error - and so
+   * that a result strip about the screen you just left ("42 alerts
+   * acknowledged") does not follow you to the next one. The clock is not
+   * touched: it belongs to the read, not to the screen. */
+  $('page-head-text').innerHTML = '';
+  $('page-head-actions').innerHTML = '';
+  $('result-strip')?.remove();
 
   /* Every listener a view attaches outside its own subtree is tied to this.
    *
@@ -413,7 +584,19 @@ async function navigate(key) {
   if (state.viewLifetime) state.viewLifetime.abort();
   state.viewLifetime = new AbortController();
 
-  const root = $('view');
+  /* A FRESH element per navigation, not the same one cleared.
+   *
+   * Aborting the lifetime stops the listeners, but it does not stop a request
+   * that is already in flight: the previous screen's fetch resolves a second
+   * later and writes its markup into `#view`, which by then belongs to the
+   * screen you asked for. The overview did exactly that over the top of the
+   * map. Handing each view its own node means a late write lands in a detached
+   * element and is simply never seen. */
+  const previous = $('view');
+  const root = document.createElement('main');
+  root.id = 'view';
+  root.tabIndex = -1;
+  previous.replaceWith(root);
   root.innerHTML = '<div class="loading">Loading…</div>';
   try {
     await view.render(root, {
@@ -426,9 +609,13 @@ async function navigate(key) {
      * the abort signal is: a view should not have to remember cross-cutting
      * furniture, and seven views each remembering it differently is how they
      * drift apart. */
+    /* The read happened when the view's data arrived, which is here - not when
+     * somebody clicked the rail. A view that knows its own data-time stamp says
+     * so again with it; this is the floor. */
+    markRead();
+
     const signal = state.viewLifetime.signal;
     hydrateCharts(root, signal);
-    showAge(signal);
 
     /* A view can rebuild itself without the shell knowing - the Refresh button in
      * the workspace header calls the view's own render(). Everything hydrated
@@ -436,10 +623,7 @@ async function navigate(key) {
      * connected, so the charts would go back to drawing at a fixed width and the
      * age chip would simply vanish. Watching for that is cheaper than asking
      * every view to remember to announce it. */
-    const rehydrate = new MutationObserver(() => {
-      hydrateCharts(root, signal);
-      if (!document.querySelector('.freshness-age')) showAge(signal);
-    });
+    const rehydrate = new MutationObserver(() => hydrateCharts(root, signal));
     rehydrate.observe(root, { childList: true, subtree: true });
     signal.addEventListener('abort', () => rehydrate.disconnect());
   } catch (error) {
@@ -456,42 +640,6 @@ async function refreshSession() {
     const session = await api.session();
     if (session.authenticated) state.user = session.user;
   } catch { /* the next request will discover it too */ }
-}
-
-/* --------------------------------------------------------------- staleness */
-
-/* Data time advances at 720x, so a screen that was accurate when it loaded is
- * wrong a minute later - and the data clock in the header keeps stating the
- * moment it was read, with nothing to say that moment has passed.
- *
- * Nothing is polled. A dashboard that re-fetches on a timer during a
- * demonstration competes for the same solver the person is dragging a slider
- * against, and it moves numbers under someone who is talking about them. What
- * this does instead is age the stamp honestly: the reading is from then, this is
- * how long ago that was, the Refresh button is right there.
- */
-const AGE_TICK_MS = 15000;
-const STALE_AFTER_MS = 120000;
-
-function showAge(signal) {
-  const stamp = document.querySelector('.freshness');
-  if (!stamp) return;
-
-  const readAt = Date.now();
-  const age = document.createElement('span');
-  age.className = 'freshness-age';
-  stamp.appendChild(age);
-
-  const tick = () => {
-    const seconds = Math.round((Date.now() - readAt) / 1000);
-    age.textContent = seconds < 45 ? 'read just now'
-      : `read ${Math.round(seconds / 60)} min ago`;
-    age.classList.toggle('stale', Date.now() - readAt > STALE_AFTER_MS);
-  };
-  tick();
-
-  const timer = window.setInterval(tick, AGE_TICK_MS);
-  signal?.addEventListener('abort', () => window.clearInterval(timer));
 }
 
 /* -------------------------------------------------------------------- boot */
