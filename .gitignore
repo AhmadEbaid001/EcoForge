@@ -46,7 +46,11 @@ CLAUDE.md
 CLAUDE-DESIGN-BRIEF.md
 HANDOFF.md
 HANDOFF-UI-UX.md
+SESSION-HANDOFF.md
 STITCH-PROMPT.md
+
+# Design reference bundle: prototypes and generated fixture data, not the platform.
+design_handoff_gemp/
 
 # --- agent scratch ---
 # .claude/ holds linked git worktrees: a full second copy of the tree, including
