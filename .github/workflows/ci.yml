@@ -1,22 +1,50 @@
-# The same four gates as `python scripts/check.py`, which is what enforces them
-# today - this repository has no remote yet, so nothing here has ever run. It is
-# committed anyway: the moment the work is pushed the gates apply, and a reviewer can
-# see what "passing" is defined as without running anything.
+# The gates, the security review, and the image the deploy workflow consumes.
+#
+# Three jobs, ordered by how fast they fail. `gates` is the four checks
+# `scripts/check.py` runs locally and takes about three minutes; `security` runs
+# every scanner and is allowed to take longer; `build` happens only if both passed,
+# because there is no reason to push an image nobody may deploy.
+#
+# The security policy is BLOCK ON ANYTHING. Every scanner writes SARIF into
+# reports/ and `scripts/security_gate.py` returns the single verdict, applying the
+# exception register in .security/allowlist.yml - the only way past a finding, and
+# one that expires. See that file for why it is a file and not a flag.
 #
 # No database service. The suite runs against SQLite by design and the PostgreSQL
-# integration tests skip themselves when nothing is listening, so CI stays a
-# three-minute job. Running the container stack here would test Docker's networking,
-# not the platform.
+# integration tests skip themselves when nothing is listening, so CI stays short.
+# Running the container stack here would test Docker's networking, not the platform.
+#
+# On pinning: actions are referenced by major tag. Pinning to a commit SHA is
+# stricter and is the right end state - `gh api` resolves the current SHA for each -
+# but a wrong SHA is a build that cannot run at all, so it is a deliberate follow-up
+# rather than a value guessed here. Dependabot watches these tags.
 name: ci
 
 on:
   push:
-    branches: [master, main]
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
+# Read-only by default. Each job asks for exactly what it needs and nothing else, so
+# a compromised action in one job cannot write to the repository from another.
+permissions:
+  contents: read
+
+# One run per ref. A push landing on top of a running build cancels it rather than
+# racing it to the registry.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}
+
 jobs:
-  check:
+  # ---------------------------------------------------------------- gates
+  gates:
+    name: gates
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -62,3 +90,227 @@ jobs:
           name: evaluation
           path: out/evaluation/
           if-no-files-found: ignore
+
+  # ------------------------------------------------------ secure code review
+  security:
+    name: secure code review
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      # SARIF upload, so findings appear on the pull request and in the Security tab
+      # rather than only in a log nobody opens.
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks reads history, not only the tip: a secret committed and later
+          # removed is still a secret that was published.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: mkdir -p reports
+
+      - name: Install scanners
+        run: pip install -e ".[dev]" "bandit[sarif]" semgrep pip-audit
+
+      # -- static analysis of our own code ---------------------------------
+      - name: Bandit
+        continue-on-error: true
+        run: bandit -r src scripts -f sarif -o reports/bandit.sarif
+
+      - name: Semgrep
+        continue-on-error: true
+        run: |
+          semgrep scan \
+            --config p/python \
+            --config p/security-audit \
+            --config p/secrets \
+            --config p/owasp-top-ten \
+            --sarif --output reports/semgrep.sarif \
+            --metrics off \
+            src scripts
+
+      # -- what we depend on ------------------------------------------------
+      - name: pip-audit
+        continue-on-error: true
+        run: pip-audit --format json --output reports/pip-audit.json --progress-spinner off
+
+      # -- secrets, including ones already deleted --------------------------
+      - name: Gitleaks
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          GITLEAKS_ENABLE_SUMMARY: "false"
+          GITLEAKS_SARIF_PATH: reports/gitleaks.sarif
+
+      # -- how we build it and how we run it --------------------------------
+      - name: Hadolint
+        continue-on-error: true
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: infra/Dockerfile
+          format: sarif
+          output-file: reports/hadolint.sarif
+          no-fail: true
+
+      - name: Trivy filesystem, config and IaC
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: reports/trivy-fs.sarif
+          # The gate decides what blocks, not the scanner. One policy, one place.
+          exit-code: "0"
+
+      - name: Build the image for scanning
+        run: docker build -f infra/Dockerfile -t gemp:scan .
+
+      - name: Trivy image
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: gemp:scan
+          scanners: vuln,secret
+          format: sarif
+          output: reports/trivy-image.sarif
+          exit-code: "0"
+
+      # -- one verdict -------------------------------------------------------
+      - name: Publish findings to the Security tab
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports
+
+      - name: Security gate
+        # Every scanner above is `continue-on-error`, deliberately: a scanner that
+        # crashed must not be indistinguishable from a scanner that found nothing,
+        # and this step is what tells the two apart. It reads every report, applies
+        # the exception register, and is the only step here allowed to fail the job.
+        run: python scripts/security_gate.py reports --summary "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: reports/
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------- build
+  build:
+    name: build and sign
+    needs: [gates, security]
+    # Only ever from the default branch. A pull request from a fork must not be able
+    # to push an image, and a green pull request is not a release.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      # Keyless signing: cosign exchanges this short-lived OIDC token for a
+      # certificate. No private key exists to leak, rotate, or forget.
+      id-token: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest
+
+      - name: Emulation for the ARM build
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile
+          # amd64 for a laptop or an ordinary VPS, arm64 because the only
+          # always-free tier large enough to run this honestly - Oracle's Ampere A1,
+          # 4 cores and 24 GB - is ARM. Every dependency that matters here
+          # (ortools, scikit-learn, pandas, numpy, psycopg) publishes a Linux
+          # aarch64 wheel for cp311, so nothing is compiled from source and the ARM
+          # build is not meaningfully slower than the x86 one.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image
+        # By DIGEST, never by tag. A tag can be moved to point at something else
+        # after it is signed; a digest is the image.
+        run: cosign sign --yes "${REGISTRY}/${IMAGE}@${DIGEST}"
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+
+      - name: Attest the SBOM
+        run: |
+          cosign attest --yes \
+            --predicate sbom.cyclonedx.json \
+            --type cyclonedx \
+            "${REGISTRY}/${IMAGE}@${DIGEST}"
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cyclonedx.json
+
+      - name: Summary
+        run: |
+          {
+            echo "## Image"
+            echo
+            echo '```'
+            echo "${REGISTRY}/${IMAGE}@${DIGEST}"
+            echo '```'
+            echo
+            echo "Signed keylessly, published with a CycloneDX SBOM attestation."
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}

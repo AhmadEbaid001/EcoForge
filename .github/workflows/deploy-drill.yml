@@ -1,0 +1,189 @@
+# Prove the deploy works, and prove the rollback works, without owning a server.
+#
+# The runner IS the host. It has Docker, 4 cores and 16 GB, and it is thrown away
+# afterwards - which makes it a better place to test a rollback than a machine you
+# care about. Every push that touches the deploy scripts runs the whole sequence:
+# migrate, swap, health, smoke, then a deliberately broken release to prove the
+# host puts the old one back.
+#
+# This is the part of the pipeline that cannot be tested by succeeding. A rollback
+# path is only ever exercised on the worst day unless something exercises it on
+# purpose, and the first version of `deploy.sh` in this repository had a bug that
+# made the rollback unreachable for the commonest failure - found exactly this way.
+#
+# It needs no cloud account, no credit card, and no secrets.
+name: deploy drill
+
+on:
+  pull_request:
+    paths:
+      - "infra/deploy/**"
+      - "infra/Dockerfile"
+      - "docker-compose.yml"
+      - ".github/workflows/deploy-drill.yml"
+  schedule:
+    # Mondays, 04:00 UTC. A drill that only runs when someone edits the deploy
+    # scripts stops running the moment nobody is editing them, which is exactly
+    # when it is most worth knowing it still passes.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drill:
+    name: deploy, break, roll back
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Secrets for this throwaway host
+        # Real generated values, not placeholders: the signing key has to be a real
+        # key or the ingester refuses to start, and a drill that skips that is not
+        # testing the thing that runs in production.
+        run: python scripts/setup_env.py
+
+      - name: Build the release under test
+        run: |
+          docker build -f infra/Dockerfile -t gemp-core:drill .
+
+      - name: Build a release that starts and then dies
+        # The shape of failure this exists to catch: not a build error, which `ci`
+        # would have caught, but a runtime one that only appears on the host.
+        run: |
+          printf 'FROM gemp-core:drill\nCMD ["python","-c","import sys; sys.exit(1)"]\n' \
+            | docker build -t gemp-core:drill-broken -
+      - name: Bring up the infrastructure this release deploys onto
+        # The database and the broker are NOT part of a release - deploy.sh never
+        # touches them - so they are started here, once, exactly as they would
+        # already be running on a real host.
+        run: |
+          docker compose up -d timescaledb mosquitto nginx
+          for i in $(seq 1 30); do
+            if docker compose exec -T timescaledb pg_isready -U gemp -d gemp >/dev/null 2>&1; then
+              echo "database ready"; exit 0
+            fi
+            sleep 3
+          done
+          echo "database never became ready" >&2
+          docker compose logs --tail 40 timescaledb
+          exit 1
+
+      # ------------------------------------------------------------------
+      - name: Deploy the good release
+        env:
+          GEMP_HEALTH_TIMEOUT_S: "180"
+        run: |
+          set -euo pipefail
+          ./infra/deploy/deploy.sh gemp-core:drill
+          echo "--- what is running ---"
+          docker compose ps --format 'table {{.Service}}\t{{.Image}}\t{{.Status}}'
+
+      - name: It is actually serving
+        run: |
+          set -euo pipefail
+          curl -fsS http://localhost:8080/health | tee /dev/stderr | grep -q '"database":"ok"'
+          curl -fsS http://localhost:8080/ | grep -q 'id="root"'
+          curl -fsS http://localhost:8080/api/v1/auth/session | grep -q '"authenticated":false'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/meta)" = "401"
+          echo "serving, and still refusing anonymous callers"
+
+      - name: The schema was migrated, not assumed
+        # deploy.sh ran `alembic upgrade head` from inside the image against an empty
+        # database. If that had silently done nothing, the tables would not exist.
+        run: |
+          set -euo pipefail
+          docker compose exec -T timescaledb psql -U gemp -d gemp -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" \
+            | tee /dev/stderr | awk '$1 < 5 { print "too few tables - migrations did not run"; exit 1 }'
+          docker compose exec -T timescaledb psql -U gemp -d gemp -tAc \
+            "SELECT version_num FROM alembic_version;" | tee /dev/stderr | grep -qE '\w'
+
+      - name: Record what a good deploy left behind
+        id: good
+        run: |
+          echo "image=$(cat .deploy/last-good-image)" >> "$GITHUB_OUTPUT"
+          cat .deploy/last-good-image
+
+      # ------------------------------------------------------------------
+      - name: Deploy the broken release, and expect it to fail
+        env:
+          GEMP_HEALTH_TIMEOUT_S: "45"
+          GEMP_HEALTH_INTERVAL_S: "5"
+        run: |
+          set -uo pipefail
+          if ./infra/deploy/deploy.sh gemp-core:drill-broken; then
+            echo "::error::the broken release was accepted - the health gate did not stop it"
+            exit 1
+          fi
+          echo "rejected, as it should be"
+
+      - name: The previous release is serving again
+        # The whole point. A rollback that leaves the site down is not a rollback,
+        # and a rollback that reports success while serving the broken build is
+        # worse than none at all.
+        run: |
+          set -euo pipefail
+          curl -fsS http://localhost:8080/health | grep -q '"database":"ok"'
+          curl -fsS http://localhost:8080/ | grep -q 'id="root"'
+
+          running="$(docker inspect --format '{{.Image}}' "$(docker compose ps -q core)")"
+          echo "core is running: ${running}"
+
+          broken="$(docker image inspect --format '{{.Id}}' gemp-core:drill-broken)"
+          if [ "${running}" = "${broken}" ]; then
+            echo "::error::the broken image is still running - it was not rolled back"
+            exit 1
+          fi
+          echo "rolled back and serving"
+
+      - name: The last-good pointer was not moved by a failed deploy
+        # A failed release must not become the thing the next rollback goes back to.
+        run: |
+          set -euo pipefail
+          now="$(cat .deploy/last-good-image)"
+          echo "before: ${{ steps.good.outputs.image }}"
+          echo "after:  ${now}"
+          test "${now}" = "${{ steps.good.outputs.image }}" \
+            || { echo "::error::a failed deploy overwrote the rollback target"; exit 1; }
+
+      # ------------------------------------------------------------------
+      - name: Backups restore, not just run
+        run: |
+          set -euo pipefail
+          ./infra/deploy/backup.sh
+          d="$(ls -d .deploy/backups/*/ | tail -1)"
+          ./infra/deploy/restore.sh "$d" --into gemp_drill_restore
+
+      - name: What happened
+        if: always()
+        run: |
+          {
+            echo "## Deploy drill"
+            echo
+            echo '```'
+            tail -40 .deploy/deploy.log 2>/dev/null || echo "no deploy log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Logs, if it went wrong
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 80 core || true
+          docker compose logs --tail 30 nginx || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v || true

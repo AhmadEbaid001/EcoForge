@@ -1,0 +1,217 @@
+# One click, one host, one way back.
+#
+# Runs automatically when `ci` finishes green on main, and on demand from the
+# Actions tab with a digest - which is also how you roll forward to a specific
+# known-good build without reverting anything.
+#
+# What it does NOT do is decide whether the code is safe. That decision belongs to
+# the `ci` workflow, and this job refuses to run if `ci` came back as anything other
+# than success. Pushing straight to main does not skip the security gate: the deploy
+# is triggered BY the ci run and carries its conclusion.
+#
+# The environment is where the human gate lives. Give `production` a required
+# reviewer in Settings > Environments and every deploy there waits for an approval;
+# leave it open and this is genuinely one click. Manual runs default to `staging`,
+# so the careless click is the safe one.
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: "Image digest to deploy, e.g. sha256:abc… (blank = latest built)"
+        required: false
+        type: string
+      target:
+        description: "Which host to deploy to"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+# Per environment, so a staging deploy and a production deploy do not queue behind
+# each other - but never two of the same, and never cancelled half way: an
+# interrupted deploy leaves the host in a state whose rollback pointer was never
+# written.
+concurrency:
+  group: deploy-${{ inputs.target || 'production' }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The gate: a failed, cancelled or skipped ci run does not deploy.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    # Two environments, each with its own secrets and its own approval rule. The
+    # VM mirror this project already keeps is the natural staging host: deploy
+    # there first, look at it, then promote the same digest to the laptop. That
+    # costs one extra click and means a release has run somewhere real before it
+    # runs where it is being demonstrated.
+    environment:
+      name: ${{ inputs.target || 'production' }}
+      url: ${{ vars.GEMP_URL }}
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+      # Only so a failed deploy can open an issue about itself.
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve what to deploy
+        id: target
+        # A digest if one was given, otherwise the tag the build job just wrote.
+        # Either way the host resolves it to a digest before recording anything, so
+        # the rollback pointer is always immutable and never a tag someone can move.
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_DIGEST}" ]; then
+            ref="${REGISTRY}/${IMAGE}@${INPUT_DIGEST}"
+          else
+            ref="${REGISTRY}/${IMAGE}:latest"
+          fi
+          # The commit that built it travels with the image. A release is both:
+          # the image carries the application, the commit carries the compose file,
+          # the nginx config and the deploy script itself. Shipping only the image
+          # meant a compose change never reached the host.
+          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "deploying ${ref} at ${sha}"
+        env:
+          INPUT_DIGEST: ${{ inputs.digest }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify the signature before anything touches the host
+        # The image is signed keylessly by the build job, so this proves it was built
+        # by THIS repository's ci workflow rather than pushed to the registry by
+        # somebody who got hold of a token. An unverifiable image never reaches the
+        # server: this is the last point at which stopping costs nothing.
+        run: |
+          set -euo pipefail
+          cosign verify "${REF}" \
+            --certificate-identity-regexp "^https://github.com/${IMAGE}/.github/workflows/ci.yml@" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            > /dev/null
+          echo "signature verified: ${REF}"
+        env:
+          REF: ${{ steps.target.outputs.ref }}
+
+      # The runner joins your private network for the length of this job, using an
+      # OAuth client scoped to one tag rather than a reusable auth key. The host has
+      # no public SSH listener at all - port 22 is closed to the internet by ufw -
+      # so the brute-force surface every public host spends its life fighting simply
+      # does not exist. Skipped entirely if you are not using Tailscale.
+      - name: Join the private network
+        if: vars.GEMP_USE_TAILSCALE == 'true'
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          version: latest
+
+      - name: Deploy over SSH
+        # The private key is a repository secret and the host key is pinned in
+        # GEMP_SSH_KNOWN_HOSTS. Without that pin the first connection either fails or
+        # trusts whatever answered, which is the same as not checking at all.
+        #
+        # The remote end runs infra/deploy/deploy.sh: it records what is running
+        # before changing anything, health-checks afterwards, and puts the previous
+        # image back if the check fails. All of that lives ON THE HOST on purpose - a
+        # rollback that depends on this runner still being alive is not a rollback.
+        run: |
+          set -euo pipefail
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${SSH_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/id_ed25519 \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=15 \
+              -p "${SSH_PORT:-22}" \
+              "${SSH_USER}@${SSH_HOST}" \
+              -- "${REMOTE_DIR}/infra/deploy/deploy.sh" "${REF}" "${SHA}"
+        env:
+          SSH_KEY: ${{ secrets.GEMP_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.GEMP_SSH_KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.GEMP_SSH_USER }}
+          SSH_HOST: ${{ secrets.GEMP_SSH_HOST }}
+          SSH_PORT: ${{ vars.GEMP_SSH_PORT }}
+          REMOTE_DIR: ${{ vars.GEMP_REMOTE_DIR }}
+          REF: ${{ steps.target.outputs.ref }}
+          SHA: ${{ steps.target.outputs.sha }}
+
+      # A failed deploy is a red run in a tab nobody has open. The host has already
+      # rolled itself back by the time this runs, which is exactly why it needs
+      # saying out loud: the site is up, it is serving the PREVIOUS release, and
+      # without this the next thing anyone notices is demonstrating yesterday's
+      # build. An issue is used rather than a chat webhook because it needs no third
+      # party and no secret to configure.
+      - name: Open an issue if the deploy failed
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ref = '${{ steps.target.outputs.ref }}';
+            const sha = '${{ steps.target.outputs.sha }}';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Deploy to ${{ inputs.target || 'production' }} failed`,
+              labels: ['deploy'],
+              body: [
+                '`' + ref + '`',
+                '',
+                `Commit: ${sha}`,
+                `Run: ${run}`,
+                '',
+                'The host rolls itself back on a failed check, so it is most likely',
+                'serving the previous release. Confirm with `make released` on the',
+                'host, then read `.deploy/deploy.log` for the reason.',
+              ].join('\n'),
+            });
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Deploy"
+            echo
+            echo "- target: **${{ inputs.target || 'production' }}**"
+            echo "- image: \`${REF}\`"
+            echo "- commit: \`${SHA}\`"
+            echo "- result: **${{ job.status }}**"
+            echo
+            echo "A failed health check rolls the host back to the previous image by"
+            echo "itself, before this job reports. Nothing here needs undoing:"
+            echo "fix forward and push."
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          REF: ${{ steps.target.outputs.ref }}
+          SHA: ${{ steps.target.outputs.sha }}

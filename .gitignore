@@ -70,3 +70,8 @@ anchor/*
 
 # UCI dataset: 133 MB, downloadable, not versioned
 data/household_power_consumption.txt
+
+# Deploy state: which image is live and which one to go back to. Host-specific,
+# and the rollback pointer must never be overwritten by a checkout.
+.deploy/
+reports/

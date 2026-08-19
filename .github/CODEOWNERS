@@ -1,0 +1,33 @@
+# Who has to look at a change before it can be merged.
+#
+# This file only has teeth alongside branch protection - "Require review from Code
+# Owners" in Settings > Rules. Without that it is documentation. With it, the paths
+# below cannot be changed by whoever pushed them, which is the point: the two things
+# most worth a second pair of eyes are the ones that decide what gets deployed and
+# what is allowed past the security gate.
+#
+# Replace @AhmadEbaid001 with the real handles. A team is better than a person for
+# everything except the security paths, where a specific name is the point.
+
+*                       @AhmadEbaid001
+
+# The pipeline itself. A change here can turn off every check that protects the
+# other paths, so it is reviewed as a security change even when it looks like a
+# tidy-up.
+/.github/               @AhmadEbaid001
+/infra/                 @AhmadEbaid001
+
+# The exception register. Every entry is a decision to ship something a scanner
+# objected to; the whole mechanism depends on that being somebody's deliberate,
+# reviewed choice rather than a line added to make a red build go green.
+/.security/             @AhmadEbaid001
+/scripts/security_gate.py  @AhmadEbaid001
+
+# Authentication, sessions and the signed reading chain.
+/src/gemp/auth/         @AhmadEbaid001
+/src/gemp/ingest/integrity.py  @AhmadEbaid001
+
+# The numbers the paper rests on. A change to the catalog or the parameters changes
+# every claim measured against them.
+/data/catalog.csv       @AhmadEbaid001
+/data/params.yaml       @AhmadEbaid001

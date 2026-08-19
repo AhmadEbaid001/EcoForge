@@ -1,0 +1,43 @@
+# Dependency updates, opened as pull requests so they go through the same gates as
+# anything else - including the security review, which is the point. An update that
+# fixes one advisory and introduces another should be visible before it is merged,
+# not after.
+#
+# The actions ecosystem is listed first deliberately. Workflow actions run with
+# access to the repository and, in the build job, to a signing identity; they are the
+# supply-chain surface people forget they have.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      # One pull request for the routine bumps, so the queue stays readable. Security
+      # updates are deliberately NOT grouped: each arrives alone and can be reviewed,
+      # merged and deployed without waiting for anything else in the batch.
+      routine:
+        applies-to: version-updates
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /infra
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "infra"

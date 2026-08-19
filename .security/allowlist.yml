@@ -1,0 +1,26 @@
+# Accepted security findings.
+#
+# The pipeline blocks on ANY finding from any scanner. This file is the only way
+# past that, and it is deliberately not a convenient one: every entry names what
+# it excuses, who accepted it, why, and the date the acceptance runs out. An
+# expired entry fails the build on its own, whether or not the finding is still
+# there.
+#
+# That expiry is the point. An exception without one is a policy change made by
+# whoever happened to be on shift, and it outlives every memory of why it was
+# made. If a finding genuinely cannot be fixed, re-accepting it every quarter
+# with a reason that is still true is a small cost and an honest record.
+#
+# Entries are matched on `<tool>:<rule>` - exactly the key the gate prints when
+# it blocks, so a failing build tells you what to write here.
+#
+#   accepted:
+#     - id: pip-audit:GHSA-xxxx-xxxx-xxxx
+#       path: optional substring; omit to accept the rule everywhere
+#       reason: why this is acceptable HERE, not why the finding is wrong
+#       owner: the person who accepted it, not a team
+#       expires: 2026-11-30
+#
+# Reviewed in pull request like any other change, because it is one.
+
+accepted: []

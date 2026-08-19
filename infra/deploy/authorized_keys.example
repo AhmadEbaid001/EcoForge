@@ -1,0 +1,42 @@
+# What the deploy key is allowed to do on the host, which is one thing.
+#
+# The key in the GEMP_SSH_KEY secret is a credential that lives in a third party's
+# system. Treat it as one: it gets a shell only in the sense that it gets to run
+# `deploy.sh`, and nothing else. Without `command=`, anyone who obtains that secret
+# - a compromised action, a repository admin, GitHub itself - has an interactive
+# shell on the machine the demonstration runs on.
+#
+# Install as ~/.ssh/authorized_keys for the deploy user, replacing the path and the
+# key with your own:
+#
+#   command="/srv/gemp/infra/deploy/deploy-wrapper.sh",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 AAAA… gemp-deploy
+#
+# The restrictions, and why each one is there:
+#
+#   command=…              the only thing this key can run, whatever is asked for.
+#                          The requested command arrives in SSH_ORIGINAL_COMMAND and
+#                          the wrapper decides what to do with it.
+#   no-pty                 no interactive terminal. A forced command with a pty is
+#                          still a place to run things from.
+#   no-port-forwarding     the key cannot be used to tunnel into the host's network,
+#                          which on this deployment includes the database on
+#                          127.0.0.1:5433 and the broker on 127.0.0.1:1883.
+#   no-agent-forwarding    a compromised host cannot reach back through the runner's
+#                          agent to other machines.
+#   no-user-rc             ~/.ssh/rc is not sourced, so the restriction cannot be
+#                          undone by a file the deploy user can write.
+#
+# The deploy user needs membership of the `docker` group, which on any Linux host is
+# equivalent to root. That is the real privilege boundary here and it is why the
+# forced command matters more than it looks: the restriction is not defence in depth,
+# it IS the boundary.
+#
+# Generate the key pair on a machine you trust, put the PRIVATE half in the
+# GEMP_SSH_KEY repository secret, and this public half here:
+#
+#   ssh-keygen -t ed25519 -C gemp-deploy -f gemp-deploy -N ""
+#
+# And pin the host key so the runner knows what it is connecting to. Put the output
+# of this in GEMP_SSH_KNOWN_HOSTS:
+#
+#   ssh-keyscan -t ed25519 -p 22 your.host.example

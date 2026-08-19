@@ -1,0 +1,40 @@
+# A backup that happens whether or not anyone remembers.
+#
+# Install on the host as the deploy user:
+#
+#   crontab -e
+#
+# and paste the two lines below, adjusting the path. The second line is the one
+# people leave out, and it is the one that matters: a backup nobody has restored is
+# a hypothesis, so the weekly drill restores the newest backup into a scratch
+# database, checks the row counts and the constraints, and drops it. It fails loudly
+# rather than silently producing dumps that cannot be loaded.
+#
+# Twice a day rather than nightly. Data time here runs at 720x, so a day of wall
+# clock is roughly two years of simulated readings - losing "only" twelve hours of
+# it is losing more than it sounds.
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# Backup at 03:20 and 15:20. Keeps the last 7 by default (GEMP_BACKUP_KEEP).
+20 3,15 * * *   cd /srv/gemp && ./infra/deploy/backup.sh >> .deploy/backup.log 2>&1
+
+# Restore drill, Sundays at 04:10. Non-destructive: it uses a scratch database.
+10 4 * * 0      cd /srv/gemp && d=$(ls -d .deploy/backups/*/ | tail -1) && ./infra/deploy/restore.sh "$d" --into gemp_restore_test >> .deploy/backup.log 2>&1
+
+# Somewhere other than this disk.
+#
+# Both lines above write to .deploy/backups, which is on the same disk as the
+# database they are backing up. That protects against the database being corrupted,
+# dropped or restored badly. It does NOT protect against the disk failing, the
+# laptop being lost, or the volume being deleted - and one of those is the scenario
+# that actually ends the project.
+#
+# Pass a destination on other media and the same script writes there:
+#
+#   20 3,15 * * *  cd /srv/gemp && ./infra/deploy/backup.sh /mnt/backup/gemp >> .deploy/backup.log 2>&1
+#
+# For the demonstration specifically: take one backup onto a USB stick the day
+# before, verify it with `restore.sh <dir> --into gemp_restore_test`, and carry it
+# separately from the laptop.

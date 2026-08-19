@@ -23,6 +23,21 @@ services:
       GEMP_DB_RO_PASSWORD: ${GEMP_DB_RO_PASSWORD:?set GEMP_DB_RO_PASSWORD in .env}
       # Sized for the target 4 vCPU / 8 GB host.
       TIMESCALEDB_TELEMETRY: "off"
+    # One lock is taken per chunk AND per chunk index for the duration of a query
+    # that touches them, and the lock table is shared: its size is
+    # max_locks_per_transaction x max_connections. At the default 64 x 100 = 6,400
+    # slots, a single `SELECT max(ts) FROM reading` across a hypertable with 1,300+
+    # chunks can exhaust it, and every dashboard request starts with exactly that
+    # query. The symptom is "out of shared memory / You might need to increase
+    # max_locks_per_transaction", which is the server naming its own fix.
+    #
+    # The chunk count is a consequence of accelerated replay: at 720x, a one-day
+    # chunk interval creates a chunk every two real minutes. See the interval set
+    # in infra/initdb - together they stop this recurring.
+    command:
+      - postgres
+      - -c
+      - max_locks_per_transaction=1024
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/initdb:/docker-entrypoint-initdb.d:ro
@@ -58,6 +73,13 @@ services:
       retries: 10
 
   core:
+    # Build from source by default, run a published image when one is named.
+    #
+    # GEMP_IMAGE is what makes `deploy.sh` and a local `docker compose up` the same
+    # operation from compose's point of view: unset, this builds what is checked
+    # out; set to a digest, `--no-build` runs exactly that artefact and nothing is
+    # compiled on the host at all.
+    image: ${GEMP_IMAGE:-gemp-core:local}
     build:
       context: .
       dockerfile: infra/Dockerfile
@@ -85,6 +107,8 @@ services:
       start_period: 40s
 
   sim:
+    # The same image as core - they differ only in the command they run.
+    image: ${GEMP_IMAGE:-gemp-core:local}
     build:
       context: .
       dockerfile: infra/Dockerfile

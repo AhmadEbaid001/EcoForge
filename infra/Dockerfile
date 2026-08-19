@@ -17,6 +17,15 @@ RUN pip install --upgrade pip && pip install .
 
 COPY data ./data
 
+# The schema, shipped WITH the code that expects it.
+#
+# Migrations are run from inside this image at deploy time - `alembic upgrade head`
+# through `docker compose run` - so the migration and the application that needs it
+# are the same artefact and cannot be at different versions. Left on the host
+# instead, they would be whatever the checkout happened to hold.
+COPY alembic.ini ./
+COPY migrations ./migrations
+
 # Run unprivileged. The container writes only to /app/anchor, which is bind-mounted.
 RUN useradd --create-home --uid 10001 gemp \
     && mkdir -p /app/anchor \
