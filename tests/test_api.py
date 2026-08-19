@@ -258,7 +258,9 @@ def test_a_stored_run_can_be_read_back_and_annotates_the_map(client):
     run = client.get(f"/api/v1/runs/{run_id}").json()
     assert run["run_id"] == run_id
     assert run["buildings_funded"] == len(run["items"])
-    assert len(run["inputs_hash"]) == 16
+    # The whole hash, not a prefix: the interface shows all 64 characters so a
+    # run can be checked against another one, and a truncated hash cannot be.
+    assert len(run["inputs_hash"]) == 64
 
     geojson = client.get("/api/v1/map/geojson", params={"run_id": run_id}).json()
     funded = [f for f in geojson["features"] if f["properties"]["funded"]]
@@ -314,15 +316,26 @@ def test_anomaly_metrics_expose_the_threshold_actually_in_use(client):
     assert isinstance(body["worst"], list)
 
 
-def test_narrative_contrasts_two_buildings_with_different_best_measures(client):
+def test_narrative_contrasts_buildings_with_different_best_measures(client):
     """Evidences the claim that replaced the proposal's Table 1 reversal: the best
-    measure is building-specific, so no portfolio-wide priority list is right."""
+    measure is building-specific, so no portfolio-wide priority list is right.
+
+    One exemplar per distinct winning measure, up to four. The count is deliberately
+    not fixed: it is however many different right answers the catalog actually
+    produces, and pinning it to a number would let the dialog claim a contrast the
+    data had stopped containing.
+    """
     response = client.get("/api/v1/narrative/building-specific")
     assert response.status_code == 200
 
     body = response.json()
-    assert len(body["buildings"]) == 2
-    assert body["buildings"][0]["best"] != body["buildings"][1]["best"]
+    assert 2 <= len(body["buildings"]) <= 4
+
+    # Every card has a DIFFERENT winner. Two cards agreeing would illustrate the
+    # opposite of the claim the dialog exists to make.
+    winners = [b["best"] for b in body["buildings"]]
+    assert len(set(winners)) == len(winners)
+
     assert sum(body["distribution"].values()) == 50
     for building in body["buildings"]:
         assert building["options"], "the contrast is only readable with the options shown"

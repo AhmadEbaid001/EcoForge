@@ -84,6 +84,10 @@ def test_every_element_the_script_reaches_for_exists_in_the_page():
     script = script_text()
 
     ids_in_html = set(re.findall(r'id="([^"]+)"', html))
+    # Elements the shell builds at runtime - the stale strip and the result
+    # strip are created with createElement when there is something to say -
+    # carry their id from script rather than from a template.
+    ids_in_html |= set(re.findall(r"""\.id\s*=\s*['"]([^'"]+)['"]""", html))
     ids_wanted = set(re.findall(r"""\$\(['"]([^'"]+)['"]\)""", script))
     ids_wanted |= set(re.findall(r"""getElementById\(['"]([^'"]+)['"]\)""", script))
 
@@ -284,16 +288,27 @@ def test_a_screen_says_how_old_it_is():
     """Data time advances at 720x, so a stamp states a moment without admitting the
     moment has passed. Nothing is polled - re-fetching on a timer during a
     demonstration moves numbers under whoever is talking about them - so the stamp
-    ages instead, and turns amber once it is worth pressing Refresh."""
-    app = (WEB / "js" / "app.js").read_text(encoding="utf-8")
+    ages instead, and says so once it is worth pressing Re-read.
+
+    The clock is ONE component in the shell header rather than a badge per panel,
+    which is why it lives in ui.js: at 720x staleness is a property of the read,
+    not of any single figure on the screen.
+    """
+    ui = (WEB / "js" / "ui.js").read_text(encoding="utf-8")
     css = (WEB / "style.css").read_text(encoding="utf-8")
 
-    assert "freshness-age" in app, "the reading's age has to be shown, not just its stamp"
-    assert "STALE_AFTER_MS" in app, "there has to be a point at which it says so"
-    assert ".freshness-age" in css and ".stale" in css
+    assert "s ago" in ui, "the reading's age has to be shown, not just its stamp"
+    assert "STALE_AFTER_S" in ui, "there has to be a point at which it says so"
+    assert ".clock.stale" in css, "and it has to look different once it is past it"
 
-    # And it must not outlive the screen it describes.
-    assert "clearInterval" in app, "the tick has to stop when the view is torn down"
+    # Stale is stated in DATA time, with the reason. Nine hours of simulated data
+    # go past while the screen sits there for forty-five real seconds, and the age
+    # that matters to a reader is the first number, not the second.
+    assert "SIM_SPEED" in ui and "dataAge" in ui
+    assert "stale-strip" in ui, "and the strip has to say what is consequently untrue"
+
+    # One ticker, replaced rather than accumulated.
+    assert "clearInterval" in ui, "a second clock would tick against the first"
 
 
 def test_there_is_a_way_past_the_navigation():

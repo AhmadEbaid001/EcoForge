@@ -33,6 +33,7 @@ import logging
 import queue
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
@@ -50,6 +51,30 @@ QUEUE_DEPTH = 256
 # A demonstration network is not the public internet; a hung connection here must not
 # keep a worker thread parked for a minute.
 TIMEOUT_S = 5.0
+
+
+# urllib will happily open a `file://` URL, and `urlopen` on one reads the file.
+# GEMP_WEBHOOK_URL is operator configuration rather than user input, so this is not
+# a request-forgery hole - but a typo or a copied line that turns the notifier into
+# a local file reader should fail at startup with a reason, not at the first anomaly
+# with a stack trace in a worker thread.
+ALLOWED_SCHEMES = frozenset({"http", "https"})
+
+
+def _http_url_or_none(url: str | None) -> str:
+    """The configured target if it is an http(s) URL with a host, else empty."""
+    candidate = (url or "").strip()
+    if not candidate:
+        return ""
+
+    parsed = urllib.parse.urlparse(candidate)
+    if parsed.scheme.lower() not in ALLOWED_SCHEMES or not parsed.netloc:
+        log.error(
+            "GEMP_WEBHOOK_URL is %r, which is not an http or https URL with a host. "
+            "Notifications are disabled.", candidate,
+        )
+        return ""
+    return candidate
 
 
 @dataclass
@@ -79,7 +104,7 @@ class Webhook:
     """Fire-and-forget notifier. Safe to construct when no URL is configured."""
 
     def __init__(self, url: str | None, min_severity: str = "critical"):
-        self.url = (url or "").strip()
+        self.url = _http_url_or_none(url)
         self.min_severity = SEVERITY_ORDER.get(min_severity.lower(), 2)
         self.sent = 0
         self.failed = 0

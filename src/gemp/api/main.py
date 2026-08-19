@@ -19,8 +19,11 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import os
+import sys
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta
@@ -71,17 +74,71 @@ _ingester: object | None = None
 _rejected_seen = 0
 
 
+# Sync endpoints run in a threadpool, so "if it is None, build it" is a
+# check-then-act across threads: two requests arriving cold both saw None and both
+# expanded the whole candidate set - about 1,400 candidates over fifty buildings,
+# twice, while the first request was still doing it.
+_context_lock = threading.Lock()
+
+
 def get_context(session: Session = Depends(get_session)) -> OptimizerContext:
     """Cached candidate set, rebuilt when the portfolio or catalog changes."""
     global _context
-    if _context is None:
-        _context = OptimizerContext.from_db(session)
-    return _context
+    if _context is not None:
+        return _context
+    with _context_lock:
+        # Re-checked under the lock: another thread may have built it while this
+        # one waited, and rebuilding on top of that would throw away a context
+        # a concurrent request is already solving against.
+        if _context is None:
+            _context = OptimizerContext.from_db(session)
+        return _context
 
 
 def reset_context() -> None:
     global _context
-    _context = None
+    with _context_lock:
+        _context = None
+
+
+def _refuse_multiple_workers() -> None:
+    """Fail loudly rather than silently multiplying the login rate limit.
+
+    Two things in this process are per-process state and are correct only because
+    there is one of it: the login throttle counters in `gemp.auth.service`, and the
+    ingester thread. Run this app under `--workers 4` and the throttle becomes four
+    independent counters - five failures each, twenty attempts before anything is
+    refused - and four ingesters race to write the same signed chain.
+
+    Neither failure announces itself. The throttle still returns 429 eventually, the
+    ingester still ingests, and the only symptom is that a security control is
+    quietly four times weaker than it reads. So the assumption is checked instead of
+    documented: this refuses to start rather than starting wrong.
+
+    Both spellings are covered - the `--workers` flag and the WEB_CONCURRENCY
+    environment variable uvicorn and gunicorn both honour - because the environment
+    variable is the one that gets set in a compose file by someone who never read
+    this module.
+    """
+    requested = os.environ.get("WEB_CONCURRENCY", "").strip()
+    if requested.isdigit() and int(requested) > 1:
+        raise RuntimeError(
+            f"WEB_CONCURRENCY={requested}: this application holds its login throttle "
+            "and its ingester in process memory, so it must run as a single worker. "
+            "Scale it behind more containers, not more workers in one."
+        )
+
+    argv = sys.argv
+    for flag in ("--workers", "-w"):
+        if flag in argv:
+            index = argv.index(flag)
+            value = argv[index + 1] if index + 1 < len(argv) else ""
+            if value.isdigit() and int(value) > 1:
+                raise RuntimeError(
+                    f"{flag} {value}: this application holds its login throttle and "
+                    "its ingester in process memory, so it must run as a single "
+                    "worker. Scale it behind more containers, not more workers in one."
+                )
 
 
 def _start_ingester() -> tuple[object, threading.Thread] | tuple[None, None]:
@@ -133,6 +190,9 @@ def configure_logging() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
+    # Before anything else: the throttle counters and the ingester below are both
+    # per-process state, and both are silently wrong under more than one worker.
+    _refuse_multiple_workers()
     log.info("gemp api starting")
     ingester, thread = _start_ingester()
 
@@ -154,11 +214,20 @@ async def lifespan(app: FastAPI):
         log.info("gemp api stopping")
 
 
+# `/docs`, `/redoc` and `/openapi.json` are public paths - see PUBLIC_PREFIXES in
+# gemp.auth.deps - so when they exist they are served to anyone who can reach the
+# port. Not mounting them is the difference between "an anonymous caller can read the
+# whole API surface" and "an anonymous caller can read /health".
+_docs = get_settings().api_docs
+
 app = FastAPI(
     title="GEMP",
     description="Budget-constrained retrofit decision support for public building portfolios.",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url="/docs" if _docs else None,
+    redoc_url="/redoc" if _docs else None,
+    openapi_url="/openapi.json" if _docs else None,
 )
 
 
@@ -408,21 +477,53 @@ class OptimizeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# /health is public and unauthenticated, and `latest_reading_ts` is a max() across
+# the whole reading hypertable - the single most expensive query the service runs,
+# taking a lock per chunk while it does. An anonymous caller could therefore drive
+# arbitrary database load through the one endpoint nginx serves with `access_log
+# off`, so the flood would not even appear in a log.
+#
+# The answer is cached for a couple of seconds. Container healthchecks poll every
+# five to thirty seconds and see no difference; a caller hammering the endpoint gets
+# the same cached dict and touches the database once per window.
+HEALTH_TTL_S = 2.0
+_health_cache: tuple[float, dict, int] | None = None
+_health_lock = threading.Lock()
+
+
 @app.get("/health")
 def health(session: Session = Depends(get_session)) -> JSONResponse:
     """Per-dependency status, so a failing container says which dependency failed."""
-    status = {"api": "ok", "database": "unknown", "readings": None,
-              "ingest": _ingest_status()}
-    code = 200
+    global _health_cache
+
+    now = time.monotonic()
+    cached = _health_cache
+    if cached is not None and now - cached[0] < HEALTH_TTL_S:
+        return JSONResponse(cached[1], status_code=cached[2])
+
+    # One prober refreshes; the rest are served the previous answer rather than
+    # queueing behind it, which is the whole point of the cache.
+    if not _health_lock.acquire(blocking=False):
+        if cached is not None:
+            return JSONResponse(cached[1], status_code=cached[2])
+        _health_lock.acquire()
+
     try:
-        session.execute(text("SELECT 1"))
-        status["database"] = "ok"
-        latest = latest_reading_ts(session)
-        status["readings"] = latest.isoformat() if latest else None
-    except Exception as exc:  # noqa: BLE001 - health must report, not raise
-        status["database"] = f"error: {type(exc).__name__}"
-        code = 503
-    return JSONResponse(status, status_code=code)
+        status = {"api": "ok", "database": "unknown", "readings": None,
+                  "ingest": _ingest_status()}
+        code = 200
+        try:
+            session.execute(text("SELECT 1"))
+            status["database"] = "ok"
+            latest = latest_reading_ts(session)
+            status["readings"] = latest.isoformat() if latest else None
+        except Exception as exc:  # noqa: BLE001 - health must report, not raise
+            status["database"] = f"error: {type(exc).__name__}"
+            code = 503
+        _health_cache = (time.monotonic(), status, code)
+        return JSONResponse(status, status_code=code)
+    finally:
+        _health_lock.release()
 
 
 def _ingest_status() -> str:
@@ -777,10 +878,16 @@ def building_specific_narrative(
             ],
         }
 
-    # The largest building in each of the two most common groups: bigger buildings
-    # make the contrast legible rather than marginal.
+    # The largest building in each of the most common groups, up to four: bigger
+    # buildings make the contrast legible rather than marginal.
+    #
+    # ONE PER GROUP, and never more groups than exist. The whole point of the
+    # dialog is that these buildings disagree about which measure wins, so two
+    # cards with the same winner would be an illustration of the opposite claim.
+    # If the catalog ever collapses to a single winner the endpoint 409s above
+    # rather than showing a contrast that is not there.
     picks = []
-    for _intervention, ids in ranked[:2]:
+    for _intervention, ids in ranked[:4]:
         picks.append(max(ids, key=lambda i: by_building[i].annual_kwh))
 
     return {
@@ -906,6 +1013,25 @@ def optimize(
     return OptimizeResponse.build(run_id if request.persist else None, allocation)
 
 
+def _comparable(value: float | None) -> float | None:
+    """A percentage that can be put on a screen, or None.
+
+    `improvement_pct` reports an undefined comparison as infinity, which is the
+    right answer for the CLI and the claims harness: the baseline achieved
+    nothing, so the ratio has no value. It cannot travel to a browser. Pydantic
+    serialises a non-finite float as `null`, which is indistinguishable from the
+    `null` this endpoint puts on the baseline's own row - so at any budget where
+    an equal split buys nothing, every method in the table reported itself as the
+    baseline and the comparison column said nothing at all.
+
+    Undefined is returned as None with a companion flag, so the client can say
+    which of the two kinds of "no number" it is looking at.
+    """
+    if value is None:
+        return None
+    return value if math.isfinite(value) else None
+
+
 @app.post("/api/v1/compare", dependencies=[Depends(require(ANALYST))])
 def compare_solvers(
     request: OptimizeRequest,
@@ -945,7 +1071,9 @@ def compare_solvers(
                 "solve_ms": allocation.solve_ms,
                 "improvement_vs_equal_split_pct": (
                     None if name == "equal_split"
-                    else improvement_pct(allocation, baseline, request.objective)
+                    else _comparable(
+                        improvement_pct(allocation, baseline, request.objective)
+                    )
                 ),
             }
             for name, allocation in results.items()
@@ -954,12 +1082,16 @@ def compare_solvers(
         # roughly 16 M EGP it stops spending and any gap measured against it is its
         # saturation rather than the value of exact optimization. Both are returned so
         # the difference is visible instead of a matter of which key was chosen.
-        "cpsat_vs_greedy_upgrade_pct": improvement_pct(
+        "cpsat_vs_greedy_upgrade_pct": _comparable(improvement_pct(
             results["cpsat"], results["greedy_upgrade"], request.objective
-        ),
-        "cpsat_vs_greedy_pct": improvement_pct(
+        )),
+        "cpsat_vs_greedy_pct": _comparable(improvement_pct(
             results["cpsat"], results["greedy"], request.objective
-        ),
+        )),
+        # Whether the status quo achieved anything at all. Without this the client
+        # sees a null and cannot tell "this row IS the baseline" from "the baseline
+        # scored zero, so a percentage against it has no meaning".
+        "equal_split_scored": baseline.buildings_funded > 0,
     }
 
 
@@ -981,7 +1113,16 @@ def read_run(run_id: str, session: Session = Depends(get_session)) -> dict:
         "total_cost_egp": run.total_cost_egp,
         "total_benefit_kgco2e": run.total_benefit_kgco2e,
         "solve_ms": run.solve_ms,
-        "inputs_hash": run.inputs_hash[:16],
+        "max_funded_per_district": run.max_funded_per_district,
+        # The FULL 64 characters, not a prefix.
+        #
+        # This hash is the provenance of the allocation: it covers the fifty building
+        # records, their consumption figures, the budget, the objective, the district
+        # cap and the method, so the same hash means the same allocation and a
+        # different one means an input moved and the two runs are not comparable. A
+        # truncated hash cannot be checked against anything, which leaves the claim
+        # unverifiable - and the interface shows it in full for exactly that reason.
+        "inputs_hash": run.inputs_hash,
         "items": [
             {"building_code": i.building_code, "district": i.district, "label": i.label,
              "cost_egp": i.cost_egp, "annual_kwh_saving": i.annual_kwh_saving}

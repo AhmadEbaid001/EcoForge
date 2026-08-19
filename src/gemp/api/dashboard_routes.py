@@ -75,6 +75,10 @@ def summary(session: Session = Depends(get_session)) -> dict:
             "budget_egp": latest_run.budget_egp,
             "objective": latest_run.objective,
             "solver": latest_run.solver,
+            # The cap is part of what was decided, and the overview says so on a
+            # card. Without it the card had to print "none" for every run,
+            # including the ones that were capped.
+            "max_funded_per_district": latest_run.max_funded_per_district,
             "buildings_funded": latest_run.buildings_funded,
             "total_cost_egp": latest_run.total_cost_egp,
             "total_benefit_kgco2e": latest_run.total_benefit_kgco2e,
@@ -121,12 +125,20 @@ def _raw_hourly(session: Session, cutoff) -> list:
     `date_trunc` is PostgreSQL, `strftime` is SQLite, and writing both means the
     dashboard silently means something different depending on where it runs.
     """
-    rows = session.execute(
-        select(ReadingRow.ts, ReadingRow.kw).where(ReadingRow.ts >= cutoff)
-    ).all()
-
+    # Streamed, not materialised. This is the path taken when the continuous
+    # aggregate is unavailable - which includes the case where it failed because
+    # the database is already under pressure - and `.all()` here pulled every
+    # reading in the window into a list first. At 90 days across fifty buildings
+    # that is millions of rows held at once, so the recovery path was heavier than
+    # the query it was recovering from. The bucket dictionary is bounded by the
+    # number of HOURS in the window either way.
     buckets: dict = defaultdict(float)
-    for ts, kw in rows:
+    result = session.execute(
+        select(ReadingRow.ts, ReadingRow.kw)
+        .where(ReadingRow.ts >= cutoff)
+        .execution_options(stream_results=True, yield_per=10_000)
+    )
+    for ts, kw in result:
         buckets[ts.replace(minute=0, second=0, microsecond=0)] += float(kw)
     return sorted(buckets.items())
 
@@ -189,7 +201,12 @@ def anomaly_feed(
     stmt = (
         select(AnomalyRow, BuildingRow.code)
         .join(BuildingRow, BuildingRow.id == AnomalyRow.building_id)
-        .order_by(func.abs(AnomalyRow.robust_z).desc())
+        # NULLS LAST, like the sibling query in /metrics/anomaly. PostgreSQL sorts
+        # nulls FIRST on a descending order and treats NaN as larger than every
+        # number, so a row with no usable z score would have taken the top of a
+        # list whose whole contract is "worst first" - and the inbox renders it as
+        # an em dash, putting a blank row where the worst alert should be.
+        .order_by(func.abs(AnomalyRow.robust_z).desc().nullslast())
         .limit(limit)
     )
     if only_open:
@@ -239,7 +256,11 @@ def recent_runs(
             "total_cost_egp": row.total_cost_egp,
             "total_benefit_kgco2e": row.total_benefit_kgco2e,
             "solve_ms": row.solve_ms,
-            "inputs_hash": row.inputs_hash[:16],
+            "max_funded_per_district": row.max_funded_per_district,
+            # Full length, for the same reason /runs/{id} returns it in full: the
+            # hash is what makes a run re-findable and reproducible, and half of one
+            # proves nothing.
+            "inputs_hash": row.inputs_hash,
         }
         for row in rows
     ]
@@ -259,7 +280,8 @@ def forecast_vs_actual(
     """
     newest = latest_reading_ts(session, building_id)
     if newest is None:
-        return {"building_id": building_id, "actual": [], "forecast": []}
+        return {"building_id": building_id, "actual": [], "forecast": [],
+                "model_version": None}
 
     cutoff = newest - timedelta(hours=hours)
 
@@ -275,8 +297,20 @@ def forecast_vs_actual(
         ORDER BY ts
     """), {"b": building_id, "cutoff": cutoff}).all()
 
+    # Which forecaster actually won for THIS building. The aggregate endpoint
+    # reports the split across the portfolio, which does not answer "and what is
+    # costing the building I am looking at" - and that is the question a reader
+    # doubting one number has.
+    model_version = session.execute(text("""
+        SELECT model_version FROM forecast
+        WHERE building_id = :b
+        ORDER BY ts DESC
+        LIMIT 1
+    """), {"b": building_id}).scalar()
+
     return {
         "building_id": building_id,
+        "model_version": model_version,
         "actual": _downsample(actual),
         "forecast": _downsample(forecast),
     }

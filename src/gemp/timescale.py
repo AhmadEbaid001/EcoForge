@@ -22,7 +22,26 @@ from gemp.db import get_engine
 
 log = logging.getLogger("gemp.timescale")
 
-CHUNK_INTERVAL = "1 day"
+# One chunk per THIRTY days of data time, not one per day.
+#
+# The interval is in data time, and data time here runs at 720x: one simulated day
+# every two real minutes. A one-day interval therefore produced a chunk every two
+# minutes of uptime - about 1,400 of them across the three years of replay this
+# deployment has accumulated.
+#
+# That is not a storage problem, it is a locking one. A query that touches the whole
+# hypertable takes a lock per chunk and per chunk index for the length of the
+# transaction, out of a shared pool sized max_locks_per_transaction x
+# max_connections. `SELECT max(ts) FROM reading` is the first thing every dashboard
+# request runs, and past roughly a thousand chunks it starts failing with "out of
+# shared memory". The lock pool is raised in docker-compose.yml as well; this is the
+# other half, and it is the half that stops the count growing again.
+#
+# Thirty days is comfortable for this dataset: the whole portfolio is about fifty
+# buildings at 15-minute resolution, so a 30-day chunk is roughly 144,000 rows - well
+# inside the "chunk should fit comfortably in memory" guidance, and it puts a
+# six-month demonstration window in about six chunks instead of 180.
+CHUNK_INTERVAL = "30 days"
 
 HOURLY_VIEW = """
 CREATE MATERIALIZED VIEW IF NOT EXISTS reading_hourly
@@ -92,6 +111,17 @@ def ensure_timescale_objects(engine: Engine | None = None) -> dict[str, str]:
             )
         """))
         result["hypertable"] = "ok"
+
+        # `create_hypertable` only honours chunk_time_interval when it CREATES the
+        # table, so an existing deployment keeps whatever it was made with. This
+        # applies the interval to chunks made from now on. Existing chunks are left
+        # exactly as they are - re-chunking would rewrite the reading table, and the
+        # signed chain stored in it is the last thing that should be rewritten to
+        # tidy up a partitioning decision.
+        connection.execute(text(
+            f"SELECT set_chunk_time_interval('reading', INTERVAL '{CHUNK_INTERVAL}')"
+        ))
+        result["chunk_interval"] = CHUNK_INTERVAL
 
         connection.execute(text(HOURLY_VIEW))
         result["continuous_aggregate"] = "ok"

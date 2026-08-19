@@ -346,7 +346,12 @@ class Ingester:
         heads: dict[str, tuple[int, bytes, datetime]] = {}
         rows: list[dict[str, Any]] = []
 
-        with self.session_factory() as session:
+        # Scoring mutates the detector's rolling statistics, and it has to happen
+        # before the commit because the anomaly rows go in the same transaction as
+        # the readings. If the commit fails the batch is requeued and scored again,
+        # so the first pass must leave no trace - the same rule the chain heads
+        # below already follow.
+        with self.detector.rollback_on_error(), self.session_factory() as session:
             dialect = session.bind.dialect.name
             stored = self._already_stored(session, pending)
 

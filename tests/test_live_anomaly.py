@@ -141,3 +141,61 @@ def test_no_residual_score_before_a_full_week_of_history():
     # and no residual can be formed.
     assert detector.flagged == 0
     assert len(detector.state["b001"].residuals) == 0
+
+
+def _memory(detector: StreamingDetector):
+    """Everything the detector remembers, in a comparable form."""
+    return (
+        {
+            building: (
+                dict(state.readings), list(state.order), list(state.residuals),
+                state.flat_run, state.last_kw,
+            )
+            for building, state in detector.state.items()
+        },
+        (detector.scored, detector.flagged, detector.evicted),
+    )
+
+
+def test_a_batch_that_is_not_stored_leaves_no_trace_in_the_detector():
+    """Scoring mutates the statistic that judges the NEXT reading.
+
+    It happens before the commit, because a flat-line run has to be counted across
+    the batch in order and the anomaly rows are written in the same transaction as
+    the readings they describe. So a failed commit used to leave the detector
+    having already seen readings the database does not hold - and the ingester
+    requeues that batch, which scored every one of them a second time. The residual
+    window ends up holding each value twice, which widens it, and a wider window
+    flags fewer real faults. It fails silently and in the direction nobody checks.
+
+    Same rule as the chain heads in the consumer: memory that describes stored rows
+    only advances once the rows are stored.
+    """
+    detector = StreamingDetector(k=5.0)
+    for i in range(900):
+        detector.score("b001", T0 + i * STEP, 100.0 + (i % 7))
+
+    before = _memory(detector)
+
+    with pytest.raises(RuntimeError), detector.rollback_on_error():
+        for i in range(900, 940):
+            detector.score("b001", T0 + i * STEP, 500.0)
+        # A building this batch invents, which must not survive either.
+        detector.score("b002", T0, 42.0)
+        raise RuntimeError("the commit failed")
+
+    assert _memory(detector) == before
+    assert "b002" not in detector.state
+
+
+def test_a_batch_that_is_stored_does_advance_the_detector():
+    """The guard must not be a way of never remembering anything."""
+    detector = StreamingDetector(k=5.0)
+    for i in range(900):
+        detector.score("b001", T0 + i * STEP, 100.0 + (i % 7))
+
+    before = _memory(detector)
+    with detector.rollback_on_error():
+        detector.score("b001", T0 + 900 * STEP, 500.0)
+
+    assert _memory(detector) != before

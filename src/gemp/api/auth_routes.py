@@ -186,10 +186,25 @@ def whoami(request: Request) -> dict:
 
 @router.get("/auth/sessions")
 def my_sessions(
+    request: Request,
     principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> list[dict]:
-    """Where this account is signed in. Answers "is someone else using my login?"."""
+    """Where this account is signed in. Answers "is someone else using my login?".
+
+    Each row says whether it is the caller's own session. Without that the screen
+    lists several browsers and cannot say which one you are reading it in - which
+    is exactly the question somebody checking for an intruder is asking. It is
+    decided by hashing the presented cookie and comparing, not by guessing from
+    `last_seen_at`: the newest row is usually the caller and "usually" is not good
+    enough to put a mark against a session and invite someone to act on it.
+
+    The comparison is over hashes. The token itself is never stored, and this does
+    not put it anywhere new - the hash is already the primary key of the row.
+    """
+    token = request.cookies.get(SESSION_COOKIE, "")
+    current_hash = service.hash_token(token) if token else None
+
     return [
         {
             "created_at": row.created_at.isoformat(),
@@ -197,6 +212,7 @@ def my_sessions(
             "expires_at": row.expires_at.isoformat(),
             "ip": row.ip,
             "user_agent": row.user_agent,
+            "current": row.token_hash == current_hash,
         }
         for row in service.active_sessions(session, principal.user_id)
     ]
@@ -222,11 +238,29 @@ def change_password(
 
     # Re-authenticate. Without this, an unattended browser is a password change, and
     # a password change is a permanent account takeover.
+    #
+    # Throttled on the same counters as the login form. It is a password guess against
+    # a known account, so it belongs under the same limit - and without one, somebody
+    # who has got hold of a session (a shared machine, an unlocked screen) could grind
+    # the current password here at whatever rate scrypt allows, which is the one
+    # secret standing between them and permanent ownership of the account.
+    throttle_key = f"user:{principal.username}"
+    wait = service.retry_after(throttle_key)
+    if wait:
+        raise HTTPException(
+            429, f"too many failed attempts; try again in {wait} seconds",
+            headers={"Retry-After": str(wait)},
+        )
+
     if not passwords.verify(body.current_password, user.password_hash):
+        service.record_failure(throttle_key)
+        service.record_failure(f"ip:{client_ip(request)}")
         service.audit(session, "auth.password_change", principal=principal,
                       outcome="denied", ip=client_ip(request))
         session.commit()
         raise HTTPException(403, "current password is incorrect")
+
+    service.clear_failures(throttle_key)
 
     try:
         service.set_password(session, user, body.new_password)
@@ -386,6 +420,25 @@ def security_posture(
     dangerous anywhere else.
     """
     settings = get_settings()
+
+    # Hashes still stored at a cost below the current one.
+    #
+    # `needs_rehash` upgrades a row on successful login, which is the only moment the
+    # plaintext exists - so an account that has not signed in since the cost was
+    # raised keeps its old, cheaper hash indefinitely. Two consequences, and the
+    # second is the one worth surfacing: the password is protected at the weaker
+    # factor, and verifying it is measurably FASTER than the deliberately-equal-cost
+    # work done for an account that does not exist, which is the timing side of the
+    # account-enumeration defence the login flow is built around.
+    #
+    # Neither is visible anywhere, so neither gets acted on. It is reported here for
+    # the same reason the Secure flag is: a security control nobody can see the state
+    # of is a control nobody maintains.
+    stale_cost = sum(
+        1 for row in session.execute(select(UserRow.password_hash)).scalars()
+        if (cost := passwords.cost_of(row)) is not None and cost < passwords.DEFAULT_N
+    )
+
     failed = session.execute(
         select(AuditRow).where(AuditRow.action == "auth.login",
                                AuditRow.outcome == "denied")
@@ -397,17 +450,27 @@ def security_posture(
         "session_idle_timeout_hours": service.IDLE_TIMEOUT.total_seconds() / 3600,
         "session_absolute_lifetime_days": service.ABSOLUTE_LIFETIME.days,
         "password_min_length": passwords.MIN_PASSWORD_LENGTH,
+        "password_hash_cost": passwords.DEFAULT_N,
+        "password_hashes_below_current_cost": stale_cost,
         "users": service.user_count(session),
         "recent_failed_logins": [
             {"ts": row.ts.isoformat(), "username": row.username, "ip": row.ip}
             for row in failed
         ],
-        "warnings": _warnings(settings),
+        "warnings": _warnings(settings, stale_cost),
     }
 
 
-def _warnings(settings) -> list[str]:
+def _warnings(settings, stale_cost: int = 0) -> list[str]:
     out = []
+    if stale_cost:
+        out.append(
+            f"{stale_cost} account(s) still hold a password hashed at a cost below "
+            "the current one. A hash is upgraded on the owner's next successful "
+            "sign-in; until then it is protected at the weaker factor and verifies "
+            "faster than a nonexistent account does, which narrows the timing "
+            "difference the login flow deliberately equalises."
+        )
     if not settings.cookie_secure:
         out.append(
             "cookie_secure is off, so session cookies travel over plaintext HTTP. "

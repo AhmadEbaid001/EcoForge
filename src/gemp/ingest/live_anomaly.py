@@ -26,8 +26,10 @@ building is a few hundred kilobytes across fifty buildings.
 
 from __future__ import annotations
 
+import copy
 import logging
 from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -114,9 +116,62 @@ class StreamingDetector:
         self.evicted = 0
         self.flagged = 0
         self.scored = 0
+        # Set only inside `rollback_on_error`. Maps a building to the state it had
+        # before this batch touched it, or to None if the batch is what created it.
+        self._saved: dict[str, BuildingState | None] | None = None
+
+    @contextmanager
+    def rollback_on_error(self):
+        """Undo this batch's effect on the detector if the batch is not stored.
+
+        Scoring MUTATES memory: the residual window that judges the next reading,
+        the flat-run counter, the ring of recent values. That happens while the
+        readings are still uncommitted, because a flat-line run has to be counted
+        across the batch in order and the anomaly rows are written in the same
+        transaction as the readings they describe.
+
+        So a failed commit used to leave the detector having already seen readings
+        the database does not have. The ingester requeues that batch by design, and
+        the second pass scored the same readings again - appending every residual
+        twice into the window the next reading is measured against, and advancing a
+        flat-run counter that had already advanced. The statistic quietly drifts
+        away from the data it claims to describe, in the one direction nobody
+        checks: a doubled window is a wider window, so real faults stop being
+        flagged.
+
+        This is the same rule the chain heads already follow - see `_write` in the
+        consumer, where `heads` is held aside and applied only after the commit
+        returns. Memory that describes stored rows may only advance when the rows
+        are stored.
+
+        The snapshot is per building actually touched, taken once, on first touch.
+        A batch spans at most a few dozen buildings and each state is bounded by
+        construction, so the copy is small and it is taken once per flush.
+        """
+        saved: dict[str, BuildingState | None] = {}
+        counters = (self.scored, self.flagged, self.evicted)
+        self._saved = saved
+        try:
+            yield
+        except BaseException:
+            for building_id, snapshot in saved.items():
+                if snapshot is None:
+                    # The batch is what created this entry; remove it again.
+                    self.state.pop(building_id, None)
+                else:
+                    self.state[building_id] = snapshot
+            self.scored, self.flagged, self.evicted = counters
+            raise
+        finally:
+            self._saved = None
+
+    def _remember_for_rollback(self, building_id: str, state: BuildingState | None) -> None:
+        if self._saved is not None and building_id not in self._saved:
+            self._saved[building_id] = copy.deepcopy(state) if state is not None else None
 
     def _state_for(self, building_id: str) -> BuildingState:
         state = self.state.pop(building_id, None)
+        self._remember_for_rollback(building_id, state)
         if state is None:
             state = BuildingState()
             if len(self.state) >= MAX_TRACKED_BUILDINGS:

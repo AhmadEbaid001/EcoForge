@@ -148,6 +148,22 @@ def reset_throttle() -> None:
     _failures.clear()
 
 
+# The same counters the login form uses, exposed so that the OTHER place a password
+# is guessed - the current-password check on a password change - is limited by the
+# same budget rather than having a private, unlimited one.
+def retry_after(key: str) -> int:
+    """Seconds to wait before `key` may try again, or 0."""
+    return _retry_after(key)
+
+
+def record_failure(key: str) -> None:
+    _record_failure(key)
+
+
+def clear_failures(key: str) -> None:
+    _failures.pop(key, None)
+
+
 # --- audit ------------------------------------------------------------------
 
 
@@ -325,8 +341,14 @@ _ABSENT_USER_HASH = passwords.hash_password(secrets.token_urlsafe(32))
 # --- sessions ---------------------------------------------------------------
 
 
-def _hash_token(token: str) -> str:
+def hash_token(token: str) -> str:
+    """The value stored for a session token. Public because the sessions endpoint
+    needs it to say which row is the caller's own, and re-implementing a hash in a
+    second place is how the two drift apart."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+_hash_token = hash_token
 
 
 def issue_session(session: Session, user: UserRow, *, ip: str = "",

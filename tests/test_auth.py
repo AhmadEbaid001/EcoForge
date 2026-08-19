@@ -520,3 +520,85 @@ def test_a_stale_session_cookie_does_not_block_logging_in(client):
     """
     client.cookies.set(SESSION_COOKIE, "left-over-from-last-week")
     assert login(client, "boss", ADMIN_PASSWORD).status_code == 200
+
+
+def test_guessing_the_current_password_is_throttled_too(client):
+    """The change-password form is the second place a password is guessed.
+
+    Login is throttled; this was not. Somebody who has got hold of a session - a
+    shared machine, an unlocked screen - could grind the current password here at
+    whatever rate the hash allows, and that secret is the only thing between them
+    and permanent ownership of the account. It draws on the same counters as the
+    login form, so the two cannot be used to double the budget either.
+    """
+    assert login(client, "boss", ADMIN_PASSWORD).status_code == 200
+
+    for _ in range(service.MAX_FAILURES):
+        refused = client.post("/api/v1/auth/password", json={
+            "current_password": "not-the-right-one",
+            "new_password": "a-brand-new-long-passphrase",
+        })
+        assert refused.status_code == 403
+
+    blocked = client.post("/api/v1/auth/password", json={
+        "current_password": "not-the-right-one",
+        "new_password": "a-brand-new-long-passphrase",
+    })
+    assert blocked.status_code == 429
+    assert int(blocked.headers["Retry-After"]) > 0
+
+    # And the budget is shared with the login form, not private to this endpoint.
+    assert login(client, "boss", ADMIN_PASSWORD).status_code == 429
+
+
+def test_the_api_schema_is_not_served_to_anonymous_callers(client):
+    """`/docs`, `/redoc` and `/openapi.json` are public paths when they are mounted.
+
+    Mounted, they hand anyone who can reach the port the complete endpoint
+    inventory, every parameter shape and the role each route demands. That is a
+    reconnaissance map and it is worth nothing to the people this is demonstrated
+    to, so it is off unless GEMP_API_DOCS says otherwise.
+    """
+    for path in ("/openapi.json", "/docs", "/redoc"):
+        assert client.get(path).status_code == 404, path
+
+
+def test_the_app_refuses_to_run_as_more_than_one_worker(monkeypatch):
+    """The login throttle counters live in process memory.
+
+    Under `--workers 4` they become four independent counters - five failures each,
+    twenty attempts before anything is refused - and the control reads as though it
+    is doing its job. Nothing about that failure announces itself, so the assumption
+    is checked at startup rather than written in a comment.
+    """
+    monkeypatch.setenv("WEB_CONCURRENCY", "4")
+    with pytest.raises(RuntimeError, match="single worker"):
+        api_main._refuse_multiple_workers()
+
+    monkeypatch.setenv("WEB_CONCURRENCY", "1")
+    api_main._refuse_multiple_workers()   # must not raise
+
+    monkeypatch.delenv("WEB_CONCURRENCY")
+    api_main._refuse_multiple_workers()   # nor when it is unset
+
+
+def test_the_posture_screen_counts_hashes_below_the_current_cost(client):
+    """A hash is upgraded on its owner's next successful sign-in, so an account that
+    has not signed in since the cost was raised keeps the weaker one - protected at
+    the lower factor, and faster to verify than the equal-cost work done for an
+    account that does not exist. Neither is visible anywhere unless it is reported.
+    """
+    assert login(client, "boss", ADMIN_PASSWORD).status_code == 200
+
+    clean = client.get("/api/v1/admin/security").json()
+    assert clean["password_hashes_below_current_cost"] == 0
+    assert clean["password_hash_cost"] == passwords.DEFAULT_N
+
+    # Write one row back at a weaker cost, as an older deployment would have left it.
+    with client.session_scope() as session:
+        user = session.query(UserRow).filter_by(username="watcher").one()
+        user.password_hash = passwords.hash_password(VIEWER_PASSWORD, n=1024)
+
+    stale = client.get("/api/v1/admin/security").json()
+    assert stale["password_hashes_below_current_cost"] == 1
+    assert any("below the current one" in w for w in stale["warnings"])

@@ -67,6 +67,17 @@ class Settings(BaseSettings):
     # silent.
     cookie_secure: bool = False
 
+    # The interactive API documentation and the OpenAPI schema behind it. They are
+    # reachable WITHOUT a session by design - a schema that needs a login is not much
+    # use while building against it - which also means they hand an unauthenticated
+    # caller the complete endpoint inventory, every parameter shape and the role each
+    # route demands. That is a reconnaissance map, and it is worth exactly nothing to
+    # a demonstration audience.
+    #
+    # Off by default, so a deployment is closed unless somebody opens it. Set
+    # GEMP_API_DOCS=true while developing against the API.
+    api_docs: bool = False
+
     # --- alerting (F11) ---
     # The review's alerting fix is a row in the anomaly table, a marker on the map,
     # and an optional outbound webhook. Unset means the path is inert, which is the

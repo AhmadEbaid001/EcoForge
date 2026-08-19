@@ -184,3 +184,24 @@ def test_the_queue_is_bounded_and_drops_rather_than_growing(endpoint):
         assert hook._queue.qsize() <= module.QUEUE_DEPTH
     finally:
         hook.stop(timeout=0.5)
+
+
+@pytest.mark.parametrize("url", [
+    "file:///etc/passwd",       # urlopen would READ this
+    "ftp://example.internal/x",
+    "notaurl",
+    "https://",                 # a scheme and no host
+])
+def test_a_target_that_is_not_an_http_url_disables_the_webhook(url):
+    """`urlopen` opens more than http, and a `file://` target turns a notifier into
+    a local file reader. The URL is operator configuration rather than user input,
+    so this is not request forgery - but a typo should disable the path with a
+    logged reason at startup, not surface as a stack trace in a worker thread the
+    first time a fault is detected."""
+    assert Webhook(url).enabled is False
+
+
+def test_an_http_target_still_works():
+    """The guard must not be a way of never notifying anything."""
+    assert Webhook("https://hooks.example.internal/gemp").enabled is True
+    assert Webhook("http://localhost:9000/hook").enabled is True

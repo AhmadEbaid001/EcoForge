@@ -119,6 +119,15 @@ def needs_rehash(stored: str, *, n: int = DEFAULT_N) -> bool:
     return current_n < n
 
 
+def cost_of(stored: str) -> int | None:
+    """The N a stored hash was written with, or None if it cannot be read."""
+    try:
+        _scheme, params, _salt, _hash = stored.split("$")
+        return _parse_params(params)[0]
+    except (ValueError, KeyError):
+        return None
+
+
 def _parse_params(params: str) -> tuple[int, int, int]:
     values = dict(part.split("=") for part in params.split(","))
     return int(values["n"]), int(values["r"]), int(values["p"])
