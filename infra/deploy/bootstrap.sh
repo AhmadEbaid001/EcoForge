@@ -129,9 +129,24 @@ chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${APP_DIR}"
 #
 # Numeric on purpose: 10001 is a uid inside the image and need not exist on the
 # host, so there is no name to resolve it by.
-install -d -m 750 "${APP_DIR}/anchor"
-chown -R 10001:10001 "${APP_DIR}/anchor"
-note "anchor/ owned by uid 10001 - the uid the container runs as"
+# Owner is the deploy user, GROUP is the container uid, and the directory is
+# group-writable. Both need it and for different reasons:
+#
+#   the container (uid 10001) writes the integrity anchor and the live ground
+#   truth into this directory on every run;
+#
+#   git (running as the deploy user) tracks anchor/.gitkeep, so a checkout sync
+#   has to be able to create it. Handing the directory to 10001 outright makes
+#   `git reset --hard` fail with "unable to create file anchor/.gitkeep", and
+#   deploy.sh then aborts with "could not sync the checkout" - a deploy that
+#   stops on a permission bit, having changed nothing.
+#
+# setgid so anything created here keeps the group, and numeric because 10001 is
+# a uid inside the image that need not exist on the host.
+install -d "${APP_DIR}/anchor"
+chown -R "${DEPLOY_USER}:10001" "${APP_DIR}/anchor"
+chmod 2775 "${APP_DIR}/anchor"
+note "anchor/ is ${DEPLOY_USER}:10001, mode 2775 - writable by the host AND the container"
 
 # --------------------------------------------------------------------------
 log "Secrets"
