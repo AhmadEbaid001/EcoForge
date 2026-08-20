@@ -189,7 +189,11 @@ jobs:
           # minted for this job and expires with it, so nothing durable reaches the
           # host - which is what lets bootstrap.sh keep its promise not to put a
           # GitHub token there. deploy.sh logs out again on every exit path.
-          printf %s "${REGISTRY_TOKEN}" | ssh -i ~/.ssh/id_ed25519 \
+          # The newline matters: `read` on the far end blocks until one arrives or
+          # the pipe closes, and terminating the line here is the difference between
+          # a token that reads cleanly and one that depends on the reader's EOF
+          # handling being right.
+          printf '%s\n' "${REGISTRY_TOKEN}" | ssh -i ~/.ssh/id_ed25519 \
               -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes \
               -o ConnectTimeout=15 \

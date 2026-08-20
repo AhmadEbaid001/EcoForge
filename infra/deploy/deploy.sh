@@ -117,7 +117,12 @@ log "requested ${REF}${SHA:+ at ${SHA}}"
 # rather than hanging the deploy forever.
 REGISTRY_TOKEN=""
 if [ ! -t 0 ]; then
-  IFS= read -r -t 10 REGISTRY_TOKEN <&0 || REGISTRY_TOKEN=""
+  # `|| :`, NOT `|| REGISTRY_TOKEN=""`. `read` returns non-zero when it hits EOF
+  # without a line terminator - even though it has just filled the variable - so
+  # clearing it on that "failure" threw away every token whose sender did not end
+  # the line. The symptom was a deploy that reached the host, logged nothing about
+  # authenticating, and died on `cannot pull` as though no credential had been sent.
+  IFS= read -r -t 10 REGISTRY_TOKEN <&0 || :
 fi
 
 if [ -n "${REGISTRY_TOKEN}" ]; then
