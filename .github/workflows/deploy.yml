@@ -46,6 +46,13 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
+  # NOT `github.repository`. That preserves the case the repository was created
+  # with - AhmadEbaid001/EcoForge - and an OCI reference must be lower case, so
+  # `cosign sign ghcr.io/AhmadEbaid001/EcoForge@sha256:...` fails with "could not
+  # parse reference" after the image has already been pushed. docker/metadata-action
+  # lowercases on its own, which is why the push succeeded and only the hand-built
+  # references broke. Each job that needs it derives the lower-case name in a step,
+  # because workflow-level env cannot call a function.
   IMAGE: ${{ github.repository }}
 
 jobs:
@@ -74,6 +81,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: The registry path, in the case a registry accepts
+        run: echo "IMAGE=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: Resolve what to deploy
         id: target
@@ -109,13 +119,16 @@ jobs:
         # server: this is the last point at which stopping costs nothing.
         run: |
           set -euo pipefail
+          # The identity is a github.com URL, not a registry reference, so it keeps
+          # the repository's real case - the one place here that must NOT be lowered.
           cosign verify "${REF}" \
-            --certificate-identity-regexp "^https://github.com/${IMAGE}/.github/workflows/ci.yml@" \
+            --certificate-identity-regexp "^https://github.com/${IDENTITY}/.github/workflows/ci.yml@" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             > /dev/null
           echo "signature verified: ${REF}"
         env:
           REF: ${{ steps.target.outputs.ref }}
+          IDENTITY: ${{ github.repository }}
 
       # The runner joins your private network for the length of this job, using an
       # OAuth client scoped to one tag rather than a reusable auth key. The host has

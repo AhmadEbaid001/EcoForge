@@ -46,6 +46,13 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
+  # NOT `github.repository`. That preserves the case the repository was created
+  # with - AhmadEbaid001/EcoForge - and an OCI reference must be lower case, so
+  # `cosign sign ghcr.io/AhmadEbaid001/EcoForge@sha256:...` fails with "could not
+  # parse reference" after the image has already been pushed. docker/metadata-action
+  # lowercases on its own, which is why the push succeeded and only the hand-built
+  # references broke. Each job that needs it derives the lower-case name in a step,
+  # because workflow-level env cannot call a function.
   IMAGE: ${{ github.repository }}
 
 jobs:
@@ -286,6 +293,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: The registry path, in the case a registry accepts
+        run: echo "IMAGE=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
 
