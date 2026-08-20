@@ -115,6 +115,10 @@ jobs:
       # SARIF upload, so findings appear on the pull request and in the Security tab
       # rather than only in a log nobody opens.
       security-events: write
+      # gitleaks-action reads the run it is part of to decide whether the repository
+      # needs a licence. Without this it cannot, and posts a red annotation -
+      # `Resource not accessible by integration` - onto an otherwise green run.
+      actions: read
 
     steps:
       - uses: actions/checkout@v4

@@ -189,6 +189,14 @@ Settings → Secrets and variables → Actions.
 | `GEMP_USE_TAILSCALE` | `true` |
 | `GEMP_REMOTE_DIR` | `/srv/gemp` |
 | `GEMP_URL` | `http://<tailscale-ip>:8080` |
+| `GEMP_AUTO_DEPLOY` | `true` |
+
+`GEMP_AUTO_DEPLOY` is deliberately the LAST thing you set. Until it is `true` the
+deploy workflow does not run itself on a green `ci`; set it only once the secrets
+above exist and a manual dispatch has succeeded at least once. Without that switch
+every green build on `main` tried to ssh to a host that had not been built yet,
+failed, and opened an issue saying the deploy was broken - which it was not.
+Manual dispatch ignores this variable, so it can never block a deploy you asked for.
 
 Then put the public half of `gemp-deploy` into the server's
 `/home/gemp/.ssh/authorized_keys`, prefixed with the forced command from

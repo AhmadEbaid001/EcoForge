@@ -61,9 +61,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The gate: a failed, cancelled or skipped ci run does not deploy.
+    #
+    # And an AUTOMATIC deploy additionally needs somewhere to deploy to. Until the
+    # server exists there is no GEMP_SSH_HOST, so every green ci run reached this
+    # job, failed at the ssh step and opened an issue about it - one per push,
+    # reporting a broken deploy when what is actually true is that the host has not
+    # been built yet. Repository variables are readable here where secrets are not,
+    # so `GEMP_AUTO_DEPLOY` is the switch: set it to `true` in Settings > Variables
+    # once bootstrap.sh has run. Manual dispatch always works, so this cannot
+    # silently block a deploy somebody asked for.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event.workflow_run.conclusion == 'success' &&
+       vars.GEMP_AUTO_DEPLOY == 'true')
     # Two environments, each with its own secrets and its own approval rule. The
     # VM mirror this project already keeps is the natural staging host: deploy
     # there first, look at it, then promote the same digest to the laptop. That
@@ -111,6 +121,18 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
+
+      - name: Registry credentials
+        # The package inherits the repository's visibility, so it is private, and
+        # cosign reads the image manifest before it can check any signature over it.
+        # Without this it fails with `UNAUTHORIZED: authentication required` from
+        # ghcr.io - which reads like an invalid signature and is a missing login.
+        # cosign picks the credentials up out of the docker config this writes.
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify the signature before anything touches the host
         # The image is signed keylessly by the build job, so this proves it was built
