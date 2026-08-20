@@ -54,6 +54,16 @@ jobs:
         # testing the thing that runs in production.
         run: python scripts/setup_env.py
 
+      - name: Broker credentials
+        # `infra/mosquitto/passwd` is gitignored - it holds PBKDF2 hashes of the
+        # password `setup_env.py` just generated, so it cannot be committed and cannot
+        # be reused between hosts. Without this step the compose bind mount has no
+        # source file, Docker helpfully creates a DIRECTORY at that path, mosquitto
+        # cannot read it as a password file and exits before its first health check.
+        # The drill then failed at `Bring up the infrastructure` with `dependency
+        # failed to start`, which looks like a broken release and is a missing file.
+        run: python scripts/setup_mqtt_auth.py
+
       - name: Build the release under test
         run: |
           docker build -f infra/Dockerfile -t gemp-core:drill .
