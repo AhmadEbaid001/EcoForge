@@ -18,6 +18,13 @@
 # stricter and is the right end state - `gh api` resolves the current SHA for each -
 # but a wrong SHA is a build that cannot run at all, so it is a deliberate follow-up
 # rather than a value guessed here. Dependabot watches these tags.
+#
+# A wrong TAG is the same failure and it is easier to write: trivy-action was
+# referenced as `@0.28.0` when the tag it publishes is `v0.28.0`. GitHub resolves
+# every action in a job before running any step, so the whole secure review died
+# in three seconds at `Set up job` and had never once executed a scanner. That
+# reads as a security failure in the Actions list and is nothing of the kind.
+# `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` says whether a tag exists.
 name: ci
 
 on:
@@ -173,7 +180,7 @@ jobs:
 
       - name: Trivy filesystem, config and IaC
         continue-on-error: true
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,secret,misconfig
@@ -204,7 +211,7 @@ jobs:
       # next build pulls it and the finding moves from that list into this one.
       - name: Trivy image, fixable
         continue-on-error: true
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: gemp:scan
@@ -216,7 +223,7 @@ jobs:
 
       - name: Trivy image, everything including what cannot be fixed
         continue-on-error: true
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: gemp:scan
