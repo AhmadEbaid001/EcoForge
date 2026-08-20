@@ -2,7 +2,7 @@
 # command they run. One image means one build, one dependency set, and no chance of
 # the simulator and the ingester disagreeing about the message schema.
 
-FROM python:3.11-slim AS base
+FROM python:3.14-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
