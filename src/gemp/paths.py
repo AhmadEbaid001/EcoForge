@@ -32,3 +32,49 @@ def data_dir() -> Path:
         return cwd_data
 
     return _CHECKOUT_DATA
+
+
+def anchor_dir() -> Path:
+    """Where the deployment writes what it generates.
+
+    `data/` is shipped input - the portfolio, the catalog, the parameters - and
+    docker-compose.yml mounts it READ-ONLY into both services on purpose. `anchor/`
+    is the bind-mounted directory the containers may write, and it already holds the
+    integrity anchor and the live simulator's ground truth.
+    """
+    override = os.environ.get("GEMP_ANCHOR_DIR")
+    if override:
+        return Path(override)
+    return data_dir().parent / "anchor"
+
+
+def ground_truth_write_path() -> Path:
+    """Where `gemp.seed` puts the ground truth it generates.
+
+    Always the writable directory. It used to be `data/ground_truth.csv`, which is
+    generated output living among shipped inputs and worked only because it was
+    always written by a developer running from a checkout. Inside a container that
+    path is mounted read-only, so seeding a deployed host failed with
+
+        OSError: [Errno 30] Read-only file system: '/app/data/ground_truth.csv'
+
+    after the rows had already gone into the database - leaving readings with no
+    ground truth to score them against.
+    """
+    return anchor_dir() / "ground_truth.csv"
+
+
+def ground_truth_read_path() -> Path:
+    """Where to look for it, newest location first.
+
+    A checkout seeded before the move still has `data/ground_truth.csv` and it is
+    still read, so an existing machine keeps working until it is next seeded. The
+    writable copy wins when both exist, because that is the one a re-seed updates.
+    """
+    preferred = ground_truth_write_path()
+    if preferred.exists():
+        return preferred
+    legacy = data_dir() / "ground_truth.csv"
+    if legacy.exists():
+        return legacy
+    return preferred

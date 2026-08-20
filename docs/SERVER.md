@@ -92,6 +92,14 @@ Two Azure-specific things worth knowing:
 
 - The **Network Security Group** is a separate firewall from `ufw` on the box. Leave
   it closed. Tailscale needs no inbound rule at all — it makes an outbound connection.
+- **`ufw` does not protect a published container port, and the NSG is what does.**
+  compose publishes nginx as `8080:80`, which binds every interface including the
+  public one. Docker inserts its own rules ahead of ufw's INPUT chain, so a
+  `deny incoming` policy does not cover it — a well-known interaction, not a
+  misconfiguration here. Verified from outside on this deployment: with the NSG
+  empty, both 8080 and 22 refuse. That is the NSG alone. Open one inbound rule and
+  the dashboard is on the internet whatever ufw says, so if you ever need a public
+  port, publish it as `127.0.0.1:8080:80` and put something in front of it.
 - **Deallocate when you are not testing.** Portal → Stop, and confirm it reads
   **"Stopped (deallocated)"**, not just "Stopped". The first halts compute billing;
   the second keeps charging. This is what turns $200 into months rather than weeks.

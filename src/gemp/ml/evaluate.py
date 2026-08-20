@@ -48,7 +48,7 @@ from gemp.domain.catalog import load_params
 from gemp.ml.anomaly import detect_all
 from gemp.ml.dataset import load_hourly_all
 from gemp.ml.forecast import fit_building
-from gemp.paths import data_dir
+from gemp.paths import anchor_dir, ground_truth_read_path
 
 log = logging.getLogger("gemp.ml.evaluate")
 
@@ -142,7 +142,7 @@ def to_episodes(building_id: str, anomalies: list) -> list[Episode]:
 
 def _live_truth_path():
     """Faults injected by the running simulator node, appended as they happen."""
-    return data_dir().parent / "anchor" / "live_anomalies.jsonl"
+    return anchor_dir() / "live_anomalies.jsonl"
 
 
 def split_live_runs(records: list[dict]) -> list[list[dict]]:
@@ -209,7 +209,7 @@ def load_ground_truth(path=None, live_path=None) -> pd.DataFrame:
     dropped - see `drop_rewound_runs`, which exists because trusting this file cost
     the project a measurement it had already written down.
     """
-    path = path or (data_dir() / "ground_truth.csv")
+    path = path or ground_truth_read_path()
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found. It is written by `python -m gemp.seed`; without it "

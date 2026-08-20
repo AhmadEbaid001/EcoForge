@@ -34,7 +34,7 @@ from gemp.db import (
 from gemp.domain.catalog import load_catalog
 from gemp.domain.portfolio import load_buildings
 from gemp.ingest.integrity import GENESIS, sign
-from gemp.paths import data_dir
+from gemp.paths import ground_truth_write_path
 from gemp.repository import import_catalog, import_portfolio
 from gemp.sim.profiles import generate_series
 from gemp.timescale import ensure_timescale_objects, refresh_hourly
@@ -116,7 +116,7 @@ def write_ground_truth(events: list[dict]) -> None:
     The proposal's evaluation plan depends on this file existing: without it,
     anomaly-detection quality can only be eyeballed.
     """
-    path = data_dir() / "ground_truth.csv"
+    path = ground_truth_write_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(

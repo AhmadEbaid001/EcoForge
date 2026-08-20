@@ -327,3 +327,48 @@ def test_events_from_a_rewound_run_are_dropped():
     into_the_seed = [{"start": datetime(2026, 5, 1, tzinfo=UTC),
                       "end": datetime(2026, 5, 2, tzinfo=UTC)}]
     assert drop_rewound_runs(seed_end, [into_the_seed]) == []
+
+# ---------------------------------------------------------------- where the
+# ground truth lives
+
+
+def _paths_with(tmp_path, monkeypatch):
+    """A checkout-shaped pair of directories, resolved the way a container does."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "anchor").mkdir()
+    monkeypatch.setenv("GEMP_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.delenv("GEMP_ANCHOR_DIR", raising=False)
+    return tmp_path / "data", tmp_path / "anchor"
+
+
+HEADER = "building_id,kind,start,end,magnitude\n"
+
+
+def test_the_seed_writes_ground_truth_where_it_can_actually_write(tmp_path, monkeypatch):
+    """data/ is mounted read-only into the containers; anchor/ is not. Writing the
+    generated file into the shipped directory failed on a deployed host AFTER the
+    rows were already in the database."""
+    from gemp.paths import ground_truth_write_path
+
+    _data, anchor = _paths_with(tmp_path, monkeypatch)
+    assert ground_truth_write_path() == anchor / "ground_truth.csv"
+
+
+def test_a_file_left_by_an_older_seed_is_still_read(tmp_path, monkeypatch):
+    """Moving where it is written must not blind an existing checkout to the copy it
+    already has, or F9 stops being measurable until somebody re-seeds."""
+    from gemp.paths import ground_truth_read_path
+
+    data, _anchor = _paths_with(tmp_path, monkeypatch)
+    (data / "ground_truth.csv").write_text(HEADER, encoding="utf-8")
+    assert ground_truth_read_path() == data / "ground_truth.csv"
+
+
+def test_the_writable_copy_wins_when_both_exist(tmp_path, monkeypatch):
+    """A re-seed updates the anchor copy; the stale one in data/ must not shadow it."""
+    from gemp.paths import ground_truth_read_path
+
+    data, anchor = _paths_with(tmp_path, monkeypatch)
+    (data / "ground_truth.csv").write_text(HEADER, encoding="utf-8")
+    (anchor / "ground_truth.csv").write_text(HEADER, encoding="utf-8")
+    assert ground_truth_read_path() == anchor / "ground_truth.csv"
