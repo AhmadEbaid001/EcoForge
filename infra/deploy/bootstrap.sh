@@ -146,7 +146,13 @@ chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${APP_DIR}"
 install -d "${APP_DIR}/anchor"
 chown -R "${DEPLOY_USER}:10001" "${APP_DIR}/anchor"
 chmod 2775 "${APP_DIR}/anchor"
-note "anchor/ is ${DEPLOY_USER}:10001, mode 2775 - writable by the host AND the container"
+# The FILES too, not only the directory. The simulator opens
+# anchor/live_anomalies.jsonl in append mode, and appending needs write on the
+# file itself - a group-writable directory only governs creating and unlinking.
+# A file created here by anyone other than the container lands at 0644 under the
+# default umask, and the crash loop comes straight back.
+find "${APP_DIR}/anchor" -type f -exec chmod 664 {} +
+note "anchor/ is ${DEPLOY_USER}:10001, dir 2775 and files 664 - the host AND the container can write"
 
 # --------------------------------------------------------------------------
 log "Secrets"
