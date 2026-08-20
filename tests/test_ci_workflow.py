@@ -1,9 +1,8 @@
 """The CI workflow, checked as data.
 
-The workflow has never executed: the repository has no remote to push to, so
-`scripts/check.py` is what actually enforces the gates. That makes these two checks
-the only thing standing between a YAML error and a workflow that is silently never
-scheduled on the day a remote finally exists.
+The workflow runs for real now, against github.com/AhmadEbaid001/EcoForge. These
+checks still earn their place: a YAML error or a gate that drifted out of
+`scripts/check.py` costs a push and a five-minute round trip to discover.
 
 These lived in the Grafana provisioning tests, which had nothing to do with CI beyond
 both being files nobody runs. Splitting them means the Grafana file can be read as
@@ -47,3 +46,33 @@ def test_ci_runs_the_same_gates_as_the_local_script():
         target = next((part for part in command if not part.startswith("-")
                        and part != command[0]), None)
         assert target and target in steps, f"CI does not run the {name!r} gate ({target})"
+
+
+def test_the_deploy_scripts_are_executable():
+    """`deploy.sh` is invoked by path - by the drill locally and over ssh on the
+    host - so the executable bit is not cosmetic. Git stores it, Windows checkouts
+    do not carry it, and a commit made from one silently drops it back to 100644.
+    That is exactly how it was committed, and the drill failed with
+
+        ./infra/deploy/deploy.sh: Permission denied
+
+    which arrives at the deploy step rather than at the commit that caused it.
+    """
+    import subprocess  # nosec B404
+
+    listing = subprocess.run(  # nosec B603
+        ["git", "ls-files", "--stage", "--", "infra/deploy"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout
+
+    not_executable = [
+        line.split("	", 1)[1]
+        for line in listing.splitlines()
+        if line.strip() and line.split("	", 1)[1].endswith(".sh")
+        and not line.startswith("100755")
+    ]
+    assert not not_executable, (
+        "these are run by path and git has them as non-executable: "
+        + ", ".join(not_executable)
+        + " - fix with `git update-index --chmod=+x <path>`"
+    )
