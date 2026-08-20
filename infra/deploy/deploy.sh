@@ -98,6 +98,41 @@ fi
 
 log "requested ${REF}${SHA:+ at ${SHA}}"
 
+# --------------------------------------------------------------------------
+# Registry credentials, if any, arrive on STDIN.
+# --------------------------------------------------------------------------
+#
+# The package is private because the repository is, so the pull below needs a
+# credential. Three things this deliberately is not:
+#
+#   * not an argument. Arguments are visible in `ps` to every user on the box for
+#     as long as the pull takes.
+#   * not a file. bootstrap.sh does not put a GitHub token on the host and this
+#     does not either - the token exists in this process and nowhere else.
+#   * not required. Deploying from a local `docker load`, or from a public
+#     registry, sends nothing and this block does nothing.
+#
+# The workflow pipes its GITHUB_TOKEN, which is minted per job and expires with it.
+# `read -t` rather than `cat` so that a stdin nobody closes costs ten seconds
+# rather than hanging the deploy forever.
+REGISTRY_TOKEN=""
+if [ ! -t 0 ]; then
+  IFS= read -r -t 10 REGISTRY_TOKEN <&0 || REGISTRY_TOKEN=""
+fi
+
+if [ -n "${REGISTRY_TOKEN}" ]; then
+  REGISTRY_HOST="${REF%%/*}"
+  # Log out on the way out however we leave, including a failed deploy: the
+  # credential must not outlive the process that was given it.
+  trap 'docker logout "${REGISTRY_HOST}" >/dev/null 2>&1 || true; rm -f "${GEMP_DEPLOY_COPY:-}"' EXIT
+  if printf '%s' "${REGISTRY_TOKEN}"        | docker login "${REGISTRY_HOST}"                       --username "${GEMP_REGISTRY_USER:-x-access-token}"                       --password-stdin >/dev/null 2>&1; then
+    log "authenticated to ${REGISTRY_HOST}"
+  else
+    log "WARNING: could not authenticate to ${REGISTRY_HOST}; trying the pull anyway"
+  fi
+  REGISTRY_TOKEN=""
+fi
+
 # Pull if we can, use what is already here if we cannot. The registry is the normal
 # path; it is not the only one. This host is also meant to run with the cable out,
 # where an image arrives as a file over `docker load` and there is nothing to pull

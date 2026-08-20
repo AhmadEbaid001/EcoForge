@@ -21,11 +21,34 @@ deny() { printf 'refused: %s\n' "$*" >&2; exit 126; }
 REQUEST="${SSH_ORIGINAL_COMMAND:-}"
 [ -n "${REQUEST}" ] || deny "this key runs deployments and nothing else"
 
-# Take the last whitespace-separated token and require it to look like an image
-# reference we published. No shell metacharacters survive this: the value is never
-# passed to anything that would interpret them, and anything outside the character
-# class is refused rather than escaped.
-REF="${REQUEST##* }"
+# Split the request into fields. NOT `${REQUEST##* }` - that takes the LAST token,
+# and the workflow sends `deploy.sh <ref> <sha>`, so the last token is the commit.
+# Every deploy was refused as "image is not from ghcr.io/" before this, and the sha
+# was never forwarded either, so deploy.sh could not sync the checkout it needs for
+# the compose file and the nginx config.
+#
+# `set -f` first: the fields are unquoted on purpose so the shell splits them, and
+# without it a `*` in the request would be expanded against the filesystem.
+set -f
+# shellcheck disable=SC2086
+set -- ${REQUEST}
+set +f
+
+SCRIPT="${1:-}"
+REF="${2:-}"
+SHA="${3:-}"
+
+[ "$#" -le 3 ] || deny "too many arguments"
+[ -n "${REF}" ] || deny "no image reference given"
+
+# The commit is optional, and when present it is a hex object name and nothing else.
+if [ -n "${SHA}" ] && ! printf '%s' "${SHA}" | grep -Eq '^[0-9a-f]{7,40}$'; then
+  deny "not a commit: ${SHA}"
+fi
+
+# No shell metacharacters survive this: the value is never passed to anything that
+# would interpret them, and anything outside the character class is refused rather
+# than escaped.
 
 case "${REF}" in
   *[\;\|\&\$\`\(\)\<\>\'\"\\]*) deny "image reference contains shell metacharacters" ;;
@@ -40,8 +63,13 @@ case "${REF}" in
   *) deny "image is not from ${REGISTRY_PREFIX}" ;;
 esac
 
-case "${REQUEST}" in
-  *deploy.sh*)   exec "${APP_DIR}/infra/deploy/deploy.sh" "${REF}" ;;
-  *rollback.sh*) exec "${APP_DIR}/infra/deploy/rollback.sh" "${REF}" ;;
+# Matched on the script FIELD, not anywhere in the request: `*deploy.sh*` would also
+# match an image tag that happened to contain the string.
+#
+# stdin is inherited by the exec, which is how the registry token reaches deploy.sh
+# without ever being an argument.
+case "${SCRIPT}" in
+  */deploy.sh)   exec "${APP_DIR}/infra/deploy/deploy.sh" "${REF}" "${SHA}" ;;
+  */rollback.sh) exec "${APP_DIR}/infra/deploy/rollback.sh" "${REF}" ;;
   *) deny "only deploy.sh and rollback.sh may be run with this key" ;;
 esac

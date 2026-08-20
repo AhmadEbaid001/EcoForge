@@ -184,7 +184,12 @@ jobs:
           printf '%s\n' "${KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/id_ed25519 \
+          # The registry token goes over STDIN, never as an argument: an argument is
+          # visible in `ps` on the host for as long as the pull runs. GITHUB_TOKEN is
+          # minted for this job and expires with it, so nothing durable reaches the
+          # host - which is what lets bootstrap.sh keep its promise not to put a
+          # GitHub token there. deploy.sh logs out again on every exit path.
+          printf %s "${REGISTRY_TOKEN}" | ssh -i ~/.ssh/id_ed25519 \
               -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes \
               -o ConnectTimeout=15 \
@@ -200,6 +205,7 @@ jobs:
           REMOTE_DIR: ${{ vars.GEMP_REMOTE_DIR }}
           REF: ${{ steps.target.outputs.ref }}
           SHA: ${{ steps.target.outputs.sha }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # A failed deploy is a red run in a tab nobody has open. The host has already
       # rolled itself back by the time this runs, which is exactly why it needs
