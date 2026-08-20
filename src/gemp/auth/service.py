@@ -14,6 +14,7 @@ short version:
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
 import secrets
 import time
@@ -163,6 +164,15 @@ def record_failure(key: str) -> None:
 def clear_failures(key: str) -> None:
     _failures.pop(key, None)
 
+def ip_is_throttleable(ip: str) -> bool:
+    """Whether a per-IP throttle key on `ip` distinguishes one client.
+
+    Public so the password-change path applies the same rule the login path
+    does, instead of keeping a private answer that can drift from it."""
+    return _distinguishing_ip(ip)
+
+
+
 
 # --- audit ------------------------------------------------------------------
 
@@ -281,6 +291,41 @@ def user_count(session: Session) -> int:
 # --- authentication ---------------------------------------------------------
 
 
+def _distinguishing_ip(ip: str) -> bool:
+    """True when `ip` identifies ONE client, false for a shared proxy address.
+
+    Per-IP throttling assumes the address names a single caller. It does not behind a
+    reverse proxy that terminates the client connection - nginx here, and Tailscale
+    Funnel in front of it - where every request arrives from the proxy's own address:
+    loopback, or the container bridge. Keyed on that, five failed logins from anyone
+    lock the login form for EVERYONE, which turns an account-protection control into
+    an unauthenticated denial-of-service lever. Verified: a request forwarded through
+    the proxy records one fixed source address for every visitor.
+
+    So per-IP throttling is skipped when the observed address cannot distinguish
+    clients - loopback, link-local, unspecified, or any private/shared range
+    (RFC1918, and RFC6598 which covers a Tailscale tailnet). Per-USERNAME throttling
+    is unaffected and remains the control that actually stops guessing an account:
+    five attempts per username per fifteen minutes, whatever address they come from.
+    A genuinely routable client address still gets its own per-IP budget, so if the
+    real client IP is ever plumbed through, this re-activates on its own.
+    """
+    if not ip:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return not (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_unspecified
+        or addr.is_reserved
+        or addr.is_multicast
+    )
+
+
 def authenticate(session: Session, username: str, password: str,
                  *, ip: str = "") -> UserRow:
     """Check a credential. Raises `AuthError` for every kind of failure.
@@ -292,7 +337,13 @@ def authenticate(session: Session, username: str, password: str,
     """
     username = normalise_username(username)
 
-    for key in (f"user:{username}", f"ip:{ip}"):
+    # Per-username always; per-IP only when the address names one client (see
+    # `_distinguishing_ip`), so a shared proxy address cannot lock every account.
+    throttle_keys = [f"user:{username}"]
+    if _distinguishing_ip(ip):
+        throttle_keys.append(f"ip:{ip}")
+
+    for key in throttle_keys:
         wait = _retry_after(key)
         if wait:
             raise Throttled(wait)
@@ -308,8 +359,8 @@ def authenticate(session: Session, username: str, password: str,
     ok = passwords.verify(password, stored)
 
     if not user or not ok or not user.is_active:
-        _record_failure(f"user:{username}")
-        _record_failure(f"ip:{ip}")
+        for key in throttle_keys:
+            _record_failure(key)
         audit(session, "auth.login", username=username, outcome="denied", ip=ip,
               detail={"reason": _denial_reason(user, ok)})
         raise AuthError("invalid username or password")
@@ -479,6 +530,7 @@ __all__ = [
     "authenticate",
     "create_user",
     "default_organization",
+    "ip_is_throttleable",
     "issue_csrf_token",
     "issue_session",
     "normalise_username",

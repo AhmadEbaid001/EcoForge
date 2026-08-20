@@ -254,7 +254,11 @@ def change_password(
 
     if not passwords.verify(body.current_password, user.password_hash):
         service.record_failure(throttle_key)
-        service.record_failure(f"ip:{client_ip(request)}")
+        ip = client_ip(request)
+        # Same rule as the login path: never let a shared proxy address accrue a
+        # lockout that would hit unrelated callers.
+        if service.ip_is_throttleable(ip):
+            service.record_failure(f"ip:{ip}")
         service.audit(session, "auth.password_change", principal=principal,
                       outcome="denied", ip=client_ip(request))
         session.commit()

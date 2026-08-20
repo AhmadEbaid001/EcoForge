@@ -602,3 +602,70 @@ def test_the_posture_screen_counts_hashes_below_the_current_cost(client):
     stale = client.get("/api/v1/admin/security").json()
     assert stale["password_hashes_below_current_cost"] == 1
     assert any("below the current one" in w for w in stale["warnings"])
+
+
+# --- per-IP throttling must not become a shared-lockout DoS -----------------
+#
+# nginx overwrites X-Forwarded-For with the client's address, and Tailscale Funnel in
+# front of it forwards every public visitor from one loopback address. Keyed on that
+# collapsed address, five failed logins from anyone locked the form for everyone.
+# These pin the fix: per-username still locks the account, per-IP applies only to an
+# address that names one client.
+
+
+def test_a_shared_proxy_address_cannot_lock_out_other_accounts(client):
+    """Five failures on one account from a proxy address leave other accounts able
+    to log in. Before the fix the shared ip: key returned 429 for all of them."""
+    proxy = {"X-Forwarded-For": "10.0.0.9"}  # RFC1918: a proxy/bridge address, not one client
+
+    for _ in range(service.MAX_FAILURES):
+        r = client.post("/api/v1/auth/login",
+                        json={"username": "boss", "password": "wrong-password-xx"},
+                        headers=proxy)
+        assert r.status_code == 401
+
+    # A DIFFERENT, untouched account from the SAME address still authenticates.
+    ok = client.post("/api/v1/auth/login",
+                     json={"username": "watcher", "password": VIEWER_PASSWORD},
+                     headers=proxy)
+    assert ok.status_code == 200, "a shared proxy address locked an unrelated account"
+
+    # The targeted account itself is still locked - per-username protection intact.
+    blocked = client.post("/api/v1/auth/login",
+                          json={"username": "boss", "password": ADMIN_PASSWORD},
+                          headers=proxy)
+    assert blocked.status_code == 429
+
+
+def test_a_routable_client_address_still_gets_a_per_ip_budget(client):
+    """When the address really does identify one client, spraying one attempt across
+    many accounts from it is still caught - the control keeps working where it can."""
+    real = {"X-Forwarded-For": "8.8.8.8"}  # globally routable: a single distinguishable client
+
+    for name in ("aa", "bb", "cc", "dd", "ee"):  # five DIFFERENT usernames, one try each
+        client.post("/api/v1/auth/login",
+                    json={"username": name, "password": "wrong-password-xx"},
+                    headers=real)
+
+    # No single username hit its own limit, but the address accrued five failures.
+    sprayed = client.post("/api/v1/auth/login",
+                          json={"username": "ff", "password": "wrong-password-xx"},
+                          headers=real)
+    assert sprayed.status_code == 429
+
+
+def test_distinguishing_ip_classification():
+    d = service.ip_is_throttleable
+    assert d("8.8.8.8") is True          # public, routable
+    assert d("1.1.1.1") is True
+    assert d("127.0.0.1") is False       # loopback (Funnel forwards from here)
+    assert d("::1") is False
+    assert d("10.0.0.9") is False        # RFC1918 (docker bridge / LAN)
+    assert d("172.18.0.1") is False      # the bridge address seen in the live probe
+    assert d("192.168.1.1") is False
+    # A tailnet peer (RFC6598) is NOT private in Python's ipaddress and is a
+    # stable per-device address, so it correctly gets its own per-IP budget -
+    # only the proxy addresses above collapse, and only those are skipped.
+    assert d("100.115.25.66") is True
+    assert d("") is False                # unknown
+    assert d("not-an-ip") is False       # TestClient's default host
