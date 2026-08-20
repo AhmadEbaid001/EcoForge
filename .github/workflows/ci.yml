@@ -182,7 +182,7 @@ jobs:
       # -- how we build it and how we run it --------------------------------
       - name: Hadolint
         continue-on-error: true
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.4.0
         with:
           dockerfile: infra/Dockerfile
           format: sarif
