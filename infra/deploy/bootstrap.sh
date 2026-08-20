@@ -129,6 +129,23 @@ chown "${DEPLOY_USER}:${DEPLOY_USER}" "${APP_DIR}/.env"
 note "mode 600 - it holds the signing key"
 
 # --------------------------------------------------------------------------
+log "Broker credentials"
+# --------------------------------------------------------------------------
+#
+# infra/mosquitto/passwd holds PBKDF2-SHA512 hashes of the password setup_env.py
+# just generated, so it is gitignored and cannot arrive with the checkout. Generating
+# .env without it leaves the host one file short of being able to start: compose
+# bind-mounts that path into the broker, Docker creates a DIRECTORY where the file
+# should be, mosquitto exits before its first health check and everything that
+# depends on it reports `dependency failed to start`. That reads as a broken release
+# and is a missing file - it cost the deploy drill exactly this, in CI.
+if [ -f "${APP_DIR}/infra/mosquitto/passwd" ]; then
+  note "already present - left alone"
+else
+  sudo -u "${DEPLOY_USER}" python3 "${APP_DIR}/scripts/setup_mqtt_auth.py"     || die "could not generate the broker password file - is Docker running?"
+fi
+
+# --------------------------------------------------------------------------
 log "Tailscale"
 # --------------------------------------------------------------------------
 if ! command -v tailscale >/dev/null; then
