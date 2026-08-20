@@ -279,7 +279,9 @@ def generate_series(
     Anomalies are applied AFTER scaling, so they represent genuine excess rather than
     being normalised away.
     """
-    rng = random.Random(seed if seed is not None else hash(building.id) & 0xFFFFFFFF)
+    # A synthetic load curve, not a secret.
+    rng = random.Random(  # nosec B311
+        seed if seed is not None else hash(building.id) & 0xFFFFFFFF)
     np_rng = np.random.default_rng(rng.randrange(2**32))
 
     timestamps = _timestamps(start, end, step_minutes)

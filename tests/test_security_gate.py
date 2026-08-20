@@ -29,7 +29,8 @@ from scripts import security_gate  # noqa: E402
 
 
 def sarif(rule: str, *, tool: str = "semgrep", level: str = "error",
-          path: str = "src/gemp/api/main.py", line: int = 10) -> dict:
+          path: str = "src/gemp/api/main.py", line: int = 10,
+          suppressions: list | None = None) -> dict:
     return {
         "version": "2.1.0",
         "runs": [{
@@ -37,6 +38,7 @@ def sarif(rule: str, *, tool: str = "semgrep", level: str = "error",
             "results": [{
                 "ruleId": rule,
                 "level": level,
+                **({"suppressions": suppressions} if suppressions is not None else {}),
                 "message": {"text": f"{rule} triggered"},
                 "locations": [{"physicalLocation": {
                     "artifactLocation": {"uri": path},
@@ -144,4 +146,36 @@ def test_pip_audit_json_is_read(reports):
             "vulns": [{"id": "GHSA-xxxx", "description": "a flaw", "fix_versions": ["1.0.1"]}],
         }],
     }))
+    assert security_gate.main([str(reports)]) == 1
+
+
+def test_a_finding_the_source_suppressed_does_not_block(reports):
+    """`# nosemgrep` at the line. Semgrep still writes the result into SARIF and
+    records the suppression beside it; reading only the result is how a build goes
+    red for a line that was already dealt with."""
+    (reports / "semgrep.sarif").write_text(json.dumps(
+        sarif("py.urllib", suppressions=[{"kind": "inSource"}])))
+    assert security_gate.main([str(reports)]) == 0
+
+
+def test_a_suppressed_finding_is_still_printed(reports, capsys):
+    """Not blocking is not the same as not mentioned. An in-source suppression has
+    no expiry date, so the only thing keeping it honest is being visible."""
+    (reports / "semgrep.sarif").write_text(json.dumps(
+        sarif("py.urllib", suppressions=[{"kind": "inSource"}])))
+    security_gate.main([str(reports)])
+    assert "py.urllib" in capsys.readouterr().out
+
+
+def test_a_rejected_suppression_still_blocks(reports):
+    """SARIF lets a suppression be recorded and refused. Refused means it counts."""
+    (reports / "semgrep.sarif").write_text(json.dumps(
+        sarif("py.urllib", suppressions=[{"kind": "inSource", "status": "rejected"}])))
+    assert security_gate.main([str(reports)]) == 1
+
+
+def test_an_empty_suppressions_array_blocks(reports):
+    """Trivy writes `"suppressions": []` on findings it did not suppress."""
+    (reports / "trivy.sarif").write_text(json.dumps(
+        sarif("CVE-2026-0001", tool="Trivy", suppressions=[])))
     assert security_gate.main([str(reports)]) == 1

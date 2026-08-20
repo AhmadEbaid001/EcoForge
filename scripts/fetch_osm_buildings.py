@@ -61,7 +61,9 @@ def fetch_ways(bbox: tuple[float, float, float, float], timeout: int = 90) -> li
         data=urllib.parse.urlencode({"data": query}).encode(),
         headers={"User-Agent": "gemp-robodam2026/0.1 (academic project)"},
     )
-    with urllib.request.urlopen(request, timeout=timeout + 15) as response:
+    # OVERPASS_URL is the https constant above, not an input.
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    with urllib.request.urlopen(request, timeout=timeout + 15) as response:  # nosec B310
         payload = json.load(response)
 
     return [
@@ -112,7 +114,8 @@ def build(count: int, min_area: float, max_area: float, seed: int, bbox) -> dict
             f"in this bbox; widen --bbox or lower --min-area"
         )
 
-    rng = random.Random(seed)
+    # Reproducibility is the requirement here, not unpredictability.
+    rng = random.Random(seed)  # nosec B311
     # Largest first, then a deterministic sample - biases toward the bigger buildings
     # a government portfolio would actually contain.
     usable.sort(key=lambda f: f["_area"], reverse=True)

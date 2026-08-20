@@ -49,6 +49,32 @@ must not be indistinguishable from a scanner that found nothing;
 allowed to fail the job. It treats an unreadable report as a failure, not as an
 absence of findings.
 
+### The one thing that does not block: advisories with no fix
+
+`block on anything` means anything that can be acted on. The base image carries
+roughly 120 Debian advisories with no patched version published anywhere — not
+"not upgraded yet", but nothing to upgrade *to*. Blocking on those makes red the
+permanent state of the build, and a gate that is always red is one everybody
+learns to click past; the exception register cannot absorb them either, because
+120 entries that all say "upstream has not shipped a fix" is a rubber stamp with
+a date on it.
+
+So the two trivy scans that feed the gate pass `--ignore-unfixed`, and the
+Dockerfile applies `apt-get upgrade` at build time — which means a fix becomes
+*this build's problem* the moment Debian publishes one. That combination took the
+image from 69 fixable findings to zero.
+
+Nothing is hidden. A third scan records every finding including the unfixable ones
+into `reports-informational/`, which is uploaded to the Security tab under the
+`informational` category and kept as a build artefact. The gate does not read that
+directory. When upstream ships a fix, the finding moves from that list into the
+blocking one on its own.
+
+The runtime image also ships no pip, setuptools or wheel. Removing them was the
+only way to clear the last three: pip vendors its own msgpack and setuptools under
+`pip/_vendor/`, pinned by pip's release rather than by anything this project can
+pass to it.
+
 Run exactly the same review locally before you push:
 
 ```bash

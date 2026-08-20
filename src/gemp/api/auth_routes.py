@@ -381,7 +381,8 @@ def reset_password(
     service.audit(session, "user.password_reset", principal=admin,
                   target=user.username, ip=client_ip(request))
     session.commit()
-    return {"ok": True, "must_change_password": True}
+    # A response field whose NAME ends in password, not a password.
+    return {"ok": True, "must_change_password": True}  # nosec B105
 
 
 @router.get("/admin/audit")

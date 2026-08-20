@@ -36,6 +36,7 @@ import random
 import signal
 import sys
 import time
+import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -78,7 +79,8 @@ class SimulatorNode:
     def __init__(self, buildings: list[Building], settings, seed: int = 20260814):
         self.buildings = buildings
         self.settings = settings
-        self.rng = random.Random(seed)
+        # Reproducibility is the requirement here, not unpredictability.
+        self.rng = random.Random(seed)  # nosec B311
         self.np_rng = np.random.default_rng(seed)
         self.scales = {b.id: annual_scale(b) for b in buildings}
         self.active: dict[str, LiveAnomaly] = {}
@@ -235,12 +237,21 @@ def resume_point(attempts: int = 30, delay_s: float = 5.0) -> datetime:
     filled with events that no data supports. Failing here instead lets Docker restart
     the container until the API is actually back, which is the loop that was wanted.
     """
-    url = os.environ.get("GEMP_API_URL", "http://core:8000") + "/health"
+    base = os.environ.get("GEMP_API_URL", "http://core:8000")
+    # urlopen honours file:// and reads the file. GEMP_API_URL is deployment
+    # configuration rather than user input, so this is not a forgery hole - but a
+    # typo that turns the resume probe into a local file read should say so here,
+    # not surface as an inexplicable "no readings" three hundred lines later.
+    if urllib.parse.urlparse(base).scheme.lower() not in ("http", "https"):
+        raise SystemExit(
+            f"GEMP_API_URL is {base!r}, which is not an http or https URL.")
+    url = base + "/health"
     last_error: Exception | None = None
 
     for attempt in range(1, attempts + 1):
         try:
-            with urllib.request.urlopen(url, timeout=10) as response:
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            with urllib.request.urlopen(url, timeout=10) as response:  # nosec B310
                 latest = json.load(response).get("readings")
         except (OSError, ValueError) as exc:
             last_error = exc

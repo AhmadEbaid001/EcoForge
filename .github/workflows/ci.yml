@@ -114,10 +114,17 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - run: mkdir -p reports
+      - run: mkdir -p reports reports-informational
 
       - name: Install scanners
-        run: pip install -e ".[dev]" "bandit[sarif]" semgrep pip-audit
+        # The build toolchain gets upgraded first because pip-audit audits the
+        # environment it runs in, and the setuptools inside setup-python's 3.11 is
+        # 65.5.0 - seven advisories, including a path traversal in PackageIndex.
+        # Without this the gate blocks on the runner's own preinstalled packages,
+        # which is a finding about GitHub's image rather than about this project.
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]" "bandit[sarif]" semgrep pip-audit
 
       # -- static analysis of our own code ---------------------------------
       - name: Bandit
@@ -150,6 +157,9 @@ jobs:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
           GITLEAKS_ENABLE_SUMMARY: "false"
           GITLEAKS_SARIF_PATH: reports/gitleaks.sarif
+          # Named rather than discovered, so a rename of the file is a failing build
+          # instead of a scan that quietly stops applying its one exception.
+          GITLEAKS_CONFIG: .gitleaks.toml
 
       # -- how we build it and how we run it --------------------------------
       - name: Hadolint
@@ -171,11 +181,28 @@ jobs:
           output: reports/trivy-fs.sarif
           # The gate decides what blocks, not the scanner. One policy, one place.
           exit-code: "0"
+          # See the image scan below for why unfixed advisories are reported
+          # separately rather than blocking.
+          ignore-unfixed: true
 
       - name: Build the image for scanning
         run: docker build -f infra/Dockerfile -t gemp:scan .
 
-      - name: Trivy image
+      # Two passes over the same image, and the difference between them is the
+      # whole policy.
+      #
+      # Debian ships python:3.11-slim with roughly 120 open advisories that have no
+      # patched version in any repository - not "not upgraded yet", but nothing to
+      # upgrade TO. Blocking on those makes a red build the permanent state of the
+      # world, and a gate that is always red is a gate everybody learns to click
+      # past. So the blocking pass asks only about vulnerabilities with a published
+      # fix, which the Dockerfile's apt upgrade layer then actually applies.
+      #
+      # The unfixable ones are not hidden. The second pass records all of them,
+      # uploads them to the Security tab and keeps them as an artefact; they are
+      # simply not treated as this build's fault. When Debian publishes a fix, the
+      # next build pulls it and the finding moves from that list into this one.
+      - name: Trivy image, fixable
         continue-on-error: true
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -185,6 +212,20 @@ jobs:
           format: sarif
           output: reports/trivy-image.sarif
           exit-code: "0"
+          ignore-unfixed: true
+
+      - name: Trivy image, everything including what cannot be fixed
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: gemp:scan
+          scanners: vuln,secret
+          format: sarif
+          # Outside reports/, deliberately: the gate reads that directory and this
+          # file is for people to look at, not for the build to fail on.
+          output: reports-informational/trivy-image-all.sarif
+          exit-code: "0"
 
       # -- one verdict -------------------------------------------------------
       - name: Publish findings to the Security tab
@@ -193,6 +234,14 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: reports
+
+      - name: Publish the unfixable findings too
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports-informational
+          category: informational
 
       - name: Security gate
         # Every scanner above is `continue-on-error`, deliberately: a scanner that
@@ -205,7 +254,9 @@ jobs:
         if: always()
         with:
           name: security-reports
-          path: reports/
+          path: |
+            reports/
+            reports-informational/
           if-no-files-found: warn
 
   # ---------------------------------------------------------------- build

@@ -75,7 +75,8 @@ SATURATION_PROBE_BUDGET = 30_000_000.0
 
 
 class Verdict(StrEnum):
-    PASS = "PASS"
+    # The word a claim gets when it holds. Not a credential.
+    PASS = "PASS"  # nosec B105
     FAIL = "FAIL"
     SKIP = "SKIP"
 

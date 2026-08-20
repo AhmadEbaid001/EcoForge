@@ -1,0 +1,27 @@
+# Gitleaks configuration.
+#
+# The default rules, plus one narrow exception. Nothing here relaxes what counts as
+# a secret: it names a construct in this repository that is not one and never was,
+# so that a real finding still stands out on a red build.
+#
+# `useDefault` inherits the full upstream ruleset rather than restating it, so new
+# rules arrive with new gitleaks versions instead of being frozen at whatever this
+# file said the day it was written.
+
+[extend]
+useDefault = true
+
+# The generic-api-key rule reads `key: '<ten or more characters>'` as a credential
+# assignment. The dashboard's tables are built from column descriptors, and each one
+# carries a `key` naming the field it renders:
+#
+#     { key: 'total_benefit_kgco2e', label: 'Lifetime kgCO₂e', num: true, ... }
+#
+# Two commits on 18 August match. The exception is scoped to that file AND to the
+# shape of the value - an unquoted lower-case snake-case field name, which no API key
+# looks like - so a genuine credential in the same file is still caught.
+[[allowlists]]
+description = "Dashboard table column descriptors, not credentials"
+regexTarget = "line"
+paths = ['''web/js/views\.js''']
+regexes = ['''\{\s*key:\s*'[a-z][a-z0-9_]*',''']

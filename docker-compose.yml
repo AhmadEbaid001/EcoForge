@@ -132,6 +132,11 @@ services:
         condition: service_healthy
       core:
         condition: service_healthy
+    # The image carries the API's health check. This service runs the simulator from
+    # that same image and serves no HTTP, so inheriting it would report a perfectly
+    # healthy node as unhealthy forever.
+    healthcheck:
+      disable: true
 
   nginx:
     image: nginx:1.27-alpine

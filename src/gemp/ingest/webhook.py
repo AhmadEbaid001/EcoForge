@@ -165,7 +165,10 @@ class Webhook:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
+            # `_http_url_or_none` rejected everything that was not http(s)-with-a-host
+            # before this notifier was ever constructed.
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:  # nosec B310
                 if 200 <= response.status < 300:
                     self.sent += 1
                     return

@@ -34,7 +34,8 @@ DISTRICTS = [
 
 
 def generate(count: int, seed: int) -> dict:
-    rng = random.Random(seed)
+    # Reproducibility is the requirement here, not unpredictability.
+    rng = random.Random(seed)  # nosec B311
     features = []
 
     for index in range(count):

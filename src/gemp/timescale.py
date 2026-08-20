@@ -102,14 +102,22 @@ def ensure_timescale_objects(engine: Engine | None = None) -> dict[str, str]:
 
         # The primary key is (building_id, ts), which already contains the
         # partitioning column - a hypertable requires that.
-        connection.execute(text(f"""
-            SELECT create_hypertable(
-                'reading', 'ts',
-                chunk_time_interval => INTERVAL '{CHUNK_INTERVAL}',
-                migrate_data => TRUE,
-                if_not_exists => TRUE
-            )
-        """))
+        # Bound, not interpolated. `CHUNK_INTERVAL` is a constant forty lines up and
+        # was never reachable from a request, but an f-string into `text()` is the
+        # shape of the bug rather than the bug, and it reads as one to every scanner
+        # and every reviewer. `INTERVAL '...'` is literal syntax that takes no
+        # placeholder; the cast does the same job and takes one.
+        connection.execute(
+            text("""
+                SELECT create_hypertable(
+                    'reading', 'ts',
+                    chunk_time_interval => CAST(:chunk AS INTERVAL),
+                    migrate_data => TRUE,
+                    if_not_exists => TRUE
+                )
+            """),
+            {"chunk": CHUNK_INTERVAL},
+        )
         result["hypertable"] = "ok"
 
         # `create_hypertable` only honours chunk_time_interval when it CREATES the
@@ -118,9 +126,10 @@ def ensure_timescale_objects(engine: Engine | None = None) -> dict[str, str]:
         # exactly as they are - re-chunking would rewrite the reading table, and the
         # signed chain stored in it is the last thing that should be rewritten to
         # tidy up a partitioning decision.
-        connection.execute(text(
-            f"SELECT set_chunk_time_interval('reading', INTERVAL '{CHUNK_INTERVAL}')"
-        ))
+        connection.execute(
+            text("SELECT set_chunk_time_interval('reading', CAST(:chunk AS INTERVAL))"),
+            {"chunk": CHUNK_INTERVAL},
+        )
         result["chunk_interval"] = CHUNK_INTERVAL
 
         connection.execute(text(HOURLY_VIEW))

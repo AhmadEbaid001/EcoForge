@@ -55,6 +55,10 @@ class Finding:
     path: str
     line: int
     title: str
+    # SARIF lets a tool report a finding AND record that the source suppressed it -
+    # semgrep does exactly this for `# nosemgrep`. Reading the array as absent is how
+    # a suppressed finding turns into a permanently red build that no edit can fix.
+    suppressed: bool = False
 
     @property
     def key(self) -> str:
@@ -138,10 +142,18 @@ def read_sarif(path: Path) -> list[Finding]:
                 "shortDescription", {}
             ).get("text", "")
 
+            # A suppression with status "rejected" is a suppression somebody refused,
+            # so it does not count. An absent status means accepted, per the spec.
+            suppressions = result.get("suppressions") or []
+            suppressed = any(
+                (s.get("status") or "accepted") != "rejected" for s in suppressions
+            )
+
             findings.append(Finding(
                 tool=tool, rule=rule_id, severity=str(severity),
                 path=artifact, line=int(line or 0),
                 title=message.strip().splitlines()[0] if message else rule_id,
+                suppressed=suppressed,
             ))
     return findings
 
@@ -247,6 +259,13 @@ def main(argv: list[str] | None = None) -> int:
     blocking: list[Finding] = []
     excused: list[tuple[Finding, Exception_]] = []
 
+    # Marked `# nosec` / `# nosemgrep` at the line itself. These do not block, and
+    # they are not silent either: they are listed in every summary this script
+    # writes, because an in-source suppression is a permanent exception with no
+    # expiry date and the only thing keeping it honest is that people can see it.
+    suppressed = [f for f in findings if f.suppressed]
+    findings = [f for f in findings if not f.suppressed]
+
     for finding in findings:
         cover = next((e for e in exceptions if not e.expired and e.covers(finding)), None)
         if cover is None:
@@ -260,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     # the finding being gone is good news arriving in an inconvenient shape.
     unused = [e for e in exceptions if not e.expired and not e.matched]
 
-    report = _render(blocking, excused, expired, unused)
+    report = _render(blocking, excused, expired, unused, suppressed)
     print(report)
     if args.summary:
         args.summary.write_text(report, encoding="utf-8")
@@ -272,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     return 1 if (blocking or expired) else 0
 
 
-def _render(blocking, excused, expired, unused) -> str:
+def _render(blocking, excused, expired, unused, suppressed=()) -> str:
     lines = ["## Security gate", ""]
 
     if not blocking and not expired:
@@ -307,6 +326,21 @@ def _render(blocking, excused, expired, unused) -> str:
                 continue
             seen.add(cover.key)
             lines.append(f"- `{cover.key}` until {cover.expires} — {cover.owner}: {cover.reason}")
+
+    if suppressed:
+        lines += ["", "### Suppressed at the line", "",
+                  "Marked in the source with `# nosec` or `# nosemgrep`. These carry "
+                  "no expiry date, so they are printed on every run rather than "
+                  "disappearing into a scanner's own bookkeeping - review them the "
+                  "way you would review the code they sit in.", ""]
+        seen_lines = set()
+        for finding in suppressed:
+            where = f"{finding.key} {finding.path}:{finding.line}"
+            if where in seen_lines:
+                continue
+            seen_lines.add(where)
+            lines.append(f"- `{finding.key}` {finding.path}:{finding.line}")
+        lines.append("")
 
     if unused:
         lines += ["", "### Exceptions no longer needed", "",

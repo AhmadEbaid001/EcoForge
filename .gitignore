@@ -75,3 +75,4 @@ data/household_power_consumption.txt
 # and the rollback pointer must never be overwritten by a checkout.
 .deploy/
 reports/
+reports-informational/

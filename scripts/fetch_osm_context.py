@@ -64,7 +64,9 @@ def overpass(query: str, timeout: int = 120) -> dict:
         data=urllib.parse.urlencode({"data": query}).encode(),
         headers={"User-Agent": "gemp-robodam2026/0.1 (academic project)"},
     )
-    with urllib.request.urlopen(request, timeout=timeout + 15) as response:
+    # OVERPASS_URL is the https constant above, not an input.
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    with urllib.request.urlopen(request, timeout=timeout + 15) as response:  # nosec B310
         return json.load(response)
 
 

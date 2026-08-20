@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
@@ -67,7 +67,9 @@ def main() -> int:
         "mosquitto_passwd", "-b", "/work/passwd", user, password,
     ]
 
-    result = subprocess.run(command, capture_output=True, text=True,
+    # An argument list, never a shell string, so the credential cannot be broken
+    # out of its argv slot however it is punctuated.
+    result = subprocess.run(command, capture_output=True, text=True,  # nosec B603
                             env={**os.environ, "MSYS_NO_PATHCONV": "1"})
     if result.returncode != 0:
         print(f"FAIL  mosquitto_passwd exited {result.returncode}", file=sys.stderr)

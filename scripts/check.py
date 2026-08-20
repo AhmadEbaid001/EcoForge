@@ -15,7 +15,7 @@ three.
 from __future__ import annotations
 
 import argparse
-import subprocess
+import subprocess  # nosec B404
 import sys
 import time
 from pathlib import Path
@@ -59,7 +59,9 @@ GATES: list[tuple[str, list[str], str]] = [
 def run(name: str, argv: list[str]) -> tuple[bool, float]:
     print(f"\n=== {name} " + "=" * (66 - len(name)))
     started = time.perf_counter()
-    result = subprocess.run(argv, cwd=ROOT)
+    # `argv` comes from GATES at the top of this file: four literal command lines.
+    # No shell, and nothing here reads argv from anywhere else.
+    result = subprocess.run(argv, cwd=ROOT)  # nosec B603
     elapsed = time.perf_counter() - started
     return result.returncode == 0, elapsed
 

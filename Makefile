@@ -22,20 +22,34 @@ help:  ## What each target does
 check:  ## The four gates, exactly as CI runs them
 	$(PY) scripts/check.py
 
+# Every flag here is the flag ci.yml passes. That is the whole point of the target:
+# a local review running a smaller rule set than CI is worse than no local review,
+# because it reports PASS on a push that is about to go red.
+#
+# Docker rather than local binaries for semgrep, gitleaks, hadolint and the image
+# scan - semgrep has no native Windows build and the other three are not on a
+# developer laptop's PATH, so a target needing all seven installed is a target
+# nobody runs. One command per line, no backslash continuations: this file is
+# CRLF, and make reads a backslash before a carriage return as a literal backslash.
 .PHONY: security
 security:  ## The security review locally: same scanners, same verdict as CI
-	@mkdir -p reports
+	@mkdir -p reports reports-informational
 	-bandit -r src scripts -f sarif -o reports/bandit.sarif
-	-semgrep scan --config p/python --config p/security-audit --config p/secrets \
-	  --sarif --output reports/semgrep.sarif --metrics off src scripts
+	-docker run --rm -v "$(CURDIR):/src" -w /src semgrep/semgrep:latest semgrep scan --config p/python --config p/security-audit --config p/secrets --config p/owasp-top-ten --sarif --output reports/semgrep.sarif --metrics off src scripts
 	-pip-audit --format json --output reports/pip-audit.json --progress-spinner off
-	-trivy fs --scanners vuln,secret,misconfig --format sarif -o reports/trivy-fs.sarif .
+	-docker run --rm -v "$(CURDIR):/repo" zricethezav/gitleaks:latest detect --source /repo --config /repo/.gitleaks.toml --report-format sarif --report-path /repo/reports/gitleaks.sarif --redact --exit-code 0
+	-docker run --rm -i hadolint/hadolint hadolint --format sarif - < infra/Dockerfile > reports/hadolint.sarif
+	-docker run --rm -v "$(CURDIR):/repo" -w /repo aquasec/trivy:0.58.1 fs --scanners vuln,secret,misconfig --ignore-unfixed --format sarif -o /repo/reports/trivy-fs.sarif --skip-dirs .venv,.git,out .
+	docker build -f infra/Dockerfile -t gemp:scan .
+	-docker run --rm -v "/var/run/docker.sock:/var/run/docker.sock" -v "$(CURDIR)/reports:/out" aquasec/trivy:0.58.1 image --scanners vuln,secret --ignore-unfixed --format sarif --output /out/trivy-image.sarif gemp:scan
+	-docker run --rm -v "/var/run/docker.sock:/var/run/docker.sock" -v "$(CURDIR)/reports-informational:/out" aquasec/trivy:0.58.1 image --scanners vuln,secret --format sarif --output /out/trivy-image-all.sarif gemp:scan
 	$(PY) scripts/security_gate.py reports
 
 .PHONY: security-tools
 security-tools:  ## Install the scanners the security target needs
-	pip install "bandit[sarif]" semgrep pip-audit
-	@command -v trivy >/dev/null || echo "trivy not installed: https://aquasecurity.github.io/trivy"
+	pip install --upgrade pip setuptools wheel
+	pip install "bandit[sarif]" pip-audit
+	@echo "semgrep, gitleaks, hadolint and trivy run from their images; docker pulls them."
 
 # ---------------------------------------------------------------- local stack
 
