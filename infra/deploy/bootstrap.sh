@@ -114,6 +114,25 @@ CLONE
 fi
 chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${APP_DIR}"
 
+# ...except the anchor directory, which belongs to the CONTAINER user.
+#
+# infra/Dockerfile runs the application as uid 10001. That uid owns /app/anchor
+# inside the image, but compose bind-mounts the host directory over it and a bind
+# mount carries the HOST ownership - so after the chown above, uid 10001 cannot
+# write the one directory it is supposed to write. The simulator then dies on
+#
+#     PermissionError: [Errno 13] Permission denied: 'anchor/live_anomalies.jsonl'
+#
+# and `restart: always` turns that into a crash loop that still publishes
+# readings, so the stack looks alive while the live anomaly ground truth is never
+# written. The integrity anchor F5 rests on lives here too.
+#
+# Numeric on purpose: 10001 is a uid inside the image and need not exist on the
+# host, so there is no name to resolve it by.
+install -d -m 750 "${APP_DIR}/anchor"
+chown -R 10001:10001 "${APP_DIR}/anchor"
+note "anchor/ owned by uid 10001 - the uid the container runs as"
+
 # --------------------------------------------------------------------------
 log "Secrets"
 # --------------------------------------------------------------------------
