@@ -244,8 +244,12 @@ def change_password(
     # who has got hold of a session (a shared machine, an unlocked screen) could grind
     # the current password here at whatever rate scrypt allows, which is the one
     # secret standing between them and permanent ownership of the account.
-    throttle_key = f"user:{principal.username}"
-    wait = service.retry_after(throttle_key)
+    #
+    # `login_throttled` checks every counter the login route would - username, IP
+    # where the address distinguishes callers, and the shared bucket where it does
+    # not. Pre-checking only the username key left a locked-out ADDRESS free to keep
+    # guessing here until the username counter tripped on its own.
+    wait = service.login_throttled(principal.username, client_ip(request))
     if wait:
         raise HTTPException(
             429, f"too many failed attempts; try again in {wait} seconds",
@@ -253,18 +257,14 @@ def change_password(
         )
 
     if not passwords.verify(body.current_password, user.password_hash):
-        service.record_failure(throttle_key)
         ip = client_ip(request)
-        # Same rule as the login path: never let a shared proxy address accrue a
-        # lockout that would hit unrelated callers.
-        if service.ip_is_throttleable(ip):
-            service.record_failure(f"ip:{ip}")
+        service.record_login_failure(principal.username, ip)
         service.audit(session, "auth.password_change", principal=principal,
-                      outcome="denied", ip=client_ip(request))
+                      outcome="denied", ip=ip)
         session.commit()
         raise HTTPException(403, "current password is incorrect")
 
-    service.clear_failures(throttle_key)
+    service.clear_failures(f"user:{principal.username}")
 
     try:
         service.set_password(session, user, body.new_password)
@@ -450,6 +450,15 @@ def security_posture(
         .order_by(AuditRow.ts.desc()).limit(10)
     ).scalars().all()
 
+    audit_failures = service.audit_failures()
+    warnings = _warnings(settings, stale_cost)
+    if audit_failures:
+        warnings.append(
+            f"{audit_failures} audit row(s) have failed to write since this "
+            "process started. The trail is best-effort by design, but a gap in "
+            "it means the actions behind those rows are unrecorded."
+        )
+
     return {
         "cookie_secure": settings.cookie_secure,
         "session_idle_timeout_hours": service.IDLE_TIMEOUT.total_seconds() / 3600,
@@ -457,12 +466,13 @@ def security_posture(
         "password_min_length": passwords.MIN_PASSWORD_LENGTH,
         "password_hash_cost": passwords.DEFAULT_N,
         "password_hashes_below_current_cost": stale_cost,
+        "audit_write_failures": audit_failures,
         "users": service.user_count(session),
         "recent_failed_logins": [
             {"ts": row.ts.isoformat(), "username": row.username, "ip": row.ip}
             for row in failed
         ],
-        "warnings": _warnings(settings, stale_cost),
+        "warnings": warnings,
     }
 
 

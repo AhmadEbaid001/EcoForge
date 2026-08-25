@@ -552,15 +552,42 @@ def test_guessing_the_current_password_is_throttled_too(client):
 
 
 def test_the_api_schema_is_not_served_to_anonymous_callers(client):
-    """`/docs`, `/redoc` and `/openapi.json` are public paths when they are mounted.
+    """`/docs`, `/redoc` and `/openapi.json` are off unless GEMP_API_DOCS says
+    otherwise.
 
     Mounted, they hand anyone who can reach the port the complete endpoint
     inventory, every parameter shape and the role each route demands. That is a
     reconnaissance map and it is worth nothing to the people this is demonstrated
-    to, so it is off unless GEMP_API_DOCS says otherwise.
+    to, so it is off by default. Unmounted they 404, which confirms nothing about
+    configuration to a prober.
     """
     for path in ("/openapi.json", "/docs", "/redoc"):
         assert client.get(path).status_code == 404, path
+
+
+def test_the_mounted_schema_still_requires_a_session(client, monkeypatch):
+    """The schema routes live OUTSIDE /api/, which is the prefix the deny-by-default
+    middleware scopes to. Listing them as public prefixes was therefore decorative:
+    with GEMP_API_DOCS=true they were served to anonymous callers regardless of what
+    any list said. When mounted they are guarded explicitly; unmounted they stay a
+    plain 404 for everyone.
+
+    The app's mount decision happens at import time, so this pins the guard the way
+    the production middleware sees it - by pointing _SCHEMA_PATHS at paths that are
+    NOT actually routed: an anonymous caller must be refused by the GUARD (401), and
+    an authenticated one must pass it and reach routing (404, since nothing is there).
+    """
+    from gemp.api import main
+
+    monkeypatch.setattr(main, "_SCHEMA_PATHS",
+                        frozenset({"/docs", "/redoc", "/openapi.json"}))
+
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 401, path
+
+    login(client, "boss", ADMIN_PASSWORD)
+    # Past the guard now - routing answers, and there is genuinely no route.
+    assert client.get("/openapi.json").status_code == 404
 
 
 def test_the_app_refuses_to_run_as_more_than_one_worker(monkeypatch):
@@ -654,8 +681,73 @@ def test_a_routable_client_address_still_gets_a_per_ip_budget(client):
     assert sprayed.status_code == 429
 
 
+def test_spraying_usernames_through_a_proxy_address_arms_a_delay(client, monkeypatch):
+    """The gap the per-IP skip left: with every client behind one private address,
+    per-IP throttling never armed, so candidate usernames could be ground at whatever
+    rate scrypt allows - each attempt under its own username budget. A shared bucket
+    arms instead, and once armed every attempt from that address pays a delay before
+    its password is checked."""
+    monkeypatch.setattr(service, "SHARED_DELAY_S", 0.01)  # keep the suite quick
+    proxy = {"X-Forwarded-For": "10.0.0.9"}
+
+    assert service.shared_spray_delay() == 0
+
+    for i in range(service.MAX_SHARED_FAILURES):
+        r = client.post("/api/v1/auth/login",
+                        json={"username": f"spray-{i}", "password": "wrong-password-xx"},
+                        headers=proxy)
+        assert r.status_code == 401
+
+    assert service.shared_spray_delay() > 0, "spraying did not arm the shared bucket"
+
+
+def test_the_shared_bucket_slows_spraying_without_refusing_anyone(client, monkeypatch):
+    """The regression that matters. Refusing on the shared key refuses EVERY caller,
+    because every caller shares it - fifty sprayed failures once locked an untouched
+    account and the real admin for the full lockout, sustainable indefinitely at
+    fifty requests per window. Spraying must cost time, never service."""
+    monkeypatch.setattr(service, "SHARED_DELAY_S", 0.01)
+    proxy = {"X-Forwarded-For": "10.0.0.9"}
+
+    for i in range(service.MAX_SHARED_FAILURES * 2):   # well past the threshold
+        client.post("/api/v1/auth/login",
+                    json={"username": f"spray-{i}", "password": "wrong-password-xx"},
+                    headers=proxy)
+
+    # An untouched account, with the right password, still gets in.
+    ok = client.post("/api/v1/auth/login",
+                     json={"username": "watcher", "password": VIEWER_PASSWORD},
+                     headers=proxy)
+    assert ok.status_code == 200, "the shared bucket locked out an unrelated account"
+
+    # And the per-username control is still the one that stops a targeted guess.
+    for _ in range(service.MAX_FAILURES):
+        client.post("/api/v1/auth/login",
+                    json={"username": "boss", "password": "wrong-password-xx"},
+                    headers=proxy)
+    assert client.post("/api/v1/auth/login",
+                       json={"username": "boss", "password": ADMIN_PASSWORD},
+                       headers=proxy).status_code == 429
+
+
+def test_honest_failures_do_not_arm_the_shared_bucket(client):
+    """One account locked by its own typos must not spend the shared budget."""
+    proxy = {"X-Forwarded-For": "10.0.0.9"}
+    for _ in range(service.MAX_FAILURES):
+        client.post("/api/v1/auth/login",
+                    json={"username": "typos", "password": "wrong-password-xx"},
+                    headers=proxy)
+
+    # The shared bucket is untouched, so a DIFFERENT user can still get in.
+    ok = client.post("/api/v1/auth/login",
+                     json={"username": "watcher", "password": VIEWER_PASSWORD})
+    assert ok.status_code == 200
+
+
 def test_distinguishing_ip_classification():
-    d = service.ip_is_throttleable
+    # White-box on purpose: this pins the CLASSIFIER, which login_throttled and
+    # authenticate both build their key sets on.
+    d = service._distinguishing_ip
     assert d("8.8.8.8") is True          # public, routable
     assert d("1.1.1.1") is True
     assert d("127.0.0.1") is False       # loopback (Funnel forwards from here)

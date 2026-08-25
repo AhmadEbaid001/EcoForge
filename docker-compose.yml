@@ -63,11 +63,15 @@ services:
     volumes:
       - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./infra/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./infra/mosquitto/aclfile:/mosquitto/config/aclfile:ro
       - mosquitto_data:/mosquitto/data
     ports:
       - "127.0.0.1:1883:1883"
+    # The password has NO default, deliberately. A fallback of "gemp" would mean a
+    # host that skipped setup_mqtt_auth.py ships a broker whose credential is in the
+    # compose file - and this broker accepts publishes that become readings.
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -t '$$SYS/#' -C 1 -W 3 -u ${GEMP_MQTT_USER:-gemp} -P ${GEMP_MQTT_PASSWORD:-gemp} || exit 1"]
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -t '$$SYS/#' -C 1 -W 3 -u ${GEMP_MQTT_USER:?set GEMP_MQTT_USER in .env} -P ${GEMP_MQTT_PASSWORD:?set GEMP_MQTT_PASSWORD in .env} || exit 1"]
       interval: 10s
       timeout: 6s
       retries: 10
@@ -145,7 +149,13 @@ services:
       - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./web:/usr/share/nginx/html:ro
     ports:
-      - "8080:80"
+      # Loopback by default. Session cookies travel over plaintext HTTP (there is no
+      # TLS on the air-gapped demo), so a port open on every interface hands any
+      # passive listener on the same LAN a replayable seven-day session cookie.
+      # To serve other devices, set GEMP_HTTP_BIND=0.0.0.0 in .env AND
+      # GEMP_COOKIE_SECURE=true, and terminate TLS - the security posture view
+      # reports that flag so the pairing cannot silently disagree.
+      - "${GEMP_HTTP_BIND:-127.0.0.1}:${GEMP_HTTP_PORT:-8080}:80"
     depends_on:
       core:
         condition: service_started

@@ -39,11 +39,11 @@ import time
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import numpy as np
 import paho.mqtt.client as mqtt
 
+from gemp import paths
 from gemp.config import get_settings
 from gemp.domain.models import Building
 from gemp.domain.portfolio import load_buildings
@@ -52,7 +52,6 @@ from gemp.sim.profiles import annual_scale, point_kw
 log = logging.getLogger("gemp.sim.node")
 
 STEP_MINUTES = 15
-ANCHOR_DIR = Path("anchor")
 
 # Chance per building per emitted reading that a fault begins. Tuned so a fifty
 # building portfolio shows something within a couple of minutes of demonstration
@@ -87,8 +86,13 @@ class SimulatorNode:
         self.published = 0
         self.running = True
 
-        ANCHOR_DIR.mkdir(parents=True, exist_ok=True)
-        self.truth_path = ANCHOR_DIR / "live_anomalies.jsonl"
+        # The same resolver the evaluator reads with. This used to be a CWD-relative
+        # `anchor/` that agreed with the scoring side only when both ran from the
+        # project root - run from anywhere else, every injected fault was recorded
+        # where evaluation would never look, and scored as a false alarm.
+        anchor_dir = paths.anchor_dir()
+        anchor_dir.mkdir(parents=True, exist_ok=True)
+        self.truth_path = anchor_dir / "live_anomalies.jsonl"
 
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2, client_id="gemp-sim", clean_session=True

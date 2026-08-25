@@ -102,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
               "changed at first login.")
     else:
         print("  password: taken from GEMP_BOOTSTRAP_PASSWORD")
+        # The environment of a process is readable by anything running as the same
+        # user, and often lingers in deployment tooling and shell histories. The
+        # generated path above exists because it is strictly safer; say so rather
+        # than let convenience be the default without anyone noticing.
+        print("  (prefer the generated path next time: an environment variable is "
+              "readable by everything running as this user)")
     print()
     return 0
 

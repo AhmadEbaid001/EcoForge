@@ -1,0 +1,17 @@
+# One account, least privilege.
+#
+# The broker credential is shared by the ingester (which subscribes) and the
+# simulators - the software one and any physical ESP32 node, which is the whole
+# point of the hardware seam. What nothing else needs is write access anywhere
+# else or read access to anything: without an ACL, any process holding the
+# credential - every container on the compose network, anything on the host's
+# loopback - could publish readings indistinguishable from a real building's,
+# and injected load flows straight into forecasts, anomalies and annual_kwh.
+#
+# $SYS/# is read-only and exists for the container healthcheck, which subscribes
+# to it to prove the broker answers.
+
+user gemp
+
+topic readwrite gemp/reading/#
+topic read $SYS/#

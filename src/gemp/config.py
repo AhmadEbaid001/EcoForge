@@ -8,6 +8,7 @@ development key is worse than one that refuses to start.
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import quote_plus
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -67,15 +68,15 @@ class Settings(BaseSettings):
     # silent.
     cookie_secure: bool = False
 
-    # The interactive API documentation and the OpenAPI schema behind it. They are
-    # reachable WITHOUT a session by design - a schema that needs a login is not much
-    # use while building against it - which also means they hand an unauthenticated
-    # caller the complete endpoint inventory, every parameter shape and the role each
-    # route demands. That is a reconnaissance map, and it is worth exactly nothing to
-    # a demonstration audience.
+    # The interactive API documentation and the OpenAPI schema behind it. Mounted
+    # they hand any caller who can reach them the complete endpoint inventory, every
+    # parameter shape and the role each route demands - a reconnaissance map, worth
+    # exactly nothing to a demonstration audience.
     #
     # Off by default, so a deployment is closed unless somebody opens it. Set
-    # GEMP_API_DOCS=true while developing against the API.
+    # GEMP_API_DOCS=true while developing against the API; note that even mounted
+    # they are NOT anonymous - the middleware requires a session for them, because
+    # anything worth building against needs an account anyway.
     api_docs: bool = False
 
     # --- alerting (F11) ---
@@ -113,10 +114,14 @@ class Settings(BaseSettings):
 
     @property
     def dsn(self) -> str:
+        # quote_plus, not raw interpolation: a password containing `@`, `/` or `:`
+        # otherwise re-parses as host/port/user separators, silently aiming the
+        # connection somewhere else or failing it. Generated passwords are hex, but
+        # nothing stops an operator choosing one that isn't.
         password = self.db_password.get_secret_value()
         return (
-            f"postgresql+psycopg://{self.db_user}:{password}"
-            f"@{self.resolved_db_host}:{self.db_port}/{self.db_name}"
+            f"postgresql+psycopg://{quote_plus(self.db_user)}:{quote_plus(password)}"
+            f"@{self.resolved_db_host}:{self.db_port}/{quote_plus(self.db_name)}"
         )
 
     @property

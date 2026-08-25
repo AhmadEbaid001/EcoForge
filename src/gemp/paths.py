@@ -48,6 +48,27 @@ def anchor_dir() -> Path:
     return data_dir().parent / "anchor"
 
 
+def integrity_anchor_path() -> Path:
+    """The one answer to "where is the integrity anchor file".
+
+    This used to have three: the writer defaulted to a CWD-relative `anchor/`,
+    the reader honoured `GEMP_ANCHOR_PATH` with its own CWD-relative default, and
+    everything else honoured `GEMP_ANCHOR_DIR`. Writer and reader agreed only while
+    both processes shared a working directory - and moving ground truth with
+    GEMP_ANCHOR_DIR left the integrity anchor behind despite the naming symmetry.
+    If the two ever diverged, truncation detection degraded from an alarm into a
+    quiet mismatch against a stale file. One resolver, used by whoever touches the
+    file, closes that.
+
+    `GEMP_ANCHOR_PATH` still wins over everything, because the API tests use it to
+    isolate per-test anchors from anything a real deployment wrote.
+    """
+    override = os.environ.get("GEMP_ANCHOR_PATH")
+    if override:
+        return Path(override)
+    return anchor_dir() / "integrity_anchor.jsonl"
+
+
 def ground_truth_write_path() -> Path:
     """Where `gemp.seed` puts the ground truth it generates.
 

@@ -376,6 +376,39 @@ def test_series_returns_stored_readings(client):
     assert body["points"][0]["ts"] < body["points"][-1]["ts"]
 
 
+def test_a_limit_below_one_is_rejected_not_treated_as_unbounded(client):
+    """PostgreSQL reads a negative LIMIT as no limit at all, and a zero as none.
+    These endpoints paginate worst-lists and raw series; `?limit=-1` arriving here
+    meant "everything", which is an information-disclosure amplification an
+    authenticated viewer could drive per request. Every sibling endpoint declared
+    ge=1; these two had slipped."""
+    for url in ("/api/v1/buildings/b001/series",
+                "/api/v1/metrics/anomaly"):
+        for bad in ("0", "-1"):
+            response = client.get(f"{url}?limit={bad}")
+            assert response.status_code == 422, f"{url}?limit={bad} was accepted"
+
+
+def test_one_account_cannot_hold_every_solver_slot(client):
+    """The global slot cap bounds the machine; this pins the per-account cap that
+    stops one scripted principal from keeping all of them permanently busy - the
+    demonstration's own slider request being the one that would starve."""
+    from gemp.api import main
+
+    who = "contract-tests"
+    assert main.MAX_SOLVES_PER_PRINCIPAL < main.MAX_CONCURRENT_SOLVES
+    main._inflight_solves[who] = main.MAX_SOLVES_PER_PRINCIPAL
+    try:
+        response = client.post("/api/v1/optimize",
+                               json={"budget_egp": 1e6, "persist": False})
+        assert response.status_code == 429
+        assert "in flight" in response.json()["detail"]
+        # The refusal released nothing it held - the count was only pre-existing.
+        assert main._inflight_solves[who] == main.MAX_SOLVES_PER_PRINCIPAL
+    finally:
+        main._inflight_solves.pop(who, None)
+
+
 def test_integrity_endpoint_passes_on_an_intact_chain(client):
     body = client.get("/api/v1/integrity/verify/b002").json()
     assert body["rows"] == 0

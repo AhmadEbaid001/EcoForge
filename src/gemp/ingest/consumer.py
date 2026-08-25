@@ -33,6 +33,7 @@ import paho.mqtt.client as mqtt
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
+from gemp import paths
 from gemp.config import get_settings
 from gemp.db import (
     AnomalyRow,
@@ -49,7 +50,6 @@ from gemp.ingest.webhook import Notification, Webhook
 
 log = logging.getLogger("gemp.ingest")
 
-ANCHOR_PATH = Path("anchor") / "integrity_anchor.jsonl"
 CHECKPOINT_EVERY_S = 60.0
 
 # How many readings may wait in memory for the database to come back.
@@ -100,9 +100,11 @@ class Ingester:
         self.batch_rows = batch_rows or settings.ingest_batch_rows
         self.batch_seconds = batch_seconds or settings.ingest_batch_seconds
         # Injectable so the write path can be integration-tested against SQLite with
-        # no server and no broker running.
+        # no server and no broker running. Default resolves through paths - the same
+        # function the reader uses - so writer and reader cannot disagree about
+        # where the anchor lives.
         self.session_factory = session_factory or session_scope
-        self.anchor_path = anchor_path or ANCHOR_PATH
+        self.anchor_path = anchor_path or paths.integrity_anchor_path()
 
         # Anomalies are scored as readings arrive, not only in the nightly batch:
         # a fault found the next morning has already burned a night of energy, and

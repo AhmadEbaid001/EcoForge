@@ -25,10 +25,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-log = logging.getLogger("gemp.ingest.anchor")
+from gemp import paths
 
-# Matches `Ingester.anchor_path`. Overridable so a test never touches the real one.
-DEFAULT_ANCHOR_PATH = Path("anchor") / "integrity_anchor.jsonl"
+log = logging.getLogger("gemp.ingest.anchor")
 
 # Checkpoints are appended for every active chain on every round, so the newest entry
 # for any one building is close to the end of the file. Reading a tail slice keeps a
@@ -46,8 +45,15 @@ class Checkpoint:
 
 
 def anchor_path() -> Path:
+    """Where the anchor file is. The SAME resolver the writer uses.
+
+    This used to carry its own CWD-relative default, which agreed with the writer's
+    only while both processes shared a working directory; anywhere else, verification
+    quietly compared against a file that was never being written. `GEMP_ANCHOR_PATH`
+    still wins for test isolation.
+    """
     override = os.environ.get("GEMP_ANCHOR_PATH")
-    return Path(override) if override else DEFAULT_ANCHOR_PATH
+    return Path(override) if override else paths.integrity_anchor_path()
 
 
 def _parse(line: str) -> Checkpoint | None:

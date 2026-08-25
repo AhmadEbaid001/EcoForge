@@ -40,16 +40,11 @@ PUBLIC_PATHS: frozenset[str] = frozenset({
     "/api/v1/auth/session",
 })
 
-# Prefixes served to anonymous browsers: the login page and its assets. The SPA shell
-# itself is public because it contains no data - it asks the API for everything, and
-# the API is what refuses.
-PUBLIC_PREFIXES: tuple[str, ...] = ("/docs", "/openapi.json", "/redoc")
-
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 def is_public(path: str) -> bool:
-    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
+    return path in PUBLIC_PATHS
 
 
 def principal_from_request(request: Request) -> Principal | None:

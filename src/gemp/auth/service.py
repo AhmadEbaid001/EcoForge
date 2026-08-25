@@ -17,6 +17,7 @@ import hashlib
 import ipaddress
 import logging
 import secrets
+import threading
 import time
 import uuid
 from collections import defaultdict, deque
@@ -55,6 +56,43 @@ TOUCH_INTERVAL = timedelta(minutes=1)
 MAX_FAILURES = 5
 FAILURE_WINDOW = timedelta(minutes=15)
 LOCKOUT = timedelta(minutes=15)
+
+# When the client address cannot distinguish callers - which on this deployment is
+# EVERY request, because they all arrive from nginx's private bridge address - the
+# per-IP budget would never arm, and one address could grind candidate usernames
+# forever at whatever rate scrypt allows. A single SHARED bucket arms instead: a
+# ceiling an honest deployment never approaches (five failures to log in is a bad
+# morning, fifty is an attack), tight enough that username spraying across the whole
+# account space finishes in minutes rather than running unbounded. It is ten times
+# the per-username budget precisely so it cannot become the shared-lockout lever
+# `_distinguishing_ip` was written to remove: one user's five typos cost a tenth of
+# it, not all of it.
+SHARED_IP_KEY = "ip:_shared"
+MAX_SHARED_FAILURES = MAX_FAILURES * 10
+
+# What the shared bucket does when it fills, and it is deliberately NOT a lockout.
+#
+# Refusing on this key refuses EVERY caller, because every caller shares it - which
+# is the shared-lockout DoS `_distinguishing_ip` was written to remove, returned at
+# ten times the price. Measured against the previous revision: fifty sprayed
+# failures locked an untouched account, and the real admin, for the full 900s; and
+# since a throttled attempt raises before it records, the window decays from the
+# last RECORDED failure, so fifty requests every fifteen minutes sustained a total
+# login outage indefinitely.
+#
+# So the bucket buys time instead. Once armed, each attempt from the shared address
+# pays a delay before its password is checked: spraying drops from roughly six
+# hundred attempts a minute to under sixty, which is the same order of reduction the
+# lockout was reaching for, and nobody is ever refused. Per-USERNAME lockout is
+# untouched and remains the control that stops guessing a known account.
+SHARED_DELAY_S = 1.0
+
+# A delay holds a threadpool worker, so an unbounded number of them is its own
+# outage. Past this many concurrent sleepers the delay is SKIPPED rather than
+# queued - degrading the slowdown under a flood is survivable, running the pool dry
+# is not.
+MAX_CONCURRENT_SHARED_DELAYS = 8
+_shared_delay_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SHARED_DELAYS)
 
 DEFAULT_ORG_NAME = "Default organization"
 
@@ -98,6 +136,14 @@ class Principal:
 
 _failures: dict[str, deque[float]] = defaultdict(deque)
 
+# Sync endpoints run in FastAPI's threadpool, so every mutation below is reachable
+# from several threads at once. Individual deque operations are GIL-atomic, but the
+# check-then-act sequences (trim, then test length; sweep, then append) are not -
+# interleaving them costs an off-by-one attempt inside a window, which is harmless,
+# and a KeyError mid-sweep racing a clear, which is not. One lock is cheaper than
+# reasoning about which interleavings survive.
+_throttle_lock = threading.Lock()
+
 # The keys are attacker-chosen - `user:<whatever was typed at the login form>` - and
 # nothing here ever removed one. A login flood with a fresh username each time grew
 # this dictionary for the life of the process, and a window was only ever trimmed if
@@ -125,56 +171,115 @@ def _sweep(now: float) -> None:
 
 def _record_failure(key: str) -> None:
     now = time.monotonic()
-    if len(_failures) > _SWEEP_ABOVE_KEYS:
-        _sweep(now)
-    _trim(_failures[key], now).append(now)
+    with _throttle_lock:
+        if len(_failures) > _SWEEP_ABOVE_KEYS:
+            _sweep(now)
+        _trim(_failures[key], now).append(now)
 
 
-def _retry_after(key: str) -> int:
-    window = _failures.get(key)
-    if not window:
-        return 0
-    now = time.monotonic()
-    if not _trim(window, now):
-        # Nothing left in the window, so stop holding the key open.
-        _failures.pop(key, None)
-        return 0
-    if len(window) < MAX_FAILURES:
-        return 0
-    return max(1, int(LOCKOUT.total_seconds() - (now - window[-1])))
+def _retry_after(key: str, *, limit: int = MAX_FAILURES) -> int:
+    with _throttle_lock:
+        window = _failures.get(key)
+        if not window:
+            return 0
+        now = time.monotonic()
+        if not _trim(window, now):
+            # Nothing left in the window, so stop holding the key open.
+            _failures.pop(key, None)
+            return 0
+        if len(window) < limit:
+            return 0
+        return max(1, int(LOCKOUT.total_seconds() - (now - window[-1])))
 
 
 def reset_throttle() -> None:
     """Clear all counters. For tests and for an admin unlocking an account."""
-    _failures.clear()
+    with _throttle_lock:
+        _failures.clear()
 
 
-# The same counters the login form uses, exposed so that the OTHER place a password
-# is guessed - the current-password check on a password change - is limited by the
-# same budget rather than having a private, unlimited one.
-def retry_after(key: str) -> int:
-    """Seconds to wait before `key` may try again, or 0."""
-    return _retry_after(key)
+def lockout_keys(username: str, ip: str) -> list[str]:
+    """The counters that may REFUSE this attempt.
+
+    Only keys that identify one party: the account being tried, and the address when
+    it names a single client. The shared key is deliberately absent - see
+    SHARED_DELAY_S for why refusing on it refuses everybody.
+    """
+    keys = [f"user:{normalise_username(username)}"]
+    if _distinguishing_ip(ip):
+        keys.append(f"ip:{ip}")
+    return keys
 
 
-def record_failure(key: str) -> None:
-    _record_failure(key)
+def login_throttle_keys(username: str, ip: str) -> list[str]:
+    """Every counter a failed attempt is RECORDED against.
+
+    The lockout keys, plus the shared bucket when the address cannot distinguish
+    callers. Recording against it is what lets spraying arm the delay; it is never
+    consulted to refuse. One definition, used by the login route to check, by the
+    password-change route so its re-authentication sits under the same budget, and
+    by `authenticate` to record - three places hand-building key lists is how one of
+    them ends up checking a counter nothing records against.
+    """
+    keys = lockout_keys(username, ip)
+    if not _distinguishing_ip(ip):
+        keys.append(SHARED_IP_KEY)
+    return keys
+
+
+def login_throttled(username: str, ip: str) -> int:
+    """Seconds until this username/address combination may try again, or 0."""
+    waits = [_retry_after(key) for key in lockout_keys(username, ip)]
+    return max(waits) if waits else 0
+
+
+def shared_spray_delay() -> float:
+    """Seconds this attempt should pay because the shared bucket is armed, or 0."""
+    now = time.monotonic()
+    with _throttle_lock:
+        window = _failures.get(SHARED_IP_KEY)
+        depth = len(_trim(window, now)) if window else 0
+    return SHARED_DELAY_S if depth >= MAX_SHARED_FAILURES else 0.0
+
+
+def _pay_shared_delay() -> None:
+    """Sleep out the spray delay, if one is owed and a worker can be spared."""
+    delay = shared_spray_delay()
+    if not delay:
+        return
+    if not _shared_delay_slots.acquire(blocking=False):
+        # Never queue. Waiting for a slot is exactly the outage this design exists
+        # to avoid, so a flood loses the slowdown rather than the service.
+        return
+    try:
+        time.sleep(delay)
+    finally:
+        _shared_delay_slots.release()
+
+
+def record_login_failure(username: str, ip: str) -> None:
+    """Record one failed attempt against every counter it was checked against."""
+    for key in login_throttle_keys(username, ip):
+        _record_failure(key)
 
 
 def clear_failures(key: str) -> None:
-    _failures.pop(key, None)
-
-def ip_is_throttleable(ip: str) -> bool:
-    """Whether a per-IP throttle key on `ip` distinguishes one client.
-
-    Public so the password-change path applies the same rule the login path
-    does, instead of keeping a private answer that can drift from it."""
-    return _distinguishing_ip(ip)
-
-
+    with _throttle_lock:
+        _failures.pop(key, None)
 
 
 # --- audit ------------------------------------------------------------------
+
+
+# Best-effort means failures are swallowed, and a swallowed failure is invisible:
+# an audit trail that has silently stopped writing looks exactly like a quiet
+# system. The count turns that state into something /admin/security can report.
+_audit_failures = 0
+
+
+def audit_failures() -> int:
+    """How many audit rows have failed to write since process start."""
+    return _audit_failures
 
 
 def audit(
@@ -193,8 +298,10 @@ def audit(
     That trade is worth naming. Refusing the action when the log is unavailable would
     be the stricter choice, and for a system moving money it would be the right one.
     Here it would mean a database hiccup takes the demonstration down, so the log is
-    best-effort and its own failures are logged.
+    best-effort, its own failures are logged, and they are counted where an admin can
+    see them.
     """
+    global _audit_failures
     try:
         session.add(AuditRow(
             ts=datetime.now(UTC),
@@ -204,7 +311,9 @@ def audit(
         ))
         session.flush()
     except Exception:  # noqa: BLE001 - the audit trail must not break the request
-        log.exception("failed to write audit row for %s", action)
+        _audit_failures += 1
+        log.exception("failed to write audit row for %s (%d so far)",
+                      action, _audit_failures)
 
 
 # --- organizations and users ------------------------------------------------
@@ -337,16 +446,20 @@ def authenticate(session: Session, username: str, password: str,
     """
     username = normalise_username(username)
 
-    # Per-username always; per-IP only when the address names one client (see
-    # `_distinguishing_ip`), so a shared proxy address cannot lock every account.
-    throttle_keys = [f"user:{username}"]
-    if _distinguishing_ip(ip):
-        throttle_keys.append(f"ip:{ip}")
-
-    for key in throttle_keys:
+    # Per-username always; per-IP when the address names one client. When it does
+    # not - the normal case here, where every request arrives from nginx's private
+    # address - a single SHARED bucket arms instead, so spraying candidate
+    # usernames is still bounded (see MAX_SHARED_FAILURES). The keys are built by
+    # `login_throttle_keys` so the pre-check in the password-change route and the
+    # recording here can never disagree about what counts.
+    throttle_keys = login_throttle_keys(username, ip)
+    for key in lockout_keys(username, ip):
         wait = _retry_after(key)
         if wait:
             raise Throttled(wait)
+
+    # Armed only by spraying, and it costs time rather than access.
+    _pay_shared_delay()
 
     user = session.execute(
         select(UserRow).where(UserRow.username == username)
@@ -527,15 +640,20 @@ __all__ = [
     "Throttled",
     "active_sessions",
     "audit",
+    "audit_failures",
     "authenticate",
     "create_user",
     "default_organization",
-    "ip_is_throttleable",
     "issue_csrf_token",
     "issue_session",
+    "lockout_keys",
+    "login_throttle_keys",
+    "login_throttled",
     "normalise_username",
     "purge_expired_sessions",
+    "record_login_failure",
     "reset_throttle",
+    "shared_spray_delay",
     "resolve_session",
     "revoke_all_sessions",
     "revoke_session",

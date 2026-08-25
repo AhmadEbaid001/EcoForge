@@ -41,10 +41,12 @@ from gemp.auth.deps import (
     ANALYST,
     VIEWER,
     check_csrf,
+    current_principal,
     is_public,
     require,
     resolve_principal,
 )
+from gemp.auth.service import Principal
 from gemp.config import get_settings
 from gemp.domain.catalog import load_params
 from gemp.domain.models import Allocation
@@ -214,11 +216,17 @@ async def lifespan(app: FastAPI):
         log.info("gemp api stopping")
 
 
-# `/docs`, `/redoc` and `/openapi.json` are public paths - see PUBLIC_PREFIXES in
-# gemp.auth.deps - so when they exist they are served to anyone who can reach the
-# port. Not mounting them is the difference between "an anonymous caller can read the
-# whole API surface" and "an anonymous caller can read /health".
+# `/docs`, `/redoc` and `/openapi.json` are the complete endpoint inventory, every
+# parameter shape and the role each route demands - a reconnaissance map for anyone
+# who can reach the port. Off unless GEMP_API_DOCS says otherwise, and even then NOT
+# anonymous: they live outside /api/, which is the prefix the deny-by-default
+# middleware scopes to, so being listed anywhere as "public" would have been
+# decorative rather than enforced. When mounted they are guarded here, like any
+# other route; unmounted they fall through to a 404, which confirms nothing about
+# configuration to a prober.
 _docs = get_settings().api_docs
+
+_SCHEMA_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"}) if _docs else frozenset()
 
 app = FastAPI(
     title="GEMP",
@@ -273,7 +281,8 @@ async def security_middleware(request, call_next):
     path = request.url.path
     request.state.principal = None
 
-    needs_auth = path.startswith("/api/") and not is_public(path)
+    needs_auth = (path.startswith("/api/") or path in _SCHEMA_PATHS) \
+        and not is_public(path)
 
     # Resolve the session through the SAME provider the routes use, honouring any
     # override the application is configured with. Middleware sits outside FastAPI's
@@ -379,11 +388,38 @@ SEVERITIES = frozenset({"medium", "high", "critical"})
 MAX_CONCURRENT_SOLVES = max(1, min(4, (os.cpu_count() or 4) // 2))
 _solve_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SOLVES)
 
+# The global cap bounds the MACHINE; this one bounds an ACCOUNT. Without it, one
+# analyst scripting the endpoint keeps every slot permanently busy - each request
+# legally under the global cap - and the demonstration's own slider request is the
+# one that starves. Half the global pool is a ceiling no honest interactive use
+# approaches (the UI solves serially) and a floor a script cannot hide under.
+MAX_SOLVES_PER_PRINCIPAL = max(1, MAX_CONCURRENT_SOLVES // 2)
+_inflight_solves: dict[str, int] = {}
+_inflight_lock = threading.Lock()
+
 
 @contextmanager
-def solve_slot() -> Iterator[None]:
+def solve_slot(principal) -> Iterator[None]:
     """Hold one of the solver slots, or refuse the request."""
+    who = principal.username
+    with _inflight_lock:
+        mine = _inflight_solves.get(who, 0)
+        if mine >= MAX_SOLVES_PER_PRINCIPAL:
+            raise HTTPException(
+                429,
+                f"this account already has {mine} solves in flight; "
+                "wait for one to finish",
+                headers={"Retry-After": "2"},
+            )
+        _inflight_solves[who] = mine + 1
+
     if not _solve_slots.acquire(blocking=False):
+        with _inflight_lock:
+            left = _inflight_solves.get(who, 1) - 1
+            if left <= 0:
+                _inflight_solves.pop(who, None)
+            else:
+                _inflight_solves[who] = left
         raise HTTPException(
             429,
             f"all {MAX_CONCURRENT_SOLVES} solver slots are busy; retry shortly",
@@ -393,6 +429,12 @@ def solve_slot() -> Iterator[None]:
         yield
     finally:
         _solve_slots.release()
+        with _inflight_lock:
+            left = _inflight_solves.get(who, 1) - 1
+            if left <= 0:
+                _inflight_solves.pop(who, None)
+            else:
+                _inflight_solves[who] = left
 
 
 class OptimizeRequest(BaseModel):
@@ -517,8 +559,12 @@ def health(session: Session = Depends(get_session)) -> JSONResponse:
             status["database"] = "ok"
             latest = latest_reading_ts(session)
             status["readings"] = latest.isoformat() if latest else None
-        except Exception as exc:  # noqa: BLE001 - health must report, not raise
-            status["database"] = f"error: {type(exc).__name__}"
+        except Exception:  # noqa: BLE001 - health must report, not raise
+            # Coarse on purpose: this endpoint is public, and the driver's exception
+            # class names are operator detail. The full traceback goes to the log,
+            # where it belongs.
+            log.exception("health check: database query failed")
+            status["database"] = "error"
             code = 503
         _health_cache = (time.monotonic(), status, code)
         return JSONResponse(status, status_code=code)
@@ -685,7 +731,7 @@ def forecast_metrics(session: Session = Depends(get_session)) -> dict:
 
 @app.get("/api/v1/metrics/anomaly", dependencies=[Depends(require(VIEWER))])
 def anomaly_metrics(session: Session = Depends(get_session),
-                    limit: int = Query(default=20, le=200)) -> dict:
+                    limit: int = Query(default=20, ge=1, le=200)) -> dict:
     """Current anomaly load, and the most severe open items."""
     by_severity = session.execute(text("""
         SELECT severity, count(*) FROM anomaly GROUP BY severity
@@ -799,12 +845,18 @@ def recompute_candidates(session: Session = Depends(get_session)) -> dict:
     Call this after Nada edits `data/`. It drops the cached context so the next
     `/optimize` reflects the change, and writes the new set to the database so a
     stored run remains explainable after the fact.
-    """
-    reset_context()
-    context = OptimizerContext.from_db(session)
 
-    global _context
-    _context = context
+    The build happens under `_context_lock`, not just the assignment. Reset then
+    building outside the lock let a concurrent cold request interleave its own
+    rebuild between them - and this endpoint's unconditional store then clobbered a
+    context some request was already solving against, un-pairing the cached context
+    from the candidate set it was materialising. That invariant is the reason this
+    endpoint exists, so it is the one thing that must not race.
+    """
+    with _context_lock:
+        context = OptimizerContext.from_db(session)
+        global _context
+        _context = context
 
     written = materialize_candidates(session, context.candidates, context.inputs_hash)
     return {
@@ -977,7 +1029,7 @@ def building_series(
     session: Session = Depends(get_session),
     start: datetime | None = None,
     end: datetime | None = None,
-    limit: int = Query(default=2000, le=20000),
+    limit: int = Query(default=2000, ge=1, le=20000),
 ) -> dict:
     rows = read_series(session, building_id, start, end, limit)
     return {
@@ -996,13 +1048,14 @@ def optimize(
     request: OptimizeRequest,
     session: Session = Depends(get_session),
     context: OptimizerContext = Depends(get_context),
+    principal: Principal = Depends(current_principal),
 ) -> OptimizeResponse:
     if request.objective not in OBJECTIVES:
         raise HTTPException(422, f"unknown objective; choose from {sorted(OBJECTIVES)}")
     if request.solver not in SOLVERS:
         raise HTTPException(422, f"unknown solver; choose from {sorted(SOLVERS)}")
 
-    with solve_slot():
+    with solve_slot(principal):
         run_id, allocation = run_optimization(
             session, context, request.budget_egp,
             objective=request.objective, solver=request.solver,
@@ -1037,6 +1090,7 @@ def compare_solvers(
     request: OptimizeRequest,
     session: Session = Depends(get_session),
     context: OptimizerContext = Depends(get_context),
+    principal: Principal = Depends(current_principal),
 ) -> dict:
     """Every solver on one instance - the headline comparison, in one call."""
     if request.objective not in OBJECTIVES:
@@ -1045,7 +1099,7 @@ def compare_solvers(
     results = {}
     # One slot for the whole comparison, not one per solver: this endpoint runs every
     # solver on the instance, so it is the most expensive request the API serves.
-    with solve_slot():
+    with solve_slot(principal):
         for solver in SOLVERS:
             _run_id, allocation = run_optimization(
                 session, context, request.budget_egp,
