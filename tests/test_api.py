@@ -389,14 +389,22 @@ def test_a_limit_below_one_is_rejected_not_treated_as_unbounded(client):
             assert response.status_code == 422, f"{url}?limit={bad} was accepted"
 
 
-def test_one_account_cannot_hold_every_solver_slot(client):
+def test_one_account_cannot_hold_every_solver_slot(client, monkeypatch):
     """The global slot cap bounds the machine; this pins the per-account cap that
     stops one scripted principal from keeping all of them permanently busy - the
-    demonstration's own slider request being the one that would starve."""
+    demonstration's own slider request being the one that would starve.
+
+    The cap is set explicitly rather than derived, because both caps are computed
+    from `os.cpu_count()` and collapse to 1 and 1 on a two-core host - a GitHub
+    runner, and the staging VM. Asserting `MAX_SOLVES_PER_PRINCIPAL <
+    MAX_CONCURRENT_SOLVES` therefore held on a twelve-core laptop and failed in CI,
+    which says something about the hardware and nothing about the behaviour under
+    test: that a principal already at its limit is refused.
+    """
     from gemp.api import main
 
     who = "contract-tests"
-    assert main.MAX_SOLVES_PER_PRINCIPAL < main.MAX_CONCURRENT_SOLVES
+    monkeypatch.setattr(main, "MAX_SOLVES_PER_PRINCIPAL", 1)
     main._inflight_solves[who] = main.MAX_SOLVES_PER_PRINCIPAL
     try:
         response = client.post("/api/v1/optimize",
