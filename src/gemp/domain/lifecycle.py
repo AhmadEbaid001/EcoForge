@@ -135,7 +135,7 @@ def lifetime_benefit_kgco2e(
     interventions: Sequence[Intervention],
     params: Params,
 ) -> float:
-    """Net life-cycle carbon benefit V, kgCO2e.
+    """Net life-cycle carbon benefit V, kgCO2e, at the FLAT grid factor.
 
         V = (annual kWh saved) x (annuity factor) x (grid factor)
             - sum over members of (embodied per cycle x cycles inside the horizon)
@@ -143,6 +143,11 @@ def lifetime_benefit_kgco2e(
     Note the energy term uses the BUNDLE's combined saving, which has already been
     composed multiplicatively, while the embodied term is summed per member because
     each member carries its own service life and therefore its own replacement count.
+
+    Deliberately unchanged by A5. This is the flat-factor benefit the paper's F5/F7
+    numbers were measured with; the TOU-weighted counterpart is
+    `lifetime_tou_benefit_kgco2e`, carried alongside it so the harness can measure
+    old against new instead of silently redefining the old number.
     """
     energy = (
         annual_kwh_saving
@@ -161,6 +166,67 @@ def lifetime_benefit_kgco2e(
 def annual_egp_saving(annual_kwh_saving: float, params: Params) -> float:
     """Money saved per year at the current tariff. Used by the `egp_saved` objective."""
     return annual_kwh_saving * params.electricity_tariff_egp_per_kwh
+
+
+# ---------------------------------------------------------------------------
+# A5 - time-of-use marginal carbon weighting
+# ---------------------------------------------------------------------------
+
+
+def effective_grid_factor(building: Building, params: Params) -> float:
+    """The grid factor THIS building's saved kWh are actually worth, kgCO2e/kWh.
+
+        factor = sum_h( shape[h] * grid[h] ) / sum_h( shape[h] )
+
+    A consumption-weighted mean of the TOU marginal profile over the building's own
+    MEASURED hourly shape. An office that empties at 15:00 saves most of its kWh
+    before the evening peak; a 24x7 clinic keeps burning through it. Same building,
+    same flat national average, genuinely different carbon per saved kWh - which is
+    the whole reason a single constant factor could not see metered data.
+
+    With `params.tou` unset, or with no measured shape (the fixture default), this
+    is EXACTLY `params.grid_emission_factor` - the pre-A5 world, bit for bit.
+    """
+    if params.tou is None:
+        return params.grid_emission_factor
+    weighted = sum(
+        s * g for s, g in zip(building.hourly_shape, params.tou.profile, strict=True)
+    )
+    total = sum(building.hourly_shape)
+    return weighted / total if total > 0 else params.grid_emission_factor
+
+
+def lifetime_tou_benefit_kgco2e(
+    saving_by_end_use: dict[str, float],
+    building: Building,
+    interventions: Sequence[Intervention],
+    params: Params,
+) -> float:
+    """Net life-cycle carbon benefit under the TOU weighting, kgCO2e.
+
+    Identical structure to `lifetime_benefit_kgco2e` - annuity times energy minus
+    embodied - except the energy term weights each end-use slice of the saving by
+    the building's own consumption-weighted grid factor. The slices come from
+    `bundle_saving_by_end_use`, so a future per-end-use load shape only has to
+    change the factor lookup here, not the composition upstream.
+
+    When `params.tou` is None this reduces exactly to `lifetime_benefit_kgco2e`
+    over the summed saving, which is what lets both numbers coexist on one
+    candidate and let the harness measure old against new.
+    """
+    total_saving = sum(saving_by_end_use.values())
+    energy = (
+        total_saving
+        * annuity_factor(params.horizon_yr, params.discount_rate)
+        * effective_grid_factor(building, params)
+    )
+    embodied = sum(
+        discounted_embodied(
+            embodied_once_kgco2e(building, iv, params), iv.service_life_yr, params
+        )
+        for iv in interventions
+    )
+    return energy - embodied
 
 
 def simple_payback_yr(

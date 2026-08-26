@@ -23,9 +23,18 @@ import itertools
 from collections.abc import Iterable, Sequence
 
 from gemp.domain.catalog import Params, applies
-from gemp.domain.lifecycle import annual_egp_saving, bundle_cost_egp, lifetime_benefit_kgco2e
+from gemp.domain.lifecycle import (
+    annual_egp_saving,
+    bundle_cost_egp,
+    lifetime_benefit_kgco2e,
+    lifetime_tou_benefit_kgco2e,
+)
 from gemp.domain.models import Building, Candidate, Intervention
-from gemp.domain.savings import assert_physically_possible, bundle_saving_kwh
+from gemp.domain.savings import (
+    assert_physically_possible,
+    bundle_saving_by_end_use,
+    bundle_saving_kwh,
+)
 
 
 def compatible(combo: Sequence[Intervention]) -> bool:
@@ -73,6 +82,12 @@ def expand_building(
             if cost <= 0:
                 continue
 
+            # A5: the per-end-use slices feed the TOU-weighted benefit. With no
+            # profile loaded the two benefits come out identical, so carrying both
+            # costs nothing and lets `tou_carbon` exist as a measurable objective
+            # rather than a silent redefinition of `lca_carbon`.
+            by_end_use = bundle_saving_by_end_use(building, combo, params)
+
             candidates.append(
                 Candidate(
                     key=f"{building.id}|{'+'.join(ids)}",
@@ -84,6 +99,9 @@ def expand_building(
                     annual_kwh_saving=kwh,
                     lifetime_benefit_kgco2e=lifetime_benefit_kgco2e(
                         kwh, building, combo, params
+                    ),
+                    lifetime_tou_benefit_kgco2e=lifetime_tou_benefit_kgco2e(
+                        by_end_use, building, combo, params
                     ),
                     annual_egp_saving=annual_egp_saving(kwh, params),
                 )

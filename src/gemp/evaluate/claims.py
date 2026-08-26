@@ -50,9 +50,22 @@ REQUIRED_OPTIMAL_FRAC = 1.0
 # "The LCA layer changes almost no decisions." Measured as what the difference is
 # WORTH, not as set identity: near a budget boundary the two objectives swap options
 # of nearly equal carbon value, which changes the set without changing anything a
-# decision-maker would act on. If a time-of-use marginal emission factor is ever
-# added, this is the gate that should start failing.
+# decision-maker would act on.
+#
+# A5 supersedes the note that used to live here ("if a TOU factor is ever added,
+# this gate should start failing"). The flat factor is kept deliberately so this
+# comparison stays reproducible, and the old-vs-new question moved to its own
+# claim: F15 measures what the TOU-weighted objective changes on top of this one.
 MAX_LCA_CARBON_SHORTFALL_PCT = 1.0
+
+# "The measured hourly shape, weighted against the marginal grid profile, changes
+# which buildings get funded." This is A5's reason to exist - if the sweep with a
+# loaded profile produced the same sets as the flat factor at every budget, the
+# hundreds of thousands of signed readings would still reach nothing. One changed
+# budget is enough to prove the channel is live; the COUNT is the finding.
+MIN_TOU_CHANGED_BUDGETS = 1
+
+_TOU_STATEMENT = "The TOU-weighted objective changes which buildings get funded"
 
 # Anomaly gates from the technical review (F9).
 MIN_ANOMALY_RECALL = 0.80
@@ -364,9 +377,10 @@ def claim_lca_and_raw_kwh_fund_the_same_set(
 ) -> ClaimResult:
     """The finding that the LCA layer changes almost no decisions.
 
-    If a time-of-use marginal emission factor is ever added, this claim should start
-    failing - and the failure is the signal that the LCA layer has begun to matter,
-    not a regression.
+    A5 note: this comparison is deliberately run at the FLAT grid factor on both
+    sides. Whether the time-of-use weighting changes decisions is F15's question,
+    measured against this claim's own funded sets - keeping the two apart is what
+    makes old and new comparable at all.
     """
     lca = {
         r.budget_egp: r
@@ -417,10 +431,12 @@ def claim_no_portfolio_wide_priority_list(
 ) -> ClaimResult:
     """The replacement narrative, and the one that survived measurement.
 
-    Rooftop solar never has the best benefit density at any building, so the
-    proposal's "generation first" story is wrong. What IS demonstrable is that the
-    winner is building-specific, which is why no portfolio-wide priority list is
-    right - the claim the paper now makes.
+    What IS demonstrable - at the flat factor as anywhere else - is that the best
+    measure is building-specific, so no portfolio-wide priority list is right.
+    Reworded when A5 landed: the original gate demanded `solar_wins == 0`, but
+    whether rooftop solar wins somewhere under a marginal grid profile is a
+    FINDING to report, not a condition for the sentence to hold. The claim is
+    about diversity of winners, and `distinct > 1` is what carries it.
     """
     singles = [c for c in instance.candidates if len(c.intervention_ids) == 1]
     winners: dict[str, str] = {}
@@ -435,19 +451,113 @@ def claim_no_portfolio_wide_priority_list(
     for intervention_id in winners.values():
         tally[intervention_id] = tally.get(intervention_id, 0) + 1
 
-    solar_wins = tally.get("rooftop_solar_v1", 0)
     distinct = len(tally)
-    ok = solar_wins == 0 and distinct > 1
     ranking = ", ".join(
         f"{k} {v}" for k, v in sorted(tally.items(), key=lambda kv: -kv[1])
     )
     return _result(
         "F7",
-        "The best measure is building-specific; solar never wins on density",
-        ok,
-        f"{distinct} distinct winners over {len(winners)} buildings, solar wins {solar_wins}",
+        "No single measure wins portfolio-wide; the best option is building-specific",
+        distinct > 1,
+        f"{distinct} distinct winners over {len(winners)} buildings",
         detail=ranking,
     )
+
+
+def claim_tou_weighting_changes_funded_sets(
+    instance: Instance, rows: Sequence[SweepRow]
+) -> ClaimResult:
+    """A5's fixture-world twin: SKIP, because fixtures carry no measured shapes.
+
+    The real claim is `_tou_claim` in the measured-data family below. It lives
+    there rather than here because the whole mechanism is per-building shapes from
+    the metered series - the GeoJSON fixture has none, every building costs flat,
+    and a comparison run on it would measure nothing while reporting a number.
+    """
+    del instance, rows
+    return ClaimResult(
+        "F15",
+        "The TOU-weighted objective changes which buildings get funded",
+        Verdict.SKIP,
+        "fixture portfolio carries no measured load shapes; measured with the stack "
+        "(evaluate --with-db after a refit)",
+    )
+
+
+def _tou_claim() -> list[ClaimResult]:
+    """F15, on stored data: does metered data finally reach the funding decision?
+
+    The optimizer ingests hundreds of thousands of signed readings. Before A5 they
+    reached forecasts, anomalies and the integrity chain - everything except WHICH
+    BUILDING GETS FUNDED - because carbon benefit multiplied a flat national
+    constant. Now each candidate's TOU-weighted value depends on its building's own
+    measured hourly shape. This re-solves CP-SAT under both objectives at the probe
+    budgets over the STORED portfolio and counts how often the funded set differs.
+
+    SKIPs honestly at each layer that can be absent: no grid profile loaded (the
+    deployment chose the flat world), or no building yet has a measured shape (the
+    refit has not run since the migration). A skipped channel is reported as
+    skipped, never manufactured into a number.
+    """
+    try:
+        from gemp.db import session_scope
+        from gemp.domain.candidates import expand_portfolio
+        from gemp.domain.catalog import load_catalog, load_params
+        from gemp.optimize.runner import solve
+        from gemp.repository import load_buildings
+    except Exception as exc:  # noqa: BLE001 - no infrastructure in this process
+        reason = f"{type(exc).__name__}: {exc}"
+        return [ClaimResult("F15", _TOU_STATEMENT, Verdict.SKIP, reason)]
+
+    params = load_params()
+    if params.tou is None:
+        return [ClaimResult("F15", _TOU_STATEMENT, Verdict.SKIP,
+                            "no tou profile loaded; running the flat world")]
+
+    try:
+        with session_scope() as session:
+            buildings = load_buildings(session)
+            catalog = load_catalog()
+    except Exception as exc:  # noqa: BLE001
+        return [ClaimResult("F15", _TOU_STATEMENT, Verdict.SKIP,
+                            f"{type(exc).__name__}: {exc}")]
+
+    shaped = [b for b in buildings if b.has_measured_shape]
+    if not shaped:
+        return [ClaimResult("F15", _TOU_STATEMENT, Verdict.SKIP,
+                            "no building has a measured shape yet; "
+                            "run python -m gemp.ml.jobs")]
+
+    candidates = expand_portfolio(buildings, catalog, params)
+    changed, shared = [], 0
+    for budget in PROBE_BUDGETS:
+        r_flat = solve(candidates, buildings, budget,
+                       solver="cpsat", objective="lca_carbon")
+        r_tou = solve(candidates, buildings, budget,
+                      solver="cpsat", objective="tou_carbon")
+        if r_flat.status not in ("OPTIMAL", "FEASIBLE"):
+            continue
+        if r_tou.status not in ("OPTIMAL", "FEASIBLE"):
+            continue
+        shared += 1
+        flat_keys = {i.candidate_key for i in r_flat.items}
+        tou_keys = {i.candidate_key for i in r_tou.items}
+        if flat_keys != tou_keys:
+            changed.append(budget)
+
+    if shared == 0:
+        return [ClaimResult("F15", _TOU_STATEMENT, Verdict.SKIP,
+                            "no solvable budget among the probes")]
+    frac = len(changed) / shared
+    return [_result(
+        "F15",
+        _TOU_STATEMENT,
+        len(changed) >= MIN_TOU_CHANGED_BUDGETS,
+        f"{len(shaped)}/{len(buildings)} buildings carry measured shapes; "
+        f"funded set differs at {len(changed)}/{shared} probe budgets ({frac:.0%}); "
+        f"gate >= {MIN_TOU_CHANGED_BUDGETS}",
+        detail="budgets: " + ", ".join(f"{b:,.0f}" for b in PROBE_BUDGETS),
+    )]
 
 
 def claim_bundling_is_multiplicative(
@@ -556,6 +666,7 @@ SOLVER_CLAIMS: tuple[ClaimFn, ...] = (
     claim_benefit_is_monotone_in_budget,
     claim_pruning_preserves_the_result,
     claim_lca_and_raw_kwh_fund_the_same_set,
+    claim_tou_weighting_changes_funded_sets,
     claim_no_portfolio_wide_priority_list,
     claim_bundling_is_multiplicative,
     claim_candidate_expansion_is_stable,
@@ -579,12 +690,13 @@ def db_claims(k_values: Sequence[float] | None = None) -> list[ClaimResult]:
     params = load_params()
     integrity = [_integrity_claim(measure_integrity)]
     ks = list(k_values) if k_values else [params.anomaly_k]
+    tou = _tou_claim()
     try:
         measurement = measure(ks)
     except Exception as exc:  # noqa: BLE001 - the harness reports, it does not crash
         log.warning("measured claims skipped: %s", exc)
         reason = f"{type(exc).__name__}: {exc}"
-        return integrity + [
+        return integrity + tou + [
             ClaimResult("F3", "The forecaster beats a seasonal-naive baseline",
                         Verdict.SKIP, reason),
             ClaimResult("F9-a", "Anomaly recall meets the 0.8 target", Verdict.SKIP, reason),
@@ -594,7 +706,7 @@ def db_claims(k_values: Sequence[float] | None = None) -> list[ClaimResult]:
     scores = measurement.scores_at(params.anomaly_k)
     improvement = measurement.baseline_median_mape - measurement.model_median_mape
 
-    return integrity + [
+    return integrity + tou + [
         _result(
             "F3",
             "The forecaster beats a seasonal-naive baseline",

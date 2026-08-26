@@ -173,11 +173,16 @@ def _store_anomalies(anomalies, building_id: str) -> int:
 
 
 def _update_annual_kwh(results: list[ForecastResult]) -> None:
-    """F3: replace the fixture's annual figure with the measured one.
+    """F3 + A5: replace the fixture's annual figure with the measured one.
 
     Recorded as `annual_kwh_source='forecast'` so it is visible which buildings are
     costed against measurement and which are still on their seed value - a
     distinction that matters when explaining a recommendation.
+
+    The A5 load shape travels the same road: derived from the identical window,
+    persisted beside the annual figure, and consumed by the TOU carbon weighting.
+    A building whose shape is null is costed as flat, so a deployment upgrades its
+    carbon accounting building-by-building as refits land rather than all at once.
     """
     with session_scope() as session:
         for result in results:
@@ -189,6 +194,8 @@ def _update_annual_kwh(results: list[ForecastResult]) -> None:
                 .values(
                     annual_kwh=result.annual_kwh,
                     annual_kwh_source="forecast",
+                    load_shape=list(result.load_shape),
+                    load_shape_source="forecast",
                     updated_at=datetime.now(UTC),
                 )
             )

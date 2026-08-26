@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import pytest
-from tests.conftest import make_building, make_intervention
+from tests.conftest import PARAMS_DICT, make_building, make_intervention
 
 from gemp.domain.catalog import Params
 from gemp.domain.savings import (
     SavingsError,
     assert_physically_possible,
+    bundle_saving_by_end_use,
     bundle_saving_kwh,
     effective_saving_frac,
     intervention_saving_kwh,
     solar_is_capped,
     solar_saving_kwh,
+)
+
+# A params set whose whole-building cap bites well below what two aggressive
+# members compose to, so ceiling behaviour is exercised, not incidental.
+PARAMS_TIGHT_CAP = Params.model_validate(
+    PARAMS_DICT | {"bundling": {"max_bundle_size": 3, "cap_total_saving_frac": 0.5}}
 )
 
 
@@ -118,3 +125,45 @@ def test_guard_rejects_impossible_savings(params: Params):
     assert_physically_possible(building, 99_000.0, params)      # fine
     with pytest.raises(SavingsError, match="exceeds"):
         assert_physically_possible(building, 130_000.0, params)
+
+
+# --- A5: per-end-use breakdown with a pro-rata ceiling -----------------------
+
+
+def test_breakdown_slices_match_the_scalar_total(params: Params):
+    building = make_building(annual_kwh=100_000.0)
+    combo = [
+        make_intervention(id="led", end_use="lighting", saving_frac=0.30),
+        make_intervention(id="hvac", end_use="hvac", saving_frac=0.20),
+    ]
+    slices = bundle_saving_by_end_use(building, combo, params)
+    assert set(slices) == {"lighting", "hvac"}
+    assert sum(slices.values()) == pytest.approx(
+        bundle_saving_kwh(building, combo, params)
+    )
+
+
+def test_ceiling_is_applied_pro_rata_not_by_clipping_one_slice():
+    """When the raw composition breaches the whole-building cap, every end-use
+    slice scales by the SAME factor. Clipping only the total would preserve the
+    number but destroy the ratios the multiplicative composition produced - and
+    the TOU weighting consumes those ratios slice by slice."""
+    building = make_building(annual_kwh=100_000.0)
+    combo = [
+        make_intervention(id="led", end_use="lighting", saving_frac=0.60),
+        make_intervention(id="hvac", end_use="hvac", saving_frac=0.80),
+    ]
+    slices = bundle_saving_by_end_use(building, combo, PARAMS_TIGHT_CAP)
+
+    # conftest office shares: lighting 0.20, hvac 0.50.
+    lighting_raw = 100_000 * 0.20 * 0.60
+    hvac_raw = 100_000 * 0.50 * 0.80
+    ceiling = 100_000 * PARAMS_TIGHT_CAP.bundling.cap_total_saving_frac
+    scale = ceiling / (lighting_raw + hvac_raw)
+
+    assert sum(slices.values()) == pytest.approx(ceiling)
+    assert slices["lighting"] == pytest.approx(lighting_raw * scale)
+    assert slices["hvac"] == pytest.approx(hvac_raw * scale)
+    assert slices["lighting"] / slices["hvac"] == pytest.approx(
+        lighting_raw / hvac_raw
+    )

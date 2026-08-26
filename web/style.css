@@ -336,7 +336,7 @@ h1, h2, h3, h4 { line-height: 1.3; }
 .rail {
   display: flex; flex-direction: column; gap: var(--s-2);
   padding: var(--s-sm) var(--s-xs);
-  background: var(--panel); border-right: 1px solid var(--line);
+  background: var(--panel); border-inline-end: 1px solid var(--line);
   position: sticky; top: 0; height: 100vh;
 }
 
@@ -453,11 +453,11 @@ h1, h2, h3, h4 { line-height: 1.3; }
 }
 .textscale button {
   min-height: 2rem; min-width: 2.5rem; padding: 0 var(--s-sm);
-  border: 0; border-left: 1px solid var(--line);
+  border: 0; border-inline-start: 1px solid var(--line);
   background: var(--panel2); color: var(--ink2); cursor: pointer;
   font-size: var(--fs-label); font-variant-numeric: tabular-nums;
 }
-.textscale button:first-child { border-left: 0; }
+.textscale button:first-child { border-inline-start: 0; }
 .textscale button:hover { background: var(--sunk); color: var(--ink); }
 .textscale button[aria-pressed="true"] { background: var(--accentSoft); color: var(--accent); }
 
@@ -476,7 +476,7 @@ h1, h2, h3, h4 { line-height: 1.3; }
 }
 .strip .icon { width: 16px; height: 16px; flex: none; }
 .strip strong { font-weight: 650; }
-.strip-act { margin-left: auto; display: flex; gap: var(--s-sm); align-items: center; }
+.strip-act { margin-inline-start: auto; display: flex; gap: var(--s-sm); align-items: center; }
 .strip.stale { background: var(--amberSoft); border-bottom-color: var(--amber); }
 .strip.stale .icon { color: var(--amber); }
 .strip.result { background: var(--accentSoft); border-bottom-color: var(--accentLine); }
@@ -504,7 +504,7 @@ main { padding: .75rem; display: flex; flex-direction: column; gap: .75rem; min-
 .skip-link {
   position: fixed;
   top: var(--s-sm);
-  left: -9999px;
+  inset-inline-start: -9999px;
   z-index: 100;
   padding: var(--s-sm) var(--s-md);
   background: var(--accent);
@@ -525,7 +525,7 @@ main { padding: .75rem; display: flex; flex-direction: column; gap: .75rem; min-
   font-size: var(--fs-caption); font-weight: 600; letter-spacing: .02em;
   background: var(--sunk); border: 1px solid var(--line); color: var(--ink2);
 }
-.badge.role { margin-left: var(--s-xs); }
+.badge.role { margin-inline-start: var(--s-xs); }
 
 /* ---- appearance switch ---------------------------------------------- */
 
@@ -674,10 +674,10 @@ select.inline { width: auto; min-width: 9rem; }
    an xmlns URL and the external-reference test reads that as off-origin. */
 .select-wrap { position: relative; display: inline-flex; vertical-align: middle; }
 .select-wrap select, .select-wrap input {
-  appearance: none; -webkit-appearance: none; padding-right: var(--s-xl); width: 100%;
+  appearance: none; -webkit-appearance: none; padding-inline-end: var(--s-xl); width: 100%;
 }
 .select-wrap::after {
-  content: ""; position: absolute; right: 11px; top: 50%;
+  content: ""; position: absolute; inset-inline-end: 11px; top: 50%;
   width: 6px; height: 6px; margin-top: -5px;
   border-right: 1.6px solid var(--ink2); border-bottom: 1.6px solid var(--ink2);
   transform: rotate(45deg); pointer-events: none;
@@ -777,9 +777,9 @@ label.check {
 .login button[type="submit"] { width: 100%; min-height: 40px; font-size: var(--fs-body-sm); }
 
 .password-field { position: relative; display: grid; }
-.password-field input { padding-right: 4rem; }
+.password-field input { padding-inline-end: 4rem; }
 .reveal {
-  position: absolute; right: var(--s-xs); top: 50%; transform: translateY(-50%);
+  position: absolute; inset-inline-end: var(--s-xs); top: 50%; transform: translateY(-50%);
   min-height: var(--control-h); width: var(--control-h); padding: 0;
   background: none; border: 0; color: var(--ink2);
 }
@@ -991,7 +991,7 @@ label.check {
    count savings - so the tile reports the movement and the reader decides. */
 .stat-trend {
   font-size: var(--fs-label); font-weight: 600; letter-spacing: .02em;
-  margin-left: var(--s-sm); vertical-align: middle; white-space: nowrap;
+  margin-inline-start: var(--s-sm); vertical-align: middle; white-space: nowrap;
   color: var(--ink2);
 }
 .stat-trend.up { color: var(--high); }
@@ -1209,11 +1209,11 @@ label.check {
   border-radius: var(--radius); overflow: hidden; background: var(--panel);
 }
 .segmented .seg-btn {
-  background: none; border: none; border-right: 1px solid var(--line);
+  background: none; border: none; border-inline-end: 1px solid var(--line);
   color: var(--ink2); min-height: 28px; padding: 0 var(--s-md);
   border-radius: 0;
 }
-.segmented .seg-btn:last-child { border-right: none; }
+.segmented .seg-btn:last-child { border-inline-end: none; }
 .segmented .seg-btn:hover { background: var(--sunk); color: var(--ink); }
 /* Selection is a filled state, not merely a heavier weight - at this size a bold
    label beside a regular one is not a difference anyone spots across a room. */
@@ -1222,7 +1222,7 @@ label.check {
 }
 .segmented .seg-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* A control living in a panel header sits at the right-hand end of it. */
-.panel > header .segmented { margin-left: auto; }
+.panel > header .segmented { margin-inline-start: auto; }
 
 /* A refetch holds the previous render at reduced opacity: no skeleton, no layout
    jump, nothing moving under the reader who just asked the question. */
@@ -1296,7 +1296,7 @@ label.check {
 .opt-table-wrap { overflow-x: auto; }
 .opt-table { width: 100%; border-collapse: collapse; font-size: var(--fs-body-sm); }
 .opt-table th {
-  text-align: left; padding: var(--s-xs) var(--s-sm);
+  text-align: start; padding: var(--s-xs) var(--s-sm);
   font-size: var(--fs-caption); font-weight: 700; letter-spacing: .07em;
   text-transform: uppercase; color: var(--ink3);
   border-bottom: 1px solid var(--line); white-space: nowrap;
@@ -1305,7 +1305,7 @@ label.check {
   padding: var(--s-sm); border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
-.opt-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.opt-table .num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .opt-table .strong { font-weight: 700; color: var(--ink); }
 .opt-table tbody tr:last-child td { border-bottom: none; }
 
@@ -1342,7 +1342,7 @@ label.check {
 .table-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .table-wrap { overflow: auto; flex: 1; min-height: 0; }
 
-table { width: 100%; border-collapse: collapse; text-align: left; }
+table { width: 100%; border-collapse: collapse; text-align: start; }
 
 /* .8125rem tabular rows under a .75rem tracked uppercase header, sticky, on the
    control face with a hairline under it. */
@@ -1353,8 +1353,8 @@ thead th {
   font-size: var(--fs-label); font-weight: 700; letter-spacing: .07em;
   text-transform: uppercase; color: var(--ink2); white-space: nowrap;
 }
-thead th:first-child { padding-left: var(--s-sm); }
-thead th:last-child { padding-right: var(--s-sm); }
+thead th:first-child { padding-inline-start: var(--s-sm); }
+thead th:last-child { padding-inline-end: var(--s-sm); }
 
 /* 30px rows. The padding is what sets the height, so a row with a 30px button
    in it and a row of plain figures come out the same height. */
@@ -1363,8 +1363,8 @@ tbody td {
   font-size: var(--fs-body-sm); vertical-align: middle; white-space: nowrap;
   height: 30px;
 }
-tbody td:first-child { padding-left: var(--s-sm); }
-tbody td:last-child { padding-right: var(--s-sm); }
+tbody td:first-child { padding-inline-start: var(--s-sm); }
+tbody td:last-child { padding-inline-end: var(--s-sm); }
 tbody tr:last-child td { border-bottom: none; }
 
 /* NO zebra striping. The severity mark does the scanning work, and a stripe
@@ -1374,7 +1374,7 @@ tbody tr:hover { background: var(--sunk); }
 tbody tr.chosen { background: var(--accentSoft); }
 tbody tr.denied-row { background: var(--critSoft); }
 
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
 /* Nowrap is right for a figure and wrong for a sentence. */
 td.wrap { white-space: normal; min-width: 9rem; }
 tr.denied td { color: var(--crit); }
@@ -1482,7 +1482,7 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
 .error-box, .warn-box, .ok-box, .hint-box {
   padding: var(--s-sm) var(--s-md); border-radius: var(--radius);
   font-size: var(--fs-body-sm); line-height: 1.5; margin: 0;
-  border: 1px solid; border-left-width: 3px;
+  border: 1px solid; border-inline-start-width: 3px;
 }
 .error-box { background: var(--critSoft);  border-color: var(--crit);  color: var(--crit); }
 .warn-box  { background: var(--amberSoft);    border-color: var(--amber);    color: var(--amber); }
@@ -1610,7 +1610,7 @@ a.btn.primary:hover { background: var(--accentLine); border-color: var(--accentL
   font-size: var(--fs-body-sm); font-weight: 500; white-space: nowrap;
 }
 /* When it sits beside a value in the same cell rather than filling one. */
-td .state-cell { margin-left: var(--s-sm); }
+td .state-cell { margin-inline-start: var(--s-sm); }
 .state-cell.ok { color: var(--ok); }
 .state-cell.bad { color: var(--crit); }
 .state-cell.warn { color: var(--amber); }
@@ -1619,7 +1619,7 @@ td .state-cell { margin-left: var(--s-sm); }
 tbody tr.denied-row { background: var(--critSoft); }
 tbody tr.denied-row td { font-weight: 600; }
 .deny-toggle {
-  margin-left: auto; border: 1px solid var(--lineStrong); border-radius: var(--radius);
+  margin-inline-start: auto; border: 1px solid var(--lineStrong); border-radius: var(--radius);
   background: var(--panel2); color: var(--ink2); min-height: var(--control-h);
   padding: 0 var(--s-sm); font-size: var(--fs-caption);
 }
@@ -1770,7 +1770,7 @@ tbody tr.denied-row td { font-weight: 600; }
 .modal-inner > table, .modal-inner > .caption, .modal-inner > div:not(.form) { padding: 0; }
 .modal-inner > #compare-body, .modal-inner > #narrative-body { padding: var(--s-md); }
 .close {
-  position: absolute; top: var(--s-sm); right: var(--s-sm);
+  position: absolute; top: var(--s-sm); inset-inline-end: var(--s-sm);
   background: none; border: 0; color: var(--ink2);
   width: 28px; height: 28px; min-height: 28px; padding: 0;
   border-radius: var(--radius); font-size: 20px; line-height: 1;
@@ -1781,8 +1781,8 @@ tbody tr.denied-row td { font-weight: 600; }
   margin: 0 0 var(--s-12); font-size: var(--fs-body-md);
   color: var(--ink2); text-wrap: pretty; max-width: 70ch;
 }
-.modal table th, .modal table td { text-align: right; }
-.modal table th:first-child, .modal table td:first-child { text-align: left; }
+.modal table th, .modal table td { text-align: end; }
+.modal table th:first-child, .modal table td:first-child { text-align: start; }
 /* Bold and check-marked, and the mark is the reason it may also be quiet: the
    check says "provably right" without needing a colour to shout it. */
 .modal tr.best td { font-weight: 700; }
@@ -1850,7 +1850,7 @@ tbody tr.denied-row td { font-weight: 600; }
 .radiogroup { display: grid; gap: var(--s-xs); }
 .radiogroup [role="radio"] {
   display: grid; grid-template-columns: auto 1fr; gap: var(--s-sm);
-  align-items: start; text-align: left; justify-content: start;
+  align-items: start; text-align: start; justify-content: start;
   min-height: 2rem; padding: .375rem var(--s-sm);
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--panel2); font-weight: 400;
@@ -1869,7 +1869,7 @@ tbody tr.denied-row td { font-weight: 600; }
   border-color: var(--accent); background: var(--accent);
 }
 .radiogroup [role="radio"][aria-checked="true"] .radio-mark::after {
-  content: ""; position: absolute; left: 2px; top: 0;
+  content: ""; position: absolute; inset-inline-start: 2px; top: 0;
   width: 4px; height: 7px; border: solid var(--accentInk);
   border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
@@ -1889,7 +1889,7 @@ tbody tr.denied-row td { font-weight: 600; }
 
 /* ---- the map itself ------------------------------------------------- */
 
-.map-legend { display: flex; gap: .75rem; flex-wrap: wrap; margin-left: auto; }
+.map-legend { display: flex; gap: .75rem; flex-wrap: wrap; margin-inline-start: auto; }
 .map-legend .key {
   display: inline-flex; align-items: center; gap: .3125rem;
   font-size: var(--fs-caption); color: var(--ink2); font-weight: 400;
@@ -1923,7 +1923,7 @@ tbody tr.denied-row td { font-weight: 600; }
 }
 
 .map-zoom {
-  position: absolute; right: var(--s-sm); bottom: 3.25rem; z-index: 2;
+  position: absolute; inset-inline-end: var(--s-sm); bottom: 3.25rem; z-index: 2;
   display: flex; gap: var(--s-xs);
 }
 .map-zoom button {
@@ -1939,7 +1939,7 @@ tbody tr.denied-row td { font-weight: 600; }
    factor beside it, because the footprints appear at 3x and a reader is owed a
    way of knowing where they are on that scale. */
 .map-scale {
-  position: absolute; right: var(--s-sm); bottom: var(--s-sm); z-index: 2;
+  position: absolute; inset-inline-end: var(--s-sm); bottom: var(--s-sm); z-index: 2;
   display: flex; align-items: flex-end; gap: .375rem;
   background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); padding: var(--s-xs) .4375rem;
@@ -1959,7 +1959,7 @@ tbody tr.denied-row td { font-weight: 600; }
   background: var(--panel2); font-size: var(--fs-caption); color: var(--ink3);
 }
 .map-foot kbd { font-family: inherit; font-weight: 650; }
-.map-foot-note { margin-left: auto; }
+.map-foot-note { margin-inline-start: auto; }
 
 /* ---- the context layer -------------------------------------------- */
 
@@ -2066,7 +2066,7 @@ tbody tr.denied-row td { font-weight: 600; }
 #picklist[hidden] { display: none; }
 #picklist button {
   width: 100%; display: grid; grid-template-columns: 1fr auto; gap: var(--s-sm);
-  text-align: left; justify-content: start; min-height: 2rem;
+  text-align: start; justify-content: start; min-height: 2rem;
   padding: .3125rem var(--s-sm); border: 0; border-bottom: 1px solid var(--line);
   border-radius: 0; background: var(--panel); font-size: var(--fs-body-sm);
   font-weight: 400;
@@ -2137,3 +2137,51 @@ tbody tr.denied-row td { font-weight: 600; }
 
 /* The empty shell before the first paint. */
 body.booting .login-wrap, body.signed-out { background: var(--bg); }
+
+/* ---------------------------------------------------------------- printing
+
+   The executive brief is not a separate document. "Print brief" on the bill of
+   quantities calls window.print(), and this is what turns the screen into a page:
+   the navigation rail, the status strips and every control disappear, the modal
+   stops being an overlay and becomes the sheet, and the palette is forced to ink
+   on white regardless of the reader's theme - a dark-mode screenshot of a tender
+   document is not a tender document.
+
+   Printing from an ordinary screen still works and prints that screen's content.
+   `:has()` is what tells the two apart: when a dialog is open it IS the page, so
+   the view behind it is hidden rather than printed underneath. */
+@media print {
+  :root {
+    --bg: #fff; --panel: #fff; --panel2: #fff;
+    --ink: #000; --ink2: #333; --ink3: #555;
+    --line: #bbb; --lineStrong: #888;
+  }
+
+  html, body { background: #fff; color: #000; }
+
+  /* Chrome, and anything that only makes sense to click. */
+  .rail, .skip-link, #strips, #page-head-actions, .stale-strip,
+  .form-actions, .modal-inner > .close, .segmented, .refresh,
+  button, input, select, .chart-tip { display: none !important; }
+
+  .shell { display: block; }
+  main#view { padding: 0; }
+
+  /* A dialog is the sheet, not an overlay on top of one. */
+  .modal {
+    position: static; inset: auto; display: block;
+    background: none; padding: 0; overflow: visible;
+  }
+  .modal-inner, .modal-inner.wide, .modal-inner.narrow {
+    width: auto; max-width: none; max-height: none;
+    box-shadow: none; border: 0; overflow: visible;
+  }
+  body:has(.modal:not([hidden])) main#view { display: none; }
+
+  /* Keep rows and panels whole across a page break. */
+  tr, .panel, .stat-tile { break-inside: avoid; }
+  thead { display: table-header-group; }
+
+  /* A URL printed after every link is noise on a costed document. */
+  a[href]::after { content: ""; }
+}

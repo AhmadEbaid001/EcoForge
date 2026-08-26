@@ -64,6 +64,42 @@ class GuardParams(BaseModel):
     max_building_saving_frac: float = Field(gt=0, le=1)
 
 
+TOU_HOURS = 24
+
+
+class TouParams(BaseModel):
+    """Time-of-use MARGINAL grid emission profile, A5.
+
+    `profile[h]` is kgCO2e per kWh at hour-of-day h (0-23, local time). It is
+    MARGINAL - the emissions of the next plant dispatched in that hour - which is
+    why an evening air-conditioning peak can carry several times the carbon of a
+    sunny midday hour on a gas-and-solar grid. A flat factor cannot see the
+    difference between a kWh saved at noon and one saved at 18:00; this can.
+
+    Optional end to end: `params.tou is None` means every consumer falls back to
+    the flat `grid_emission_factor`, which is what every fixture and every test
+    written before A5 assumes.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    profile: tuple[float, ...]
+
+    @model_validator(mode="after")
+    def _profile_is_a_real_day(self) -> TouParams:
+        if len(self.profile) != TOU_HOURS:
+            raise ValueError(
+                f"tou.profile must have exactly {TOU_HOURS} hourly values "
+                f"(kgCO2e/kWh, hour-of-day order), got {len(self.profile)}"
+            )
+        bad = [v for v in self.profile if v <= 0]
+        if bad:
+            raise ValueError(
+                f"tou.profile entries must be > 0 kgCO2e/kWh; offending: {bad}"
+            )
+        return self
+
+
 class Params(BaseModel):
     """Everything in params.yaml, validated."""
 
@@ -84,6 +120,14 @@ class Params(BaseModel):
     bundling: BundlingParams
     constraints: ConstraintParams
     guards: GuardParams
+
+    # A5. Absent means flat `grid_emission_factor` everywhere - the pre-A5 world,
+    # and what every CSV-fixture run and existing test constructs.
+    tou: TouParams | None = None
+
+    @property
+    def has_tou(self) -> bool:
+        return self.tou is not None
 
     @model_validator(mode="after")
     def _shares_sum_to_one(self) -> Params:
@@ -242,6 +286,19 @@ def load_params(path: Path | None = None) -> Params:
     path = path or data_dir() / "params.yaml"
     with path.open(encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
+
+    # Pydantic ignores unknown keys rather than rejecting them, so a typo in the
+    # A5 section - `tou_profile:` at top level, `profile` misspelled inside the
+    # block - would validate clean and every building would silently fall back to
+    # the flat 0.45. The whole point of the TOU factor is that it changes funding
+    # decisions; silently not having one is the failure this file exists to catch.
+    stray = sorted(k for k in raw if str(k).lower().startswith("tou") and k != "tou")
+    if stray:
+        raise ValueError(
+            f"params.yaml has key(s) {stray} resembling 'tou' but no 'tou:' block; "
+            f"the TOU grid profile must live under 'tou: profile: [...]'"
+        )
+
     return Params.model_validate(raw)
 
 

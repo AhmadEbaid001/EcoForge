@@ -13,6 +13,7 @@
 
 import { api } from './api.js';
 import { mark } from './charts.js';
+import { locale, t } from './i18n.js';
 import { pageHead } from './ui.js';
 
 /* Class names here are namespaced `map-*` on purpose. `controls` and `legend`
@@ -30,13 +31,13 @@ import { pageHead } from './ui.js';
  * INSIDE this screen rather than on a recommendations screen of its own,
  * because "why that building?" is a question about the solve currently on
  * screen and splitting the two would split the argument in half. */
-const MAP_HTML = String.raw`<!-- ---------------------------------------------------------------- -->
+const MAP_HTML = () => String.raw`<!-- ---------------------------------------------------------------- -->
   <section class="panel map-controls" aria-labelledby="ctl-h">
-    <header><h3 id="ctl-h">Controls</h3></header>
+    <header><h3 id="ctl-h">${t('map.controls')}</h3></header>
     <div class="control-body">
 
       <div class="field">
-        <label for="budget">Budget</label>
+        <label for="budget">${t('map.budget')}</label>
         <output id="budget-out" for="budget">10,000,000</output>
         <div class="field-unit" id="budget-unit">EGP</div>
         <input type="range" id="budget" min="1000000" max="30000000" step="250000"
@@ -47,11 +48,15 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
       </div>
 
       <fieldset class="field">
-        <legend>Rank by</legend>
-        <div class="radiogroup" role="radiogroup" aria-label="Rank by" id="objective">
+        <legend>${t('map.rankBy')}</legend>
+        <div class="radiogroup" role="radiogroup" aria-label="${t('map.rankBy')}" id="objective">
           <button type="button" role="radio" data-value="lca_carbon" aria-checked="true">
             <span class="radio-mark" aria-hidden="true"></span>
             <span class="radio-text"><span class="radio-label">Life-cycle carbon (kgCO&#8322;e)</span></span>
+          </button>
+          <button type="button" role="radio" data-value="tou_carbon" aria-checked="false">
+            <span class="radio-mark" aria-hidden="true"></span>
+            <span class="radio-text"><span class="radio-label">TOU carbon — measured shape (kgCO&#8322;e)</span></span>
           </button>
           <button type="button" role="radio" data-value="raw_kwh" aria-checked="false">
             <span class="radio-mark" aria-hidden="true"></span>
@@ -69,8 +74,8 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
            against. A test greps this directory for the wrong number, which is
            also why this comment does not spell it out. -->
       <fieldset class="field">
-        <legend>Allocation method</legend>
-        <div class="radiogroup" role="radiogroup" aria-label="Allocation method" id="solver">
+        <legend>${t('map.method')}</legend>
+        <div class="radiogroup" role="radiogroup" aria-label="${t('map.method')}" id="solver">
           <button type="button" role="radio" data-value="cpsat" aria-checked="true">
             <span class="radio-mark" aria-hidden="true"></span>
             <span class="radio-text">
@@ -107,7 +112,7 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
       </fieldset>
 
       <div class="field">
-        <label for="cap">Max funded per district</label>
+        <label for="cap">${t('map.districtCap')}</label>
         <span class="select-wrap"><select id="cap">
           <option value="">No cap</option>
           <option value="2">2 per district</option>
@@ -117,8 +122,8 @@ const MAP_HTML = String.raw`<!-- -----------------------------------------------
       </div>
 
       <div class="map-actions">
-        <button id="compare-btn" type="button" class="primary">Compare all four methods</button>
-        <button id="narrative-btn" type="button" class="secondary">Why building-specific?</button>
+        <button id="compare-btn" type="button" class="primary">${t('map.compare')}</button>
+        <button id="narrative-btn" type="button" class="secondary">${t('map.whyBuildingSpecific')}</button>
       </div>
       <p class="note" id="map-status" role="status"></p>
     </div>
@@ -264,14 +269,14 @@ export const mapView = {
 
     root.innerHTML = `
       ${pageHead({ root,
-        title: 'Allocation map',
+        title: t('map.title'),
         description: canSolve
           ? 'Set a budget and a method; the optimizer decides which buildings get '
             + 'which retrofit. Click a building to see every option it considered.'
           : 'The most recent stored allocation. Click a building to see every option '
             + 'the optimizer considered there, and which one it chose.',
       })}
-      <div class="map-layout">${MAP_HTML}</div>${MODAL_HTML}`;
+      <div class="map-layout">${MAP_HTML()}</div>${MODAL_HTML}`;
 
     if (!canSolve) makeReadOnly(root);
     await main(ctx?.signal);
@@ -315,7 +320,7 @@ const $ = (id) => document.getElementById(id);
 const fmt = (n, digits = 0) =>
   n === null || n === undefined || Number.isNaN(n)
     ? '—'
-    : n.toLocaleString('en-US', { maximumFractionDigits: digits });
+    : n.toLocaleString(locale(), { maximumFractionDigits: digits });
 
 function compact(n) {
   const abs = Math.abs(n);

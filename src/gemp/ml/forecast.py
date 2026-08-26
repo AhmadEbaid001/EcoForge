@@ -77,6 +77,10 @@ class ForecastResult:
     baseline_metrics: Metrics
     predictions: pd.Series = field(repr=False)
     annual_kwh: float = 0.0
+    # A5: normalised hour-of-day load shape (mean-1.0) over the same window
+    # `annualize` uses, persisted next to `annual_kwh` and consumed by the TOU
+    # carbon weighting in the domain. Flat when there is nothing to measure.
+    load_shape: tuple[float, ...] = tuple(1.0 for _ in range(24))
     # Expected load across the WHOLE history, not only the held-out window.
     # Anomaly detection needs an expectation for every hour it examines; scoring only
     # the test window would leave 24 of 26 weeks of seeded history unexamined, which
@@ -217,8 +221,22 @@ def fit_building(
         baseline_metrics=baseline_metrics,
         predictions=predictions,
         annual_kwh=annualize(frame["kw"]),
+        load_shape=load_shape(frame),
         full_predictions=full,
     )
+
+
+def _last_whole_weeks(hourly_kw: pd.Series) -> pd.Series:
+    """Trailing whole weeks of an hourly series, or everything if under one week.
+
+    Shared by `annualize` and `load_shape` so both statistics describe the SAME
+    window - a shape from three lopsided days next to an annual figure from six
+    clean weeks would put a thumb on the TOU weighting for no reason.
+    """
+    whole_weeks = len(hourly_kw) // 168
+    if whole_weeks >= 1:
+        return hourly_kw.iloc[-whole_weeks * 168:]
+    return hourly_kw
 
 
 def annualize(hourly_kw: pd.Series) -> float:
@@ -234,8 +252,40 @@ def annualize(hourly_kw: pd.Series) -> float:
     if hourly_kw.empty:
         return 0.0
 
-    whole_weeks = len(hourly_kw) // 168
-    if whole_weeks >= 1:
-        hourly_kw = hourly_kw.iloc[-whole_weeks * 168:]
+    return float(_last_whole_weeks(hourly_kw).mean() * 8760)
 
-    return float(hourly_kw.mean() * 8760)
+
+def load_shape(frame: pd.DataFrame) -> tuple[float, ...]:
+    """Normalised hour-of-day demand shape from a metered series (A5).
+
+    Mean kW at each hour-of-day divided by the overall mean, so the vector averages
+    1.0 and multiplies cleanly against any annual total. This is the second output
+    of the same measurement that produces `annual_kwh` - the annual figure says HOW
+    MUCH this building consumes, the shape says WHEN. Under a flat grid factor the
+    when is worthless; under a TOU marginal profile it is the difference between
+    two buildings with identical annual consumption but genuinely different carbon.
+
+    Takes the FRAME rather than the kw column because the timestamps are needed:
+    production frames carry them in a `ts` column, test fixtures often index by
+    them directly - both are accepted, matching `training_frame`'s tolerance.
+    Fewer than a week of data cannot distinguish weekday from weekend hours, so
+    the result is the flat shape rather than a biased one.
+    """
+    flat = tuple(1.0 for _ in range(24))
+    if frame.empty or len(frame) < 168:
+        return flat
+
+    if "ts" in frame.columns:
+        kw = frame.set_index("ts")["kw"]
+    else:
+        kw = frame["kw"]
+        if not isinstance(kw.index, pd.DatetimeIndex):
+            return flat
+
+    window = _last_whole_weeks(kw)
+    overall = float(window.mean())
+    if overall <= 0:
+        return flat
+
+    by_hour = window.groupby(window.index.hour).mean()
+    return tuple(float(by_hour.get(h, overall)) / overall for h in range(24))

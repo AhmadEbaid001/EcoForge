@@ -22,6 +22,30 @@ horizon_yr: 30
 # credited benefit of every long-life measure.
 grid_emission_factor: 0.45
 
+# --- A5: time-of-use MARGINAL grid emission profile -------------------
+# kgCO2e/kWh by hour-of-day (index 0 = midnight local). MARGINAL means the
+# emissions of the next plant dispatched in that hour: on a gas-and-solar grid
+# a midday kWh is covered by cheap solar-heavy dispatch while an 18:00 kWh
+# fires up peak gas, so the same saved kWh is worth very different carbon
+# depending on WHEN a building consumes. The optimizer weights each building's
+# own measured hourly shape against this profile; buildings without a measured
+# shape, and deployments that delete this block, fall back to the flat factor
+# above exactly as before.
+#
+# TODO(Nada): cite a marginal-displacement source (e.g. UNFCCC CDM/Article 6
+# grid emission factor studies for Egypt, or an Egyptian EEA/HSP dispatch
+# analysis). Values below are PLACEHOLDER v0 shaped to the well-known solar
+# trough at midday and gas peak after sunset - they are illustrative until cited.
+tou:
+  # Scaled so the 24 values AVERAGE the flat grid_emission_factor above (0.45):
+  # a building with no measured shape - or no shape at all - is carbon-costed
+  # identically to the pre-A5 world, and the TOU factor only moves a building
+  # whose consumption actually concentrates somewhere in the day.
+  profile: [0.353, 0.335, 0.326, 0.326, 0.335, 0.353,
+            0.371, 0.406, 0.441, 0.459, 0.468, 0.476,
+            0.485, 0.494, 0.512, 0.529, 0.556, 0.582,
+            0.600, 0.574, 0.529, 0.485, 0.424, 0.379]
+
 # Discount rate applied to both carbon and money. 0.0 reproduces the
 # undiscounted figures in the proposal; raise it to test sensitivity.
 discount_rate: 0.0

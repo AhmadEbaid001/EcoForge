@@ -352,3 +352,52 @@ def test_selection_checkboxes_say_what_they_select():
     assert "rowLabel:" in views, (
         "the alert inbox is the selectable table; its rows must be named"
     )
+
+
+def test_every_translation_key_the_ui_uses_exists_in_every_language():
+    """A missing key does not fall back to English - it renders the key itself.
+
+    `t()` returns the key when a string is absent, so an empty or partial table
+    puts `nav.overview` in the navigation rail and `map.controls` on a heading.
+    That is what shipped: an Arabic table and no English one, so the DEFAULT
+    language rendered raw keys on every screen, and three keys map.js calls were
+    in neither table. Nothing else notices - the ids exist, the paths resolve,
+    the suite is green - because no other test reads what a control says.
+    """
+    source = (WEB / "js" / "i18n.js").read_text(encoding="utf-8")
+
+    def table(lang: str) -> set[str]:
+        block = re.search(lang + r":\s*\{(.*?)\n  \},", source, re.S)
+        assert block, f"no {lang} table in i18n.js"
+        return set(re.findall(r"'([^']+)':", block.group(1)))
+
+    languages = {lang: table(lang) for lang in ("en", "ar")}
+
+    used: set[str] = set()
+    for path in (WEB / "js").glob("*.js"):
+        text = path.read_text(encoding="utf-8")
+        used |= {
+            key
+            for key in re.findall(r"[^a-zA-Z]t\('([^']+)'\)", text)
+            if re.match(r"^(nav|shell|overview|map)\.", key)
+        }
+        # The rail builds its keys from ORDER: t(`nav.${key}`).
+        if "t(`nav.${key}`)" in text:
+            order = re.search(r"const ORDER = \[(.*?)\];", text, re.S)
+            if order:
+                used |= {
+                    "nav." + k
+                    for k in re.findall(r"'([^']+)'", order.group(1))
+                }
+
+    assert used, "no translation keys found - has t() been renamed?"
+
+    for lang, keys in languages.items():
+        missing = sorted(used - keys)
+        assert not missing, (
+            f"{lang} is missing {len(missing)} key(s) the UI calls, so they render "
+            f"as raw keys: {missing}"
+        )
+
+    dead = sorted(languages["en"] - used)
+    assert not dead, f"translated but never used: {dead}"

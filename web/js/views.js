@@ -18,6 +18,7 @@
 'use strict';
 
 import { api, ApiError } from './api.js';
+import { t } from './i18n.js';
 import {
   compact, escapeHtml, icon, lineChart, mark, proportionBar, sevChip, stackedBars,
   statTile,
@@ -160,7 +161,7 @@ export const overview = {
   async render(root, ctx) {
     root.innerHTML = `
       ${pageHead({ root,
-        title: 'Portfolio overview',
+        title: t('overview.title'),
         descriptionHtml: OVERVIEW_PURPOSE,
       })}
       ${skeletonTiles(4)}${skeletonChart()}`;
@@ -181,11 +182,11 @@ export const overview = {
 
       const panels = (loadData, dailyData) => `
         <div class="stat-row">
-          ${statTile('Buildings', compact(summary.buildings),
+          ${statTile(t('overview.buildings'), compact(summary.buildings),
                      'Public buildings in New Cairo, all of them costed.')}
-          ${statTile('Readings stored', compact(summary.readings),
+          ${statTile(t('overview.readings'), compact(summary.readings),
                      'Half-hourly meter readings, every one signed on arrival.')}
-          ${statTile('Open alerts', compact(summary.open_anomalies),
+          ${statTile(t('overview.openAlerts'), compact(summary.open_anomalies),
                      'Rounded, because the count moves while you are reading it.',
                      { spark: dailyTotals(dailyData.days),
                        trend: halfOverHalf(dailyTotals(dailyData.days)),
@@ -194,7 +195,7 @@ export const overview = {
                          .map((k) => `<span class="stat-chip ${k}">${
                            sevChip(k)} ${compact(summary.open_by_severity[k])}</span>`)
                          .join('') })}
-          ${statTile('Costed on measurement', `${fromForecast} of ${summary.buildings}`,
+          ${statTile(t('overview.measured'), `${fromForecast} of ${summary.buildings}`,
                      'Buildings whose annual kWh comes from their own metered '
                      + 'consumption rather than a floor-area rule of thumb. It is the '
                      + 'figure every retrofit here is costed against.')}
@@ -203,7 +204,7 @@ export const overview = {
         <div class="two-col">
           <section class="panel">
             <header>
-              <h3>Portfolio demand</h3>
+              <h3>${t('overview.demandPanel')}</h3>
               <span class="scope">${state.days} days, hourly, kW summed across
                 ${summary.buildings} buildings</span>
             </header>
@@ -216,7 +217,7 @@ export const overview = {
 
           <section class="panel">
             <header>
-              <h3>Alerts per day</h3>
+              <h3>${t('overview.alertsPanel')}</h3>
               <span class="scope">${state.days} days, stacked by severity</span>
             </header>
             ${stackedBars(dailyData.days, ['critical', 'high', 'medium'], { height: 240 })}
@@ -228,7 +229,7 @@ export const overview = {
 
       root.innerHTML = `
         ${pageHead({ root,
-          title: 'Portfolio overview',
+          title: t('overview.title'),
           descriptionHtml: OVERVIEW_PURPOSE,
         })}
 
@@ -237,21 +238,21 @@ export const overview = {
 
         <section class="panel">
           <header>
-            <h3>Most recent allocation</h3>
+            <h3>${t('overview.latestRun')}</h3>
             <!-- Said out loud, because the figures underneath look exactly like
                  live ones and are not: this is what was decided and stored, not
                  what the optimizer would answer now. -->
-            <span class="scope">stored, not live</span>
+            <span class="scope">${t('overview.storedNotLive')}</span>
           </header>
           ${run ? `
             <div class="stat-row compact">
-              ${statTile('Budget', compact(run.budget_egp) + ' EGP')}
-              ${statTile('Funded', run.buildings_funded + ' buildings')}
-              ${statTile('Spent', compact(run.total_cost_egp) + ' EGP')}
-              ${statTile('Share of budget spent', run.budget_egp
+              ${statTile(t('overview.budget'), compact(run.budget_egp) + ' EGP')}
+              ${statTile(t('overview.funded'), run.buildings_funded + ' buildings')}
+              ${statTile(t('overview.spent'), compact(run.total_cost_egp) + ' EGP')}
+              ${statTile(t('overview.shareSpent'), run.budget_egp
                   ? `${((run.total_cost_egp / run.budget_egp) * 100).toFixed(0)}%` : '—')}
-              ${statTile('Lifetime benefit', compact(run.total_benefit_kgco2e) + ' kgCO₂e')}
-              ${statTile('District cap', run.max_funded_per_district
+              ${statTile(t('overview.lifetimeBenefit'), compact(run.total_benefit_kgco2e) + ' kgCO₂e')}
+              ${statTile(t('overview.districtCap'), run.max_funded_per_district
                   ? `${run.max_funded_per_district} per district` : 'none')}
             </div>
             <p class="caption">Solved by <strong>${escapeHtml(solverLabel(run.solver))}</strong>,
@@ -841,7 +842,9 @@ export const runs = {
                 escapeHtml(String(r.inputs_hash).slice(0, 10))}&hellip;</span>`) },
         { key: '_provenance', label: '', cls: 'row-actions',
           render: (r) => `<button type="button" class="secondary small"
-            data-prov="${escapeHtml(r.run_id)}">Provenance</button>` },
+            data-prov="${escapeHtml(r.run_id)}">Provenance</button>
+            <button type="button" class="secondary small"
+            data-boq="${escapeHtml(r.run_id)}">BOQ</button>` },
       ];
 
       const paint = () => {
@@ -857,6 +860,11 @@ export const runs = {
         body.querySelectorAll('[data-prov]').forEach((button) => {
           button.addEventListener('click', () =>
             showProvenance(state.rows.find((r) => r.run_id === button.dataset.prov)));
+        });
+        body.querySelectorAll('[data-boq]').forEach((button) => {
+          button.addEventListener('click', () => {
+            guard(body, () => showBoq(button.dataset.boq));
+          });
         });
       };
 
@@ -976,6 +984,176 @@ function showProvenance(run) {
       said.textContent = 'The browser refused clipboard access — select the hash above.';
     }
   });
+
+  document.body.appendChild(host);
+  host.querySelector('.modal-inner').focus();
+}
+
+/* ---------------------------------------------------------------- evidence */
+
+/* The claims harness, on screen.
+ *
+ * `python -m gemp.evaluate` re-measures every sentence the paper makes against
+ * the running system and exits non-zero when one stops holding - the output used
+ * to live in a terminal, which is where differentiators go to be missed. This
+ * view reads the same CSV the harness writes and adds nothing to it: no
+ * summarising, no hiding of FAIL rows. A harness that only reports what already
+ * works is a marketing document; this screen shows whatever it said, including
+ * the known-open row that is supposed to be red.
+ */
+export const evidence = {
+  title: 'Evidence',
+  async render(root, ctx) {
+    const EVIDENCE_PURPOSE = 'Every claim in the paper, re-measured by the claims '
+        + 'harness against this deployment. A FAIL here means a sentence stopped '
+        + 'being true and has not been corrected yet — which is exactly what the '
+        + 'harness exists to catch.';
+    const state = { rows: [], sortKey: 'id', sortDir: 'asc' };
+
+    root.innerHTML = `
+      ${pageHead({ root, title: 'Evidence', description: EVIDENCE_PURPOSE })}
+      ${skeletonRows(8)}`;
+
+    await guard(root, async () => {
+      const body0 = await api.evidence();
+      state.rows = body0.claims || [];
+
+      const verdictChip = (r) => {
+        if (r.verdict === 'PASS') return `<span class="sev pass">${mark('check', { size: 11 })}Pass</span>`;
+        if (r.verdict === 'SKIP') return '<span class="muted">Skipped</span>';
+        return r.known_open
+          ? `<span class="sev high">${mark('dash', { size: 11 })}Known-open</span>`
+          : `<span class="sev critical">${mark('cross', { size: 11 })}Fail</span>`;
+      };
+
+      const columns = [
+        { key: 'id', label: 'Claim', sortable: true, cls: 'mono',
+          render: (r) => `<strong>${escapeHtml(r.id)}</strong>` },
+        { key: 'statement', label: 'What the paper says',
+          render: (r) => escapeHtml(r.statement) },
+        { key: '_verdict', label: 'Verdict', sortable: true,
+          render: verdictChip },
+        { key: 'measured', label: 'Measured now',
+          render: (r) => escapeHtml(r.measured) },
+        { key: 'detail', label: '', cls: 'mono muted',
+          render: (r) => (r.detail ? escapeHtml(r.detail) : '') },
+      ];
+
+      root.innerHTML = `
+        ${pageHead({ root, title: 'Evidence', description: EVIDENCE_PURPOSE })}
+        <section class="panel">
+          <header>
+            <h3>Claims</h3>
+            <span class="scope">${state.rows.length} measured claims</span>
+          </header>
+          <div id="evidence-body"></div>
+          <p class="caption" id="evidence-note">${body0.note
+            ? escapeHtml(body0.note) : ''}</p>
+        </section>`;
+
+      const paint = () => {
+        const host = root.querySelector('#evidence-body');
+        host.innerHTML = state.rows.length
+          ? dataTable({ columns, rows: state.rows,
+              sortKey: state.sortKey, sortDir: state.sortDir })
+          : emptyState({
+              title: 'No measurements yet',
+              body: 'The claims harness has not been run on this deployment.',
+              hint: 'Run: python -m gemp.evaluate',
+            });
+        wireSort(host, state, paint);
+      };
+      paint();
+      wireRefresh(root, () => evidence.render(root, ctx));
+    });
+  },
+};
+
+/* ------------------------------------------------------------------- BOQ */
+
+/* A stored allocation as a bill of quantities, with a CSV beside it.
+ *
+ * The CSP allows creating a Blob URL for a download but not displaying one, so
+ * the table renders in-page and the download is a plain object-URL navigation -
+ * which is all a procurement office needs: numbers on paper they can price
+ * against, plus the file their spreadsheet expects. */
+function downloadCsv(filename, rows) {
+  const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+  const header = Object.keys(rows[0] || {});
+  const csv = [header, ...rows.map((r) => header.map((k) => quote(r[k])))]
+    .map((line) => line.join(','))
+    .join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+async function showBoq(runId) {
+  const opener = document.activeElement;
+  const boq = await api.boq(runId);
+  if (!boq.lines.length) return;
+
+  const host = document.createElement('div');
+  host.className = 'modal';
+  const close = () => {
+    host.remove();
+    if (opener && opener.isConnected) opener.focus();
+  };
+
+  const columns = [
+    { key: 'building_code', label: 'Building', sortable: true,
+      render: (r) => `${escapeHtml(r.building_code)} <span class="muted">${
+        escapeHtml(r.building_name)}</span>` },
+    { key: 'measure', label: 'Measure', sortable: true, render: (r) => escapeHtml(r.measure) },
+    { key: 'quantity', label: 'Quantity', num: true, sortable: true,
+      render: (r) => `${compact(r.quantity)} ${escapeHtml(r.basis)}` },
+    { key: 'unit_rate', label: 'Unit rate', render: (r) => escapeHtml(r.unit_rate) },
+    { key: 'line_total_egp', label: 'Line total EGP', num: true, sortable: true,
+      render: (r) => compact(r.line_total_egp) },
+    { key: '_cite', label: '',
+      render: (r) => (r.citation
+        ? `<span class="sev high" title="${escapeHtml(r.citation)}">rate uncited</span>`
+        : '') },
+  ];
+  const state = { rows: boq.lines, sortKey: 'building_code', sortDir: 'asc' };
+
+  host.innerHTML = `
+    <div class="modal-inner wide" role="dialog" aria-modal="true" tabindex="-1"
+         aria-label="Bill of quantities">
+      <button class="close" type="button" data-close aria-label="Close">&times;</button>
+      <h2>Bill of quantities</h2>
+      <p class="caption">Run <span class="mono">${escapeHtml(String(runId).slice(0, 10))}
+        &hellip;</span> &middot; ${boq.lines.length} lines &middot; total
+        ${compact(boq.total_egp)} EGP &middot; input hash
+        <span class="mono">${escapeHtml(String(boq.inputs_hash).slice(0, 10))}&hellip;</span></p>
+      <div id="boq-body"></div>
+      <div class="form-actions">
+        <button type="button" class="primary" data-download>Download CSV</button>
+        <button type="button" class="secondary" data-print>Print brief</button>
+        <span class="hint">Rates marked "uncited" still carry a TODO in the catalog
+          and must be sourced before tender.</span>
+      </div>
+    </div>`;
+
+  const paint = () => {
+    const body = host.querySelector('#boq-body');
+    body.innerHTML = dataTable({ columns, rows: state.rows,
+      sortKey: state.sortKey, sortDir: state.sortDir });
+    wireSort(body, state, paint);
+  };
+  paint();
+
+  host.querySelector('[data-close]').addEventListener('click', close);
+  host.addEventListener('click', (event) => { if (event.target === host) close(); });
+  host.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.stopPropagation(); close(); }
+  });
+  host.querySelector('[data-download]').addEventListener('click', () =>
+    downloadCsv(`gemp-boq-${String(runId).slice(0, 8)}.csv`, boq.lines));
+  host.querySelector('[data-print]').addEventListener('click', () => window.print());
 
   document.body.appendChild(host);
   host.querySelector('.modal-inner').focus();
@@ -1268,7 +1446,9 @@ export const admin = {
         ${pageHead({ root,
           title: 'Administration',
           description: ADMIN_PURPOSE,
-          actions: '<button id="user-add" type="button" class="primary">Add account</button>',
+          actions: '<button id="recompute-btn" type="button" class="secondary">'
+                   + 'Recompute candidates</button>'
+                   + '<button id="user-add" type="button" class="primary">Add account</button>',
         })}
 
         <section class="panel">
@@ -1509,6 +1689,35 @@ export const admin = {
             role: values.role,
           });
           await reload(`Account ${values.username.trim()} created as ${values.role}.`);
+        });
+      });
+
+      /* Recompute was a curl command with no face. The endpoint has existed and
+       * been admin-gated since Phase 1; this is it finally wired to a button, so
+       * "the parameters are data, not code" is something you can demonstrate by
+       * clicking rather than by opening a terminal. */
+      root.querySelector('#recompute-btn')?.addEventListener('click', async () => {
+        const ok = await confirmAction({
+          title: 'Recompute the candidate set?',
+          description: 'Re-expands every building × measure combination from the '
+                     + 'current catalog.csv and params.yaml, rewrites the stored '
+                     + 'candidates, and invalidates the optimizer cache. Any change '
+                     + 'to data/ takes effect at the next solve.',
+          confirmLabel: 'Recompute',
+          confirmText: String(await api.meta().then((m) => m.buildings).catch(() => 50)),
+        });
+        if (!ok) return;
+        await guard(root, async () => {
+          const result = await api.recompute();
+          setStatus(root, {
+            kind: 'ok',
+            message: `Candidates rebuilt: ${result.candidates} options over `
+                   + `${result.buildings} buildings from ${result.interventions} `
+                   + `catalog rows (inputs ${result.inputs_hash}…).`
+                   + (result.uncited_catalog_rows.length
+                     ? ` Uncited rows remain: ${result.uncited_catalog_rows.join(', ')}.`
+                     : ''),
+          });
         });
       });
     });

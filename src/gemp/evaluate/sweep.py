@@ -35,8 +35,11 @@ log = logging.getLogger("gemp.evaluate.sweep")
 DEFAULT_BUDGETS: tuple[float, ...] = tuple(float(m) * 1_000_000 for m in range(2, 42, 2))
 
 # lca_carbon is the default objective; raw_kwh is what a conventional monitoring
-# tool would rank on, and the pair is what the LCA claim compares.
-DEFAULT_OBJECTIVES: tuple[str, ...] = ("lca_carbon", "raw_kwh")
+# tool would rank on, and the pair is what the LCA claim compares. tou_carbon (A5)
+# rides along so the old-vs-new divergence is measurable from the same grid -
+# forgetting it here would leave the new objective with no sweep rows and its
+# claim silently SKIPping.
+DEFAULT_OBJECTIVES: tuple[str, ...] = ("lca_carbon", "tou_carbon", "raw_kwh")
 
 # None is the unconstrained knapsack; 2 is the policy-style cap that greedy cannot
 # express at all, and is where exact optimization earns its place.

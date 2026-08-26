@@ -110,6 +110,10 @@ export const api = {
   verifyChain: (buildingId) =>
     request('GET', `/integrity/verify/${encodeURIComponent(buildingId)}`),
 
+  /* --- evidence and procurement --- */
+  evidence: () => request('GET', '/evidence/claims'),
+  boq: (runId) => request('GET', `/runs/${encodeURIComponent(runId)}/boq`),
+
   /* --- administration --- */
   users: () => request('GET', '/admin/users'),
   createUser: (body) => request('POST', '/admin/users', body),

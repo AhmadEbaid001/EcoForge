@@ -121,6 +121,13 @@ class BuildingRow(Base):
     annual_kwh: Mapped[float] = mapped_column(Float)
     annual_kwh_source: Mapped[str] = mapped_column(String(16), default="profile")
 
+    # A5: normalised hour-of-day load shape (24 floats, mean 1.0), written by the
+    # same nightly job. Null until the first refit after this migration - the
+    # domain treats a missing shape as flat, which reproduces the old flat factor
+    # exactly, so pre-existing databases need no backfill.
+    load_shape: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    load_shape_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

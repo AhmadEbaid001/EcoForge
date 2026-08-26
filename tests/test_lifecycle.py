@@ -9,10 +9,26 @@ from gemp.domain.catalog import Params
 from gemp.domain.lifecycle import (
     annuity_factor,
     discounted_embodied,
+    effective_grid_factor,
     lifetime_benefit_kgco2e,
+    lifetime_tou_benefit_kgco2e,
     replacement_cycles,
     upfront_cost_egp,
 )
+
+# An evening-peaked TOU profile: cheap solar-heavy midday trough (hours 10-15),
+# expensive gas peak after sunset (17-21).
+PEAKY_PROFILE = (
+    tuple([0.35] * 7) + tuple([0.45] * 3) + tuple([0.28] * 6)
+    + (0.55,) + tuple([0.85] * 5) + tuple([0.50] * 2)
+)
+assert len(PEAKY_PROFILE) == 24
+
+
+def tou_params() -> Params:
+    return Params.model_validate(
+        PARAMS_DICT | {"tou": {"profile": list(PEAKY_PROFILE)}}
+    )
 
 
 def test_annuity_reduces_to_horizon_when_undiscounted():
@@ -97,3 +113,87 @@ def test_solar_cost_has_a_fixed_component(params: Params):
     small_cost_per_m2 = upfront_cost_egp(small, solar, params) / small.roof_area_m2
 
     assert small_cost_per_m2 > big_cost_per_m2
+
+
+# --- A5: time-of-use marginal carbon weighting -------------------------------
+
+
+def test_a_flat_shape_yields_the_profile_mean():
+    """A flat shape weights every hour equally, so the effective factor IS the
+    arithmetic mean of the profile - the mathematical guarantee that buildings
+    with no measured data are unaffected in kind, only possibly in level."""
+    building = make_building()
+    assert effective_grid_factor(building, tou_params()) == pytest.approx(
+        sum(PEAKY_PROFILE) / 24
+    )
+
+
+def test_no_tou_profile_reproduces_the_flat_factor_exactly(params: Params):
+    shape = tuple(3.0 if h in (17, 18) else 0.5 for h in range(24))
+    building = make_building(hourly_shape=shape)
+    assert effective_grid_factor(building, params) == pytest.approx(0.45)
+
+
+def test_shipped_profile_averages_the_flat_factor():
+    """Continuity pin on the DATA file: the placeholder profile is scaled so its
+    mean equals grid_emission_factor. Delete this block and the flat factor stops
+    describing the average carbon of the shipped TOU profile."""
+    from gemp.domain.catalog import load_params
+
+    p = load_params()
+    assert p.tou is not None
+    mean_profile = sum(p.tou.profile) / len(p.tou.profile)
+    assert mean_profile == pytest.approx(p.grid_emission_factor, abs=5e-3)
+
+
+def test_a_peaked_building_is_weighted_toward_the_expensive_hours():
+    # Consumption-weighted mean over a shape concentrated at 17-20h lands above
+    # the profile's own mean; a midday-only shape lands below it.
+    evening = make_building(
+        hourly_shape=tuple(4.0 if h in (17, 18, 19, 20) else 1.0 for h in range(24))
+    )
+    midday = make_building(
+        hourly_shape=tuple(4.0 if h in (11, 12, 13, 14) else 1.0 for h in range(24))
+    )
+    p = tou_params()
+    profile_mean = sum(PEAKY_PROFILE) / 24
+    assert effective_grid_factor(evening, p) > profile_mean
+    assert effective_grid_factor(midday, p) < profile_mean
+    assert effective_grid_factor(evening, p) > effective_grid_factor(midday, p)
+
+
+def test_tou_benefit_equals_flat_benefit_when_no_profile(params: Params):
+    building = make_building()
+    iv = make_intervention(service_life_yr=30)
+    slices = {"hvac": 6_000.0, "lighting": 4_000.0}
+    flat = lifetime_benefit_kgco2e(10_000.0, building, [iv], params)
+    tou = lifetime_tou_benefit_kgco2e(slices, building, [iv], params)
+    assert tou == pytest.approx(flat)
+
+
+def test_tou_benefits_diverge_by_building_shape_under_the_same_profile():
+    """Two buildings with IDENTICAL savings but different shapes earn different
+    carbon credit. This is the mechanism by which metered data finally reaches
+    the funding decision."""
+    iv = make_intervention(id="led", service_life_yr=30, embodied_value=0.0)
+    office_like = make_building(
+        hourly_shape=tuple(4.0 if 10 <= h <= 15 else 1.0 for h in range(24))
+    )
+    clinic_like = make_building(
+        hourly_shape=tuple(4.0 if 17 <= h <= 21 else 1.0 for h in range(24))
+    )
+    p = tou_params()
+    slices = {"lighting": 10_000.0}
+    benefit_day = lifetime_tou_benefit_kgco2e(slices, office_like, [iv], p)
+    benefit_night = lifetime_tou_benefit_kgco2e(slices, clinic_like, [iv], p)
+    assert benefit_night > benefit_day
+
+
+def test_hourly_shape_is_normalised_and_validated():
+    # Whatever scale arrives, the model stores a mean-1.0 day.
+    b = make_building(hourly_shape=[200.0] * 24)
+    assert abs(sum(b.hourly_shape) / 24 - 1.0) < 1e-9
+    with pytest.raises(ValueError):
+        make_building(hourly_shape=[1.0] * 23)
+    with pytest.raises(ValueError):
+        make_building(hourly_shape=[0.0] * 24)

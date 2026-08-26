@@ -321,3 +321,57 @@ def test_density_is_not_the_ilp_objective():
     value_of = objective_fn("lca_carbon")
     assert alloc.total_benefit_kgco2e == pytest.approx(510.0)
     assert value_of(candidates[1]) == 500.0
+
+
+# --- A5: the tou_carbon objective --------------------------------------------
+
+
+def test_tou_carbon_objective_is_registered():
+    """Forgetting DEFAULT_OBJECTIVES in the sweep leaves the new objective with no
+    rows and its claim silently SKIPping; forgetting OBJECTIVES here would 422
+    every request that names it. Both registries must know it."""
+    from gemp.evaluate.sweep import DEFAULT_OBJECTIVES
+    from gemp.optimize.objective import OBJECTIVES, objective_fn
+
+    assert "tou_carbon" in OBJECTIVES
+    assert "tou_carbon" in DEFAULT_OBJECTIVES
+    assert objective_fn("tou_carbon") is not None
+
+
+def test_candidate_without_tou_value_defaults_to_the_flat_benefit():
+    """Constructors written before A5 set only lifetime_benefit_kgco2e; the TOU
+    field resolves to it so old-vs-new comparisons start from equality."""
+    from tests.conftest import PARAMS_DICT, make_intervention
+
+    from gemp.domain.candidates import expand_building
+    from gemp.domain.catalog import Params
+
+    b = make_building()
+    c = expand_building(b, [make_intervention()], Params.model_validate(PARAMS_DICT))[0]
+    assert c.lifetime_tou_benefit_kgco2e == pytest.approx(c.lifetime_benefit_kgco2e)
+
+
+def test_tou_carbon_diverges_from_lca_carbon_only_through_shape_and_profile():
+    from tests.conftest import PARAMS_DICT, make_intervention
+    from tests.test_lifecycle import tou_params
+
+    from gemp.domain.candidates import expand_portfolio
+    from gemp.domain.catalog import Params
+
+    b_flat = make_building()
+    b_peaked = make_building(
+        hourly_shape=tuple(4.0 if 17 <= h <= 20 else 1.0 for h in range(24))
+    )
+    catalog = [make_intervention(id="led", end_use="lighting", saving_frac=0.3)]
+    p = Params.model_validate(PARAMS_DICT)
+    p_tou = tou_params()
+
+    flat = expand_portfolio([b_flat], catalog, p)
+    peaked = expand_portfolio([b_peaked], catalog, p_tou)
+
+    # No profile: identical. Profile + measured peak: the same physical saving is
+    # worth MORE carbon under TOU because it lands in expensive hours.
+    assert flat[0].lifetime_tou_benefit_kgco2e == pytest.approx(
+        flat[0].lifetime_benefit_kgco2e
+    )
+    assert peaked[0].lifetime_tou_benefit_kgco2e > peaked[0].lifetime_benefit_kgco2e

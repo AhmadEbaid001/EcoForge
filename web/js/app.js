@@ -16,10 +16,11 @@
 import { api, setPasswordChangeHandler, setUnauthenticatedHandler } from './api.js';
 import { wordmark } from './brand.js';
 import { escapeHtml, hydrateCharts, icon } from './charts.js';
+import { currentLang, locale, setLangCode, t } from './i18n.js';
 import { markRead, startClock, wireReread } from './ui.js';
 
 import { mapView } from './map.js';
-import { account, admin, alerts, forecasts, integrity, overview, runs } from './views.js';
+import { account, admin, alerts, evidence, forecasts, integrity, overview, runs } from './views.js';
 
 const VIEWS = {
   overview,
@@ -27,6 +28,7 @@ const VIEWS = {
   forecasts,
   alerts,
   runs,
+  evidence,
   integrity,
   admin,
   account,
@@ -40,18 +42,10 @@ const VIEWS = {
  * The rail label is not the screen title. "Allocations" fits under a 20px icon
  * at .5625rem; "Stored allocations" does not, and the header says it in full
  * one line to the right. */
-const ORDER = ['overview', 'map', 'alerts', 'forecasts', 'runs', 'integrity', 'admin', 'account'];
+const ORDER = ['overview', 'map', 'alerts', 'forecasts', 'runs', 'evidence', 'integrity', 'admin', 'account'];
 
-const NAV_LABEL = {
-  overview: 'Overview',
-  map: 'Allocation map',
-  alerts: 'Alert inbox',
-  forecasts: 'Forecasting',
-  runs: 'Allocations',
-  integrity: 'Integrity',
-  admin: 'Admin',
-  account: 'Account',
-};
+/* Rail labels come from i18n.t(`nav.${key}`) so the Arabic toggle re-reads them
+ * from one dictionary; the English text lives there too, as the fallback. */
 
 const ROLE_LADDER = ['viewer', 'analyst', 'admin'];
 const can = (user, role) => ROLE_LADDER.indexOf(user.role) >= ROLE_LADDER.indexOf(role);
@@ -452,9 +446,18 @@ async function showApp() {
     const locked = VIEWS[key].requiredRole && !can(state.user, VIEWS[key].requiredRole);
     return `
     <button class="nav-item${locked ? ' locked' : ''}" type="button" data-view="${key}">
-      ${icon(key)}<span class="nav-label">${escapeHtml(NAV_LABEL[key])}</span>
+      ${icon(key)}<span class="nav-label">${escapeHtml(t(`nav.${key}`))}</span>
     </button>`;
   }).join('');
+
+  /* The language toggle sits with the other room controls rather than buried in
+   * Account, because direction is a whole-shell decision: flipping it re-renders
+   * the rail immediately and every view re-reads its strings on the gemp:lang
+   * event. One button, two states, labelled in BOTH languages so it reads the
+   * same to whoever needs it whichever language the screen is currently in. */
+  const langButton = `<button type="button" class="secondary" id="lang-toggle"
+      aria-label="${currentLang() === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}">
+      ${currentLang() === 'ar' ? 'EN' : 'ع'}</button>`;
 
   const who = escapeHtml(state.user.display_name || state.user.username);
 
@@ -464,22 +467,22 @@ async function showApp() {
          user tabs through the whole rail to reach the table they came for, and
          does it again the next time. WCAG 2.4.1 calls this bypassing blocks; it is
          one link and it is only visible when it has focus. -->
-    <a class="skip-link" href="#view">Skip to content</a>
+    <a class="skip-link" href="#view">${t('shell.skip')}</a>
     <div class="shell">
-      <nav class="rail" aria-label="GEMP sections">
+      <nav class="rail" aria-label="${t('shell.sections')}">
         <div class="rail-logo">${wordmark('GEMP')}</div>
         ${navItems}
         <div class="rail-spacer"></div>
         <!-- What you are, above a hairline. Not a decoration: which of these
-             screens will accept an action from you is decided by this word, and
-             two of them say so in their own copy. -->
+              screens will accept an action from you is decided by this word, and
+              two of them say so in their own copy. -->
         <div class="rail-foot">
           <div class="rail-identity">
             <span class="rail-who" title="${who}">${who}</span>
             <span class="rail-role">${escapeHtml(state.user.role)}</span>
           </div>
           <button class="rail-signout" type="button" id="sign-out">
-            ${icon('signout')}<span>Sign out</span>
+            ${icon('signout')}<span>${t('shell.signout')}</span>
           </button>
         </div>
       </nav>
@@ -504,8 +507,9 @@ async function showApp() {
               <span class="clock-tag" id="clock-tag">fresh</span>
             </span>
             <button type="button" class="secondary" data-refresh>
-              ${icon('refresh')}Re-read
+              ${icon('refresh')}${t('shell.reread')}
             </button>
+            ${langButton}
             ${textScaleSwitch()}
             ${appearanceSwitch()}
           </div>
@@ -533,6 +537,15 @@ async function showApp() {
     await api.logout().catch(() => {});
     state.user = null;
     showLogin();
+  });
+
+  /* Language: flip direction and strings immediately, then re-render the screen
+   * the reader is on so nothing waits for the next navigation. */
+  $('lang-toggle').addEventListener('click', () => {
+    setLangCode(currentLang() === 'ar' ? 'en' : 'ar');
+  });
+  window.addEventListener('gemp:lang', () => {
+    navigate(state.view);
   });
 
   await navigate(fromHash() || 'overview');

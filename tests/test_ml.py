@@ -369,3 +369,35 @@ def test_a_flatline_does_not_outrank_a_real_excursion():
     assert at(flatline_z(8.0)).severity == "high"
     assert at(40.0).severity == "critical"
     assert abs(at(40.0).robust_z) > abs(at(flatline_z(8.0)).robust_z)
+
+
+# --- A5: measured hour-of-day shape ------------------------------------------
+
+
+def test_load_shape_is_normalised_and_finds_the_peak_hours():
+    import pandas as pd
+
+    from gemp.ml.forecast import load_shape
+
+    idx = pd.date_range("2026-01-01", periods=24 * 14, freq="h", tz="UTC")
+    kw = pd.Series([2.0 if ts.hour in (18, 19) else 1.0 for ts in idx], index=idx)
+    frame = kw.reset_index().rename(columns={"index": "ts"})
+    frame["kw"] = kw.to_numpy()
+
+    shape = load_shape(frame)
+    assert len(shape) == 24
+    assert abs(sum(shape) / 24 - 1.0) < 1e-9
+    assert max(shape) == pytest.approx(shape[18])
+    assert shape[18] > shape[12] * 1.5
+
+
+def test_load_shape_is_flat_below_a_week_of_data():
+    """Weekday/weekend cannot be distinguished from less than one week, so any
+    'shape' would be a bias wearing a measurement's clothes."""
+    import pandas as pd
+
+    from gemp.ml.forecast import load_shape
+
+    idx = pd.date_range("2026-01-01", periods=100, freq="h", tz="UTC")
+    frame = pd.DataFrame({"ts": idx, "kw": 1.5})
+    assert all(v == 1.0 for v in load_shape(frame))

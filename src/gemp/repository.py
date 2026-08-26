@@ -21,11 +21,25 @@ from gemp.db import (
     ReadingRow,
     insert_ignore,
 )
-from gemp.domain.models import Building, Candidate, Intervention
+from gemp.domain.models import FLAT_SHAPE, Building, Candidate, Intervention
 from gemp.domain.portfolio import load_geojson
 
 
+# A building row whose load shape is missing, malformed or the wrong length is
+# costed FLAT rather than trusted - a truncated JSON list would otherwise bias
+# every TOU-weighted number for one building in a way nothing downstream checks.
+def _shape_of(row: BuildingRow) -> tuple[float, ...] | None:
+    raw = row.load_shape
+    if not isinstance(raw, (list, tuple)) or len(raw) != 24:
+        return None
+    try:
+        return tuple(float(v) for v in raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def to_domain_building(row: BuildingRow) -> Building:
+    shape = _shape_of(row)
     return Building(
         id=row.id,
         code=row.code,
@@ -42,6 +56,7 @@ def to_domain_building(row: BuildingRow) -> Building:
         insulation_quality=row.insulation_quality,
         occupancy_pattern=row.occupancy_pattern,
         annual_kwh=row.annual_kwh,
+        hourly_shape=shape if shape is not None else FLAT_SHAPE,
     )
 
 

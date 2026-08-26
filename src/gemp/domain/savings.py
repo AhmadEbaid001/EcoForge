@@ -89,6 +89,48 @@ def end_use_baseline_kwh(building: Building, end_use: str, params: Params) -> fl
     return building.annual_kwh * params.share(building.occupancy_pattern, end_use)
 
 
+def bundle_saving_by_end_use(
+    building: Building,
+    interventions: Sequence[Intervention],
+    params: Params,
+) -> dict[str, float]:
+    """The per-end-use breakdown behind `bundle_saving_kwh`, A5.
+
+    The composition loop used to collapse straight into a scalar `total +=`. The
+    TOU carbon weighting needs the slices: a kWh removed from evening HVAC and one
+    removed from midday lighting are worth different amounts of carbon once the
+    grid factor varies by hour, so the breakdown has to survive until the benefit
+    function. The whole-building ceiling is applied PRO-RATA across end uses -
+    scaling every slice by the same factor preserves the within-bundle ratios the
+    multiplicative composition produced, which clipping only the total would not.
+
+    Returns {} for an empty intervention set.
+    """
+    by_end_use: dict[str, list[Intervention]] = defaultdict(list)
+    for iv in interventions:
+        by_end_use[iv.end_use].append(iv)
+
+    raw: dict[str, float] = {}
+    for end_use, group in by_end_use.items():
+        if end_use == "generation":
+            # additive across generation units, but there is only ever one in practice
+            raw[end_use] = sum(solar_saving_kwh(building, params) for _ in group)
+            continue
+
+        baseline = end_use_baseline_kwh(building, end_use, params)
+        remaining = 1.0
+        for iv in group:
+            remaining *= 1.0 - effective_saving_frac(building, iv, params)
+        raw[end_use] = baseline * (1.0 - remaining)
+
+    ceiling = building.annual_kwh * params.bundling.cap_total_saving_frac
+    total = sum(raw.values())
+    if total > ceiling:
+        scale = ceiling / total if total > 0 else 0.0
+        return {use: value * scale for use, value in raw.items()}
+    return raw
+
+
 def bundle_saving_kwh(
     building: Building,
     interventions: Sequence[Intervention],
@@ -103,27 +145,12 @@ def bundle_saving_kwh(
     typical fabric-plus-plant bundle.
 
     Savings across *different* end uses do add, since they draw on disjoint slices
-    of consumption.
+    of consumption. The per-slice view lives in `bundle_saving_by_end_use`; this
+    stays the scalar entry point every existing caller and test relies on.
     """
-    by_end_use: dict[str, list[Intervention]] = defaultdict(list)
-    for iv in interventions:
-        by_end_use[iv.end_use].append(iv)
-
-    total = 0.0
-    for end_use, group in by_end_use.items():
-        if end_use == "generation":
-            # additive across generation units, but there is only ever one in practice
-            total += sum(solar_saving_kwh(building, params) for _ in group)
-            continue
-
-        baseline = end_use_baseline_kwh(building, end_use, params)
-        remaining = 1.0
-        for iv in group:
-            remaining *= 1.0 - effective_saving_frac(building, iv, params)
-        total += baseline * (1.0 - remaining)
-
-    ceiling = building.annual_kwh * params.bundling.cap_total_saving_frac
-    return min(total, ceiling)
+    return sum(
+        bundle_saving_by_end_use(building, interventions, params).values()
+    )
 
 
 def intervention_saving_kwh(

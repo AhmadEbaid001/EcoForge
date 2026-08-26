@@ -19,6 +19,8 @@
 
 'use strict';
 
+import { locale } from './i18n.js';
+
 export const escapeHtml = (value) =>
   String(value).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -48,6 +50,10 @@ const ICONS = {
   alerts: '<path d="M12 4l9 16H3zM12 10v4M12 17.2v.1"/>',
   forecasts: '<path d="M3 17l5-6 4 3 4-7 5 5"/>',
   runs: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  /* Evidence: a clipboard with its tick. The one screen whose whole job is
+   * showing that the other claims were checked rather than asserted. */
+  evidence: '<rect x="5" y="4" width="14" height="17" rx="1.5"/><path d="M9 4.5V3h6v1.5"/>'
+          + '<path d="M8.5 12l2.5 2.5L15.5 10M8.5 17H16"/>',
   integrity: '<path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6zM9 12l2.5 2.5L16 10"/>',
   admin: '<path d="M12 3l2 2h3v3l2 2-2 2v3h-3l-2 2-2-2H7v-3l-2-2 2-2V5h3zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/>',
   account: '<path d="M12 4a4 4 0 110 8 4 4 0 010-8zM4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
@@ -125,7 +131,7 @@ export function compact(n) {
   if (abs >= 1e9) return (n / 1e9).toFixed(1) + 'B';
   if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M';
   if (abs >= 1e3) return (n / 1e3).toFixed(1) + 'k';
-  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 1 });
+  return Number(n).toLocaleString(locale(), { maximumFractionDigits: 1 });
 }
 
 /* The readout says the number, not an abbreviation of it. `compact` exists so an
@@ -133,7 +139,7 @@ export function compact(n) {
  * one particular hour wants the figure, and "1.2k" is not it. */
 const exact = (n) => (n === null || n === undefined || Number.isNaN(n))
   ? '—'
-  : Number(n).toLocaleString('en-US', { maximumFractionDigits: 1 });
+  : Number(n).toLocaleString(locale(), { maximumFractionDigits: 1 });
 
 const PAD = { top: 16, right: 18, bottom: 30, left: 56 };
 

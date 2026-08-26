@@ -20,6 +20,16 @@ InsulationQuality = Literal["poor", "fair", "good"]
 Occupancy = Literal["office", "school", "clinic", "admin_24x7"]
 Orientation = Literal["N", "NE", "E", "SE", "S", "SW", "W", "NW", "FLAT"]
 
+# Hours per day; the resolution of the TOU grid profile and of a building's
+# measured load shape. Both are hour-of-day ordered, index 0 = local midnight.
+HOURS_PER_DAY = 24
+
+# The shape of a building with no measurement behind it: consumption evenly spread.
+# Every fixture-built Building gets this by default, so CSV-fixture runs behave
+# exactly as before A5 - a flat shape under a TOU profile yields precisely the
+# flat grid factor.
+FLAT_SHAPE: tuple[float, ...] = (1.0,) * HOURS_PER_DAY
+
 
 class Building(BaseModel):
     """A single government building in the portfolio."""
@@ -48,6 +58,31 @@ class Building(BaseModel):
     # from Phase 2 it is the annualized forecast (F3), which is the only point at
     # which forecasting actually feeds the optimizer.
     annual_kwh: float = Field(gt=0)
+
+    # A5: normalised 24-vector, mean kW by hour-of-day from the METERED series,
+    # scaled to mean 1.0. It says WHEN this building consumes, which combined with
+    # a time-of-use marginal grid factor says how much carbon each saved kWh is
+    # worth here. Default flat: fixtures and pre-shape databases carry no shape,
+    # and a flat shape reproduces the flat factor exactly.
+    hourly_shape: tuple[float, ...] = FLAT_SHAPE
+
+    @field_validator("hourly_shape")
+    @classmethod
+    def _shape_is_a_normalised_day(
+        cls, value: tuple[float, ...]
+    ) -> tuple[float, ...]:
+        if len(value) != HOURS_PER_DAY:
+            raise ValueError(
+                f"hourly_shape must have {HOURS_PER_DAY} entries, got {len(value)}"
+            )
+        if any(v <= 0 for v in value):
+            raise ValueError("hourly_shape entries must be > 0")
+        mean = sum(value) / HOURS_PER_DAY
+        return tuple(v / mean for v in value)
+
+    @property
+    def has_measured_shape(self) -> bool:
+        return any(abs(v - 1.0) > 1e-9 for v in self.hourly_shape)
 
     @property
     def glazing_ratio(self) -> float:
@@ -134,7 +169,20 @@ class Candidate(BaseModel):
     cost_egp: float = Field(ge=0)
     annual_kwh_saving: float = Field(ge=0)
     lifetime_benefit_kgco2e: float
+    # A5: the same benefit under the time-of-use marginal grid weighting. `None`
+    # means "not differentiated" and resolves to the flat value below, so every
+    # constructor written before A5 - including the test fixtures - keeps working
+    # and, with no TOU profile loaded, the two numbers are equal by construction.
+    lifetime_tou_benefit_kgco2e: float | None = None
     annual_egp_saving: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _tou_defaults_to_flat(self) -> Candidate:
+        if self.lifetime_tou_benefit_kgco2e is None:
+            object.__setattr__(
+                self, "lifetime_tou_benefit_kgco2e", self.lifetime_benefit_kgco2e
+            )
+        return self
 
     @property
     def score_per_kegp(self) -> float:

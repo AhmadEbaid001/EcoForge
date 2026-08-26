@@ -124,3 +124,48 @@ def test_shipped_data_files_load_and_cross_validate():
 
     assert catalog, "catalog.csv has no rows"
     assert cross_validate(catalog, params) == []
+
+
+# --- A5: TOU profile validation ---------------------------------------------
+
+
+def _tou_params(profile) -> Params:
+    return Params.model_validate(PARAMS_DICT | {"tou": {"profile": list(profile)}})
+
+
+def test_tou_profile_must_have_exactly_24_hours():
+    from tests.test_lifecycle import PEAKY_PROFILE
+
+    assert _tou_params(PEAKY_PROFILE).tou is not None
+    with pytest.raises(ValidationError, match="exactly 24"):
+        _tou_params(PEAKY_PROFILE[:23])
+
+
+def test_tou_profile_rejects_non_positive_factors():
+    profile = [0.4] * 24
+    profile[12] = 0.0  # a zero-carbon hour is not physical for a marginal factor
+    with pytest.raises(ValidationError, match="> 0"):
+        _tou_params(profile)
+
+
+def test_tou_is_optional_and_defaults_to_flat(params: Params):
+    """Every fixture and pre-A5 caller constructs Params without `tou`; the whole
+    compatibility story rests on that staying legal."""
+    assert params.tou is None
+
+
+def test_a_typo_d_near_the_tou_block_is_an_error_not_silently_ignored(tmp_path, monkeypatch):
+    """`extra` keys are ignored by pydantic, so `tou_profile:` at top level would
+    validate clean and every building would quietly fall back to the flat 0.45 -
+    the exact failure the A5 feature exists to prevent. load_params must catch it."""
+    import yaml as yaml_mod
+
+    from gemp.domain.catalog import load_params
+
+    raw = yaml_mod.safe_load(yaml_mod.safe_dump(PARAMS_DICT))
+    raw["tou_profile"] = {"profile": [0.45] * 24}  # typo: underscore instead of nest
+    path = tmp_path / "params.yaml"
+    path.write_text(yaml_mod.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="resembling 'tou'"):
+        load_params(path)

@@ -16,8 +16,16 @@ from gemp.domain.models import Candidate
 ObjectiveFn = Callable[[Candidate], float]
 
 OBJECTIVES: dict[str, ObjectiveFn] = {
-    # Net life-cycle carbon benefit over the common horizon, kgCO2e. Default.
+    # Net life-cycle carbon benefit over the common horizon at the FLAT grid
+    # factor, kgCO2e. Default. Kept exactly as A5 found it so every number the
+    # paper measured before the TOU factor stays reproducible.
     "lca_carbon": lambda c: c.lifetime_benefit_kgco2e,
+    # A5: the same benefit with the grid factor weighted by the building's own
+    # MEASURED hourly shape against the TOU marginal profile - a kWh saved before
+    # the evening peak is not worth what one saved during it. Equal to lca_carbon
+    # when no profile is loaded, which is what makes old-vs-new measurable rather
+    # than a silent redefinition.
+    "tou_carbon": lambda c: c.lifetime_tou_benefit_kgco2e,
     # First-year energy saved, kWh. What a conventional monitoring tool would rank on.
     "raw_kwh": lambda c: c.annual_kwh_saving,
     # First-year money saved at the current tariff, EGP. What a budget holder optimises.
@@ -26,6 +34,7 @@ OBJECTIVES: dict[str, ObjectiveFn] = {
 
 OBJECTIVE_UNITS: dict[str, str] = {
     "lca_carbon": "kgCO2e",
+    "tou_carbon": "kgCO2e",
     "raw_kwh": "kWh/yr",
     "egp_saved": "EGP/yr",
 }

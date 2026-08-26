@@ -119,7 +119,9 @@ def test_meta_exposes_the_data_contract_state(client):
     body = client.get("/api/v1/meta").json()
     assert body["buildings"] == 50
     assert body["candidates"] > 50
-    assert set(body["objectives"]) == {"lca_carbon", "raw_kwh", "egp_saved"}
+    assert set(body["objectives"]) == {
+        "lca_carbon", "tou_carbon", "raw_kwh", "egp_saved"
+    }
     assert set(body["solvers"]) == {"cpsat", "greedy", "greedy_upgrade", "equal_split"}
     # Placeholder catalog rows are surfaced, not hidden - they gate submission.
     assert body["uncited_catalog_rows"]
