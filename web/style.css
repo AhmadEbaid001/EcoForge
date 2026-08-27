@@ -112,6 +112,7 @@
   --fs-record:   1.0625rem; /* record title — a building name */
   --fs-title:    1.375rem;  /* screen title */
   --fs-figure:   1.75rem;   /* the budget figure */
+  --fs-display:  1.9375rem; /* the four headline figures on the overview */
   --fs-nav:      .5625rem;  /* the rail label, and only the rail label */
 
   /* The handoff's stack. Inter is unreachable offline and SF Pro exists only on
@@ -126,6 +127,31 @@
   --s-2: 2px; --s-xs: 4px; --s-6: 6px; --s-sm: 8px; --s-10: 10px; --s-12: 12px;
   --s-md: 16px; --s-lg: 24px; --s-xl: 32px;
   --s-gutter: 16px; --s-margin: 24px;
+
+  /* Layout rhythm, as a ratio rather than four opinions. 2 : 3 : 4 on an 8px
+     base, and every screen-level length below is one of these three.
+
+       --gap-box   12   2u   between any two boxes, on BOTH axes. A stat card to
+                             the card beside it, a chart panel to the panel under
+                             it: one number, so the grid reads as a grid.
+       --pad-card  18   3u   1.5x the gap. Boundary to content. Larger than the
+                             gap on purpose - a box has to hold its own contents
+                             more closely than it holds its neighbours, or the
+                             two readings compete.
+       --pad-page  24   4u   2x the gap. The window margin, and the page header
+                             aligns its title to the same line.
+
+     The unit is 6, not the 4 the scale above uses. 4 gives 16/24/32, which is
+     the prettier set and does not fit: at 16/24/32 this screen is 1104px tall in
+     the 1440x900 window the product targets, and the stored allocation falls
+     below the fold. 6 holds the same ratio in 900.
+
+     What was here before: page margin, section gap, card gap and card padding
+     were all .75rem. Separation BETWEEN groups was identical to separation
+     WITHIN one, so the spacing carried no information at all. */
+  --gap-box:  12px;
+  --pad-card: 18px;
+  --pad-page: 24px;
 
   --radius:        .5rem;    /* controls */
   --radius-lg:     .875rem;  /* panels */
@@ -404,10 +430,16 @@ h1, h2, h3, h4 { line-height: 1.3; }
 
 .page-head {
   border-bottom: 1px solid var(--line); background: var(--panel);
-  padding: .75rem 1rem .625rem;
-  display: flex; align-items: flex-start; gap: 1.25rem; flex-wrap: wrap;
+  padding: var(--s-md) var(--pad-page);
+  display: flex; align-items: center; gap: var(--s-lg); flex-wrap: wrap;
+  min-height: 4rem;
 }
 .page-head-text { min-width: 19rem; flex: 1; }
+/* 19rem is the floor a purpose paragraph needs before it starts wrapping every
+   three words. A screen that carries no paragraph is holding a short title, and
+   that floor is then just 128px of reserved emptiness that pushes the header's
+   controls onto a second row at 1280. */
+.page-head-text:not(:has(p)) { min-width: 11rem; }
 .page-head h2 {
   margin: 0; font-size: var(--fs-title); line-height: 1.2;
   letter-spacing: -.021em; font-weight: 600; color: var(--ink);
@@ -420,6 +452,13 @@ h1, h2, h3, h4 { line-height: 1.3; }
   color: var(--ink2); max-width: 60ch; text-wrap: pretty;
 }
 .page-head-side { display: flex; align-items: center; gap: var(--s-sm); flex-wrap: wrap; }
+#page-head-actions { display: flex; align-items: center; gap: var(--s-sm); }
+#page-head-actions:not(:empty) {
+  padding-inline-end: var(--s-md); border-inline-end: 1px solid var(--line);
+}
+/* In the header the control is not a band of its own, so it carries no bottom
+   margin and its label sits on the same baseline as the buttons. */
+.page-head .chart-filters { margin-bottom: 0; }
 
 /* ---- the data clock -------------------------------------------------- */
 
@@ -484,7 +523,10 @@ h1, h2, h3, h4 { line-height: 1.3; }
 .strip.failed { background: var(--critSoft); border-bottom-color: var(--crit); }
 .strip.failed .icon { color: var(--crit); }
 
-main { padding: .75rem; display: flex; flex-direction: column; gap: .75rem; min-width: 0; }
+main {
+  padding: var(--pad-page);
+  display: flex; flex-direction: column; gap: var(--gap-box); min-width: 0;
+}
 
 .icon-button {
   appearance: none; background: none; border: 1px solid transparent;
@@ -580,11 +622,12 @@ button.primary:hover:not(:disabled),
   background: var(--accentLine); border-color: var(--accentLine);
 }
 
-button.secondary, button.ghost {
+button.secondary, button.ghost, a.btn.secondary, a.btn.ghost {
   background: var(--panel2); color: var(--ink); border-color: var(--lineStrong);
 }
 button.secondary:hover:not(:disabled),
-button.ghost:hover:not(:disabled) { background: var(--sunk); }
+button.ghost:hover:not(:disabled),
+a.btn.secondary:hover, a.btn.ghost:hover { background: var(--sunk); }
 
 /* No border, no background, underlined: an action that is available and is not
    the point of the screen. Dismiss, Clear filters, See the alerts. */
@@ -817,7 +860,7 @@ label.check {
 .panel > header {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: .625rem; flex-wrap: wrap;
-  padding: var(--s-sm) var(--s-12); border-bottom: 1px solid var(--line);
+  padding: var(--s-10) var(--pad-card); border-bottom: 1px solid var(--line);
   background: var(--panel2);
   border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
 }
@@ -830,9 +873,9 @@ label.check {
 /* The line beside the heading that states scope: "14 days, hourly, kW summed
    across 50 buildings". Every chart on these screens carries one. */
 .panel > header .scope { font-size: var(--fs-caption); color: var(--ink3); font-weight: 400; }
-.panel > *:not(header):not(table):not(.table-wrap) { padding: 0 var(--s-12); }
-.panel > .caption:last-child { padding-bottom: var(--s-12); }
-.panel > .chart-legend, .panel > .chart { margin-top: var(--s-12); }
+.panel > *:not(header):not(table):not(.table-wrap) { padding-inline: var(--pad-card); }
+.panel > .caption:last-child { padding-bottom: var(--pad-card); }
+.panel > .chart-legend, .panel > .chart { margin-top: var(--pad-card); }
 .panel.narrow { max-width: 30rem; }
 .panel.flex { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
@@ -931,7 +974,7 @@ label.check {
    severity split standing a head taller than the three beside it. */
 .stat-row {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: .75rem; flex: none;
+  gap: var(--gap-box); flex: none;
 }
 /* A column, not a stack: the head sits at the top and the footer is pushed to the
    bottom, so a card with a sparkline and a card without still agree about where
@@ -939,8 +982,8 @@ label.check {
 .stat {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius-lg); box-shadow: var(--shadow);
-  padding: .75rem; min-height: 7.5rem;
-  display: flex; flex-direction: column; gap: var(--s-sm);
+  padding: var(--pad-card); min-height: 8.75rem;
+  display: flex; flex-direction: column; gap: var(--s-md);
 }
 .stat-head { display: grid; gap: var(--s-xs); }
 .stat-foot { margin-top: auto; display: grid; gap: var(--s-6); padding-top: var(--s-6); }
@@ -950,22 +993,47 @@ label.check {
    nowhere near the width of a headline card. */
 .stat-row.compact {
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: var(--s-sm);
+  gap: var(--gap-box);
 }
 .stat-row.compact .stat { min-height: 0; padding: var(--s-10); }
+
+/* Inside a panel the compact row stops being cards. The panel already carries a
+   border, a shadow and a header; giving each of its six figures the same three
+   again made a box of boxes, which is the single loudest thing on the screen
+   that nobody can point at. Here the row is one inset surface divided by the
+   same hairline the panel uses - the grid's own background showing through a
+   1px gap, so the rules are exactly as wide as the cells they separate and stay
+   correct when the row wraps. */
+.panel > .stat-row.compact {
+  gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  overflow: hidden; margin-top: var(--pad-card);
+}
+.panel > .stat-row.compact .stat {
+  border: 0; border-radius: 0; box-shadow: none;
+  background: var(--panel2);
+  /* A cell inside a divided strip is one rung below a panel or a card: 12 to the
+     panel's 18, which is the same 2:3 the gap and the card padding stand in. */
+  padding: var(--s-12); gap: 0;
+}
 .stat-label {
   order: -1; margin: 0; color: var(--ink3);
-  font-size: var(--fs-caption); font-weight: 400;
-  letter-spacing: .05em; text-transform: uppercase;
+  font-size: var(--fs-caption); font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
 }
 /* Readable from three metres, which is the actual requirement: a judge sees
    this once, on a projector, from the back of a bright room. */
 .stat-value {
-  font-size: 1.875rem; font-weight: 650; letter-spacing: -.026em;
+  font-size: var(--fs-display); font-weight: 650; letter-spacing: -.026em;
   line-height: 1.05; font-variant-numeric: tabular-nums;
 }
 .stat-row.compact .stat-value { font-size: var(--fs-record); }
-.stat-hint { color: var(--ink2); font-size: var(--fs-label); text-wrap: pretty; }
+/* The note is prose and reads at body size. It used to be a 12px label doing a
+   sentence's work, one pixel from the uppercase label above it. */
+.stat-hint {
+  color: var(--ink2); font-size: var(--fs-body-sm); line-height: 1.45;
+  text-wrap: pretty; margin-top: var(--s-2);
+}
 /* The split under a figure that has one: three shape-marked counts, each in its
    own severity colour, on one line. */
 .stat-chips { display: flex; gap: .625rem; flex-wrap: wrap; }
@@ -1226,7 +1294,10 @@ label.check {
 
 /* A refetch holds the previous render at reduced opacity: no skeleton, no layout
    jump, nothing moving under the reader who just asked the question. */
-#ov-panels { transition: opacity var(--dur) var(--ease); }
+#ov-panels {
+  display: flex; flex-direction: column; gap: var(--gap-box); min-width: 0;
+  transition: opacity var(--dur) var(--ease);
+}
 #ov-panels.is-loading { opacity: .45; pointer-events: none; }
 
 /* --- the table under every chart --------------------------------------- */
@@ -1539,15 +1610,36 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
    the row closes cleanly on both sides. */
 .two-col {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: .75rem; align-items: stretch;
+  gap: var(--gap-box); align-items: stretch;
 }
 .two-col > .panel { display: flex; flex-direction: column; }
-.two-col > .panel > .caption { margin-top: auto; }
+.two-col > .panel > .caption,
+.two-col > .panel > .panel-foot { margin-top: auto; }
 .two-col.aside-first { grid-template-columns: minmax(0, 24rem) minmax(0, 1fr); }
 .panel-actions {
   display: flex; gap: var(--s-sm); flex-wrap: wrap;
-  padding-bottom: var(--s-12);
+  padding-block: var(--s-12) var(--pad-card);
 }
+
+/* The note and the action it belongs to, on one line: note on the leading side,
+   action on the trailing side, both sitting on the panel's closing rule. Stacked,
+   the pair cost 66px per panel to show a 36px button, and three panels of that is
+   what pushed the stored allocation off a 900px screen.
+
+   They wrap to two rows when the note has no room, which is the only case where
+   stacking them was ever the right answer. */
+.panel-foot {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--pad-card); flex-wrap: wrap;
+  margin-top: var(--s-12); padding-block: var(--s-12) var(--pad-card);
+  border-top: 1px solid var(--line);
+}
+/* Inside the footer both parts are bare: the footer owns the rule, the inset and
+   the spacing, so neither child may draw or reserve its own. */
+.panel-foot > .caption {
+  margin: 0; padding: 0; border-top: 0; flex: 1 1 22rem; min-width: 0;
+}
+.panel-foot > .panel-actions { padding: 0; flex: none; }
 /* An <a> that is a button. Same face, and it still navigates - which is the
    right element when the action is "go to that screen". */
 a.btn { text-decoration: none; }
@@ -2131,7 +2223,8 @@ tbody tr.denied-row td { font-weight: 600; }
 }
 
 @media (max-width: 1024px) {
-  .page-head { padding: var(--s-sm) var(--s-12); }
+  :root { --gap-box: 8px; --pad-card: 12px; --pad-page: 16px; }
+  .page-head { padding: var(--s-10) var(--pad-page); min-height: 0; }
   .map-layout { grid-template-columns: 1fr; grid-template-areas: "ctl" "map" "sel"; }
 }
 
@@ -2179,7 +2272,7 @@ body.booting .login-wrap, body.signed-out { background: var(--bg); }
   body:has(.modal:not([hidden])) main#view { display: none; }
 
   /* Keep rows and panels whole across a page break. */
-  tr, .panel, .stat-tile { break-inside: avoid; }
+  tr, .panel, .stat { break-inside: avoid; }
   thead { display: table-header-group; }
 
   /* A URL printed after every link is noise on a costed document. */

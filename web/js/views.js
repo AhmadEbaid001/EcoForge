@@ -85,16 +85,23 @@ function rangeControl(selected) {
   const buttons = RANGES.map((r) =>
     `<button type="button" class="seg-btn" data-days="${r.days}"
        aria-pressed="${r.days === selected}">${escapeHtml(r.label)}</button>`).join('');
+  /* No visible "Window" label. Four day ranges sitting beside the data clock in
+   * the page header are read as a window without being told, and the word cost
+   * 71px of a header that has to hold the clock, the language, the text size and
+   * the appearance controls on one line down to 1280. The group keeps its
+   * accessible name - dropping the caption must not drop the label. */
   return `<div class="chart-filters">
-    <span class="filter-label" id="range-label">Window</span>
-    <div class="segmented" role="group" aria-labelledby="range-label">${buttons}</div>
+    <div class="segmented" role="group" aria-label="Window">${buttons}</div>
   </div>`;
 }
 
 /* Delegated, so the buttons can be replaced by a redraw without the listener
  * going with them. */
 function wireRange(root, onChange) {
-  const group = root.querySelector('.chart-filters .segmented');
+  /* The control renders into the shell's page header, which is a sibling of the
+   * view root rather than a child of it, so this cannot be a root-scoped query.
+   * One screen is mounted at a time and only this one uses the control. */
+  const group = document.querySelector('.page-head .segmented');
   group?.addEventListener('click', (event) => {
     const button = event.target.closest('.seg-btn');
     if (!button || button.getAttribute('aria-pressed') === 'true') return;
@@ -144,14 +151,12 @@ const SEVERITY_ORDER = ['critical', 'high', 'medium'];
 
 /* ------------------------------------------------------------------ overview */
 
-/* The purpose sentence names the question the screen answers AND what it does
- * not: nothing on the overview is a decision. The money is allocated on the map,
- * and the sentence links there rather than leaving a reader to find it in the
- * rail. It is written once because it appears twice - in the skeleton and in the
- * loaded screen - and two copies drift. */
-const OVERVIEW_PURPOSE = 'Says whether the platform is healthy and what it last '
-  + 'decided. Nothing here is a decision &mdash; the money is allocated on the '
-  + '<a href="#/map">allocation map</a>.';
+/* No purpose sentence on this screen. The four figures, the two charts and the
+ * stored-run panel each name themselves, and a paragraph telling the reader what
+ * they are about to look at costs a band of header height on every visit. The
+ * one thing the sentence carried that the layout did not - that the money is
+ * allocated elsewhere - is said by the button at the foot of the stored run,
+ * which is now the only route to the map on this screen. */
 
 export const overview = {
   title: 'Overview',
@@ -159,14 +164,16 @@ export const overview = {
    * coming back does not silently reset the window the reader chose. */
   state: { days: 30 },
   async render(root, ctx) {
+    /* Hoisted above the first paint: the skeleton now renders the window control
+     * too, so the binding has to exist before that template literal runs. */
+    const state = overview.state;
+
     root.innerHTML = `
       ${pageHead({ root,
         title: t('overview.title'),
-        descriptionHtml: OVERVIEW_PURPOSE,
+        actions: rangeControl(state.days),
       })}
       ${skeletonTiles(4)}${skeletonChart()}`;
-
-    const state = overview.state;
 
     await guard(root, async () => {
       const [summary, load, daily] = await Promise.all([
@@ -183,11 +190,11 @@ export const overview = {
       const panels = (loadData, dailyData) => `
         <div class="stat-row">
           ${statTile(t('overview.buildings'), compact(summary.buildings),
-                     'Public buildings in New Cairo, all of them costed.')}
+                     'Public buildings in New Cairo, all costed.')}
           ${statTile(t('overview.readings'), compact(summary.readings),
-                     'Half-hourly meter readings, every one signed on arrival.')}
+                     'Half-hourly, and every one signed on arrival.')}
           ${statTile(t('overview.openAlerts'), compact(summary.open_anomalies),
-                     'Rounded, because the count moves while you are reading it.',
+                     'Rounded — the count moves while you read it.',
                      { spark: dailyTotals(dailyData.days),
                        trend: halfOverHalf(dailyTotals(dailyData.days)),
                        chips: SEVERITY_ORDER
@@ -196,9 +203,7 @@ export const overview = {
                            sevChip(k)} ${compact(summary.open_by_severity[k])}</span>`)
                          .join('') })}
           ${statTile(t('overview.measured'), `${fromForecast} of ${summary.buildings}`,
-                     'Buildings whose annual kWh comes from their own metered '
-                     + 'consumption rather than a floor-area rule of thumb. It is the '
-                     + 'figure every retrofit here is costed against.')}
+                     'Costed on metered consumption, not a floor-area rule.')}
         </div>
 
         <div class="two-col">
@@ -209,10 +214,14 @@ export const overview = {
                 ${summary.buildings} buildings</span>
             </header>
             ${lineChart([{ label: 'Portfolio demand', points: loadData.points }], { unit: 'kW' })}
-            <p class="caption">Point at the chart, or focus it and use the arrow keys.
-            The simulator runs at 720&times;, so data time runs ahead of the wall clock —
-            every window in the platform is measured in data time for that reason, and
-            the clock above says which moment this was read at.</p>
+            <div class="panel-foot">
+              <p class="caption">Point at the chart, or focus it and use the arrow keys.
+              Every window here is measured in data time, which the simulator advances at
+              720&times; wall clock.</p>
+              <div class="panel-actions">
+                <a class="btn secondary" href="#/forecasts">Open forecasting</a>
+              </div>
+            </div>
           </section>
 
           <section class="panel">
@@ -221,19 +230,22 @@ export const overview = {
               <span class="scope">${state.days} days, stacked by severity</span>
             </header>
             ${stackedBars(dailyData.days, ['critical', 'high', 'medium'], { height: 240 })}
-            <p class="caption">Every one of these is a reading that deviated from what
-            the forecaster expected. They are listed, worst first, in the
-            <a href="#/alerts">alert inbox</a>.</p>
+            <div class="panel-foot">
+              <p class="caption">Readings that deviated from what the forecaster expected.
+              The inbox lists them worst first.</p>
+              <div class="panel-actions">
+                <a class="btn secondary" href="#/alerts">Open the alert inbox</a>
+              </div>
+            </div>
           </section>
         </div>`;
 
       root.innerHTML = `
         ${pageHead({ root,
           title: t('overview.title'),
-          descriptionHtml: OVERVIEW_PURPOSE,
+          actions: rangeControl(state.days),
         })}
 
-        ${rangeControl(state.days)}
         <div id="ov-panels">${panels(load, daily)}</div>
 
         <section class="panel">
@@ -255,12 +267,14 @@ export const overview = {
               ${statTile(t('overview.districtCap'), run.max_funded_per_district
                   ? `${run.max_funded_per_district} per district` : 'none')}
             </div>
-            <p class="caption">Solved by <strong>${escapeHtml(solverLabel(run.solver))}</strong>,
-            ranked by <strong>${escapeHtml(objectiveLabel(run.objective))}</strong>, at data time
-            ${fmtDateTime(run.created_at)}. The lifetime carbon figure is an estimate,
-            not a measurement.</p>
-            <div class="panel-actions">
-              <a class="btn primary" href="#/map">Open it on the map</a>
+            <div class="panel-foot">
+              <p class="caption">Solved by <strong>${escapeHtml(solverLabel(run.solver))}</strong>,
+              ranked by <strong>${escapeHtml(objectiveLabel(run.objective))}</strong>, at data time
+              ${fmtDateTime(run.created_at)}. The lifetime carbon figure is an estimate,
+              not a measurement.</p>
+              <div class="panel-actions">
+                <a class="btn primary" href="#/map">Open it on the map</a>
+              </div>
             </div>`
             : emptyState({
                 title: 'No allocation has been run yet',
