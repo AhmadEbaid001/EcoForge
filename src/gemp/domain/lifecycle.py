@@ -184,8 +184,15 @@ def effective_grid_factor(building: Building, params: Params) -> float:
     same flat national average, genuinely different carbon per saved kWh - which is
     the whole reason a single constant factor could not see metered data.
 
-    With `params.tou` unset, or with no measured shape (the fixture default), this
-    is EXACTLY `params.grid_emission_factor` - the pre-A5 world, bit for bit.
+    With `params.tou` unset this is EXACTLY `params.grid_emission_factor` - the
+    pre-A5 world, bit for bit.
+
+    With a profile SET but no measured shape, it is the profile's own mean rather
+    than the flat constant, because a flat shape weights every hour equally. The
+    shipped profile is scaled so those agree to 0.02%, which is far inside the
+    catalog's own uncertainty - but they are not the same number, and a profile
+    rescaled without that care would move every shapeless building silently. The
+    flat objective is unaffected either way: it never calls this.
     """
     if params.tou is None:
         return params.grid_emission_factor

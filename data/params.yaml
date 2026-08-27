@@ -34,8 +34,15 @@ grid_emission_factor: 0.45
 #
 # TODO(Nada): cite a marginal-displacement source (e.g. UNFCCC CDM/Article 6
 # grid emission factor studies for Egypt, or an Egyptian EEA/HSP dispatch
-# analysis). Values below are PLACEHOLDER v0 shaped to the well-known solar
-# trough at midday and gas peak after sunset - they are illustrative until cited.
+# analysis). Values below are PLACEHOLDER v0 and illustrative until cited.
+#
+# What they actually encode: a 02:00 trough (0.326) rising monotonically to an
+# 18:00 gas peak (0.600), 1.84x trough-to-peak. There is deliberately NO midday
+# solar dip in these numbers - an earlier draft of this comment claimed one and
+# the array never had it, which is the kind of mismatch a reader checks. A cited
+# profile for a grid with meaningful daytime PV probably SHOULD dip around
+# 11:00-14:00, and adding it will move F15; that is a measurement to source, not
+# a shape to invent here.
 tou:
   # Scaled so the 24 values AVERAGE the flat grid_emission_factor above (0.45):
   # a building with no measured shape - or no shape at all - is carbon-costed
