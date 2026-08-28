@@ -61,7 +61,7 @@ function wireRefresh(root, reload) {
 }
 
 const buildingOptions = (buildings) =>
-  buildings.map((b) => ({ value: b.id, label: b.code }));
+  buildings.map((b) => ({ value: b.id, label: `${b.code} — ${b.name}` }));
 
 /* One filter row, above everything it scopes.
  *
@@ -387,7 +387,7 @@ export const forecasts = {
         </section>`;
 
       const input = root.querySelector('#fc-building');
-      wirePicker(input);
+      wirePicker(input, options.filter((o) => o.label));
       const draw = async () => {
         const target = root.querySelector('#fc-chart');
         target.innerHTML = skeletonChart();
@@ -422,9 +422,9 @@ export const forecasts = {
 
 /* ------------------------------------------------------------------- alerts */
 
-const ALERTS_PURPOSE = 'Readings that deviate from what the forecaster expected, '
-  + 'worst first. The API returns at most 100 per request and cannot page, so this '
-  + 'is a slice — narrow the filter to change which slice.';
+/* The server's hard ceiling per request. The count line reasons about it, so it
+ * cannot be a literal typed into the query string alone. */
+const ROW_CAP = 100;
 
 export const alerts = {
   title: 'Alerts',
@@ -437,10 +437,7 @@ export const alerts = {
     const analyst = can(ctx.user, 'analyst');
 
     root.innerHTML = `
-      ${pageHead({ root,
-        title: 'Alert inbox',
-        description: ALERTS_PURPOSE,
-      })}
+      ${pageHead({ root, title: 'Alert inbox' })}
       ${skeletonRows(8)}`;
 
     await guard(root, async () => {
@@ -454,13 +451,26 @@ export const alerts = {
        * about thirty thousand rows; acknowledging one used to refill it from the
        * pool with nothing on screen saying where the others were. */
       const countLine = (shown) => {
-        if (!state.onlyOpen) return `Showing the ${shown} largest deviations, open and closed.`;
-        const total = state.severity ? state.bySeverity[state.severity] : state.total;
+        if (!state.onlyOpen) return `The ${shown} largest deviations, open and closed.`;
         const scope = `${state.severity ? `${state.severity} ` : ''}alert`;
-        if (total === null || total === undefined) return `Showing ${shown}.`;
-        return total > shown
-          ? `Showing the ${shown} largest of ${compact(total)} open ${scope}s.`
-          : `Showing all ${shown} open ${scope}s.`;
+        /* Fewer rows than the cap means the filter returned everything it had, so
+         * these ARE all of them. Only a full page is a slice of something larger.
+         * Without this the screen told a reader looking at the two alerts on one
+         * building that they were "the 2 largest of 114.8k", and invited them to
+         * narrow a filter that was already as narrow as it goes. */
+        if (shown < ROW_CAP) {
+          return state.building || state.severity
+            ? `All ${shown} open ${scope}s matching this filter.`
+            : `All ${shown} open ${scope}s.`;
+        }
+        const total = state.severity && !state.building
+          ? state.bySeverity[state.severity]
+          : (state.building ? null : state.total);
+        if (total === null || total === undefined) {
+          return `The first ${shown} — narrow the filter to reach the rest.`;
+        }
+        return `The ${shown} largest of ${compact(total)} open ${scope}s — narrow a filter `
+          + 'to reach the rest.';
       };
 
       /* The reference's column set, with this system's fields in place of the
@@ -528,8 +538,7 @@ export const alerts = {
         });
         root.querySelector('#alert-foot').innerHTML =
           `<span>${escapeHtml(countLine(state.rows.length))}</span>
-           <span class="muted">Sorting applies to the rows shown, not to the whole inbox.
-           Robust z is a modified z score on the forecast residual; it has no units.</span>`;
+           <span class="muted">Sorting reorders these rows. Deviation z has no units.</span>`;
 
         wireSort(body, state, paint);
 
@@ -569,6 +578,20 @@ export const alerts = {
         }
       };
 
+      /* What the destructive button will actually do, counted, in its label. It
+       * used to read "Close every alert matching this filter", which named a
+       * filter rather than a consequence and left the reader to work out whether
+       * that meant the hundred rows or the thirty thousand behind them. */
+      const bulkLabel = () => {
+        const filtered = state.severity || state.building;
+        const total = state.severity && !state.building
+          ? state.bySeverity[state.severity] : (filtered ? null : state.total);
+        if (!filtered) {
+          return total ? `Close all ${compact(total)} open alerts…` : 'Close all open alerts…';
+        }
+        return total ? `Close all ${compact(total)} matching alerts…` : 'Close all matching alerts…';
+      };
+
       /* The bar stays. A control that appears only once a condition is met
        * teaches nobody that the condition exists - the disabled button says what
        * is missing instead, which is the whole point of a disabled state. */
@@ -581,9 +604,9 @@ export const alerts = {
           <span class="bulk-actions">
             <button type="button" class="primary" data-ack-selected${n ? '' : ' disabled'}>${
               n ? `Acknowledge ${n} selected` : 'Tick a row to acknowledge it'}</button>
-            ${n ? '<button type="button" class="quiet" data-clear-selection>Clear selection</button>' : ''}
-            <button type="button" class="destructive" id="alert-ack-bulk">
-              Close every alert matching this filter&hellip;</button>
+            ${n ? '<button type="button" class="secondary" data-clear-selection>Clear selection</button>' : ''}
+            <button type="button" class="destructive" id="alert-ack-bulk">${
+              escapeHtml(bulkLabel())}</button>
           </span>`;
 
         bar.querySelector('[data-clear-selection]')?.addEventListener('click', () => {
@@ -624,7 +647,7 @@ export const alerts = {
       const load = async () => {
         const body = root.querySelector('#alert-body');
         body.innerHTML = skeletonRows(6);
-        const params = `?limit=100&only_open=${state.onlyOpen}` +
+        const params = `?limit=${ROW_CAP}&only_open=${state.onlyOpen}` +
           (state.severity ? `&severity=${encodeURIComponent(state.severity)}` : '') +
           (state.building ? `&building_id=${encodeURIComponent(state.building)}` : '');
         const [rows, summary] = await Promise.all([api.anomalyFeed(params), api.summary()]);
@@ -640,19 +663,7 @@ export const alerts = {
        * stated permanently rather than discovered: a hundred rows out of thirty
        * thousand looks like the whole inbox unless the screen says otherwise. */
       root.innerHTML = `
-        ${pageHead({ root,
-          title: 'Alert inbox',
-          description: ALERTS_PURPOSE,
-        })}
-
-        <div class="note-panel" role="note">
-          ${icon('warning')}
-          <p>The API returns at most 100 alerts per request and cannot page, so this is
-          the newest 100 of about <strong>${compact(summaryTotal)}</strong> open.
-          <strong>There is no page 2.</strong> To reach the rest, narrow the filter — or
-          use <em>Close every alert matching this filter</em>, which acts on all of them
-          and not only the rows shown.</p>
-        </div>
+        ${pageHead({ root, title: 'Alert inbox' })}
 
         <div class="panel toolbar-panel">
           <div class="toolbar">
@@ -673,11 +684,8 @@ export const alerts = {
             </div>
             <span class="rule"></span>
             <label class="check"><input type="checkbox" id="alert-open" checked> Open only</label>
-            <button type="button" class="quiet" id="alert-clear">Clear filters</button>
+            <button type="button" class="secondary" id="alert-clear">Clear filters</button>
           </div>
-          <p class="caption standalone">Filters are applied by the server before the
-          100-row cap, so narrowing one genuinely changes which alerts you see rather
-          than just hiding rows.</p>
         </div>
 
         ${analyst ? '<div id="alert-actions" class="action-bar"></div>' : `
@@ -722,7 +730,7 @@ export const alerts = {
       });
 
       const buildingInput = root.querySelector('#alert-building');
-      wirePicker(buildingInput);
+      wirePicker(buildingInput, options);
       buildingInput.addEventListener('change', () => {
         const value = pickerValue(buildingInput, options);
         if (value === null || value === state.building) return;
@@ -746,30 +754,32 @@ export const alerts = {
            * screen - which is what the old "Acknowledge all shown" claimed. It
            * says the real scope and the real count, and it cannot be undone by
            * ids because the ids of thirty thousand rows were never loaded. */
-          if (!state.severity && !state.building) {
-            setStatus(root, {
-              kind: 'warn',
-              message: 'Filter by severity or building first. Closing everything at once is '
-                     + 'deliberately not one click.',
-            });
-            root.querySelector('[data-sev]')?.focus();
-            return;
-          }
-          const scope = [
-            state.severity ? `severity ${state.severity}` : null,
-            state.building ? `building ${buildingInput.value}` : null,
-          ].filter(Boolean).join(' and ');
-          const count = state.severity && !state.building
-            ? state.bySeverity[state.severity] : null;
+          /* Closing the whole open inbox used to be refused outright, on the
+           * grounds that it should not be one click. It still is not one click -
+           * the count below has to be typed - but refusing it entirely meant the
+           * only way to empty the inbox was to work through it a filter at a
+           * time, which is not safer, only longer. The protection that matters
+           * is the typed number, and that is unchanged. */
+          const filtered = state.severity || state.building;
+          const scope = filtered
+            ? [
+                state.severity ? `severity ${state.severity}` : null,
+                state.building ? `building ${buildingInput.value}` : null,
+              ].filter(Boolean).join(' and ')
+            : 'the whole open inbox';
+          const count = !filtered ? state.total
+            : (state.severity && !state.building ? state.bySeverity[state.severity] : null);
 
           /* The count has to be TYPED. A second click is protection against a
            * slip of the hand and nothing else; typing the number is the one
            * thing that cannot be done without having read it. */
           const ok = await confirmAction({
-            title: 'Close every alert matching this filter',
-            description: `This closes every open alert matching ${scope}`
-              + (count ? ` — ${count.toLocaleString('en-US')} of them across the whole `
-                       + 'portfolio' : '')
+            title: filtered ? 'Close every alert matching this filter'
+                            : 'Close every open alert',
+            description: (filtered
+                ? `This closes every open alert matching ${scope}`
+                : 'This closes every open alert in the portfolio')
+              + (count ? ` — ${count.toLocaleString('en-US')} of them` : '')
               + ', not only the rows on screen. It will be recorded as '
               + `${ctx.user.username}. It cannot be undone from this screen, because the `
               + 'ids of the rows off screen were never loaded. Acknowledging instead is '
@@ -790,7 +800,8 @@ export const alerts = {
             await load();
             setStatus(root, {
               kind: 'ok',
-              message: `Closed ${compact(result?.changed ?? 0)} alerts matching ${scope}, `
+              message: `Closed ${compact(result?.changed ?? 0)} alerts `
+                     + `${filtered ? `matching ${scope}` : 'across the portfolio'}, `
                      + `by ${ctx.user.username}. This one cannot be undone here.`,
             });
           });
@@ -1248,7 +1259,7 @@ export const integrity = {
 
       const input = root.querySelector('#int-building');
       const button = root.querySelector('[data-verify]');
-      wirePicker(input);
+      wirePicker(input, options.filter((o) => o.label));
 
       const idle = () => {
         root.querySelector('#int-body').innerHTML = emptyState({

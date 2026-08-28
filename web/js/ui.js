@@ -329,28 +329,88 @@ export const selectWrap = (inner) => `<span class="select-wrap">${inner}</span>`
 
 /* ------------------------------------------------------- searchable picker */
 
-/* Fifty buildings in a <select> is fifty items to scroll past to reach b047. A
- * native datalist keeps the keyboard behaviour the browser already provides
- * instead of reimplementing a combobox badly. */
+/* Fifty buildings in a <select> is fifty items to scroll past to reach b047, so
+ * this is a filterable listbox rather than a native control.
+ *
+ * The datalist version could not do the one thing a picker exists for: show you
+ * what you may pick. A datalist is filtered by whatever is already in the field,
+ * and the field is pre-filled with the current selection - so clicking it
+ * offered exactly one option, the one already chosen, and the whole list only
+ * appeared once the text had been deleted. It also cannot be styled, so it was
+ * the one control in the product wearing the operating system's appearance.
+ *
+ * This is the combobox pattern the map's building picker already uses: the list
+ * opens on focus showing everything, typing filters it, and the options are
+ * ordinary buttons this stylesheet can reach.
+ */
 export function picker({ id, label, options, value }) {
   const current = options.find((o) => o.value === value) || options[0];
   return `
     <label class="inline-label" for="${id}">${escapeHtml(label)}</label>
-    ${selectWrap(`
-      <input class="picker" id="${id}" type="text" list="${id}-list" autocomplete="off"
+    <div class="combobox">
+      <input class="picker" id="${id}" type="text" role="combobox" autocomplete="off"
+             aria-expanded="false" aria-controls="${id}-list" aria-autocomplete="list"
              value="${escapeHtml(current ? current.label : '')}"
-             aria-describedby="${id}-help">`)}
-    <datalist id="${id}-list">
-      ${options.map((o) => `<option value="${escapeHtml(o.label)}"></option>`).join('')}
-    </datalist>
+             aria-describedby="${id}-help">
+      <ul id="${id}-list" role="listbox" aria-label="${escapeHtml(label)}" hidden></ul>
+    </div>
     <span class="sr-only" id="${id}-help">Type to filter, or pick from the list.</span>`;
 }
 
-/* Selecting the existing text on focus means typing replaces the current
- * building instead of appending to it, which is what turns a text field with a
- * list behind it into something that behaves like a picker. */
-export function wirePicker(input) {
-  input.addEventListener('focus', () => input.select());
+/* Opens on focus with every option showing, which is the behaviour the datalist
+ * could not give. `onPick` is optional: without it the input still fires
+ * `change`, so callers written against the old picker keep working.
+ */
+export function wirePicker(input, options = null, onPick = null) {
+  if (!options) {
+    input.addEventListener('focus', () => input.select());
+    return;
+  }
+  const list = document.getElementById(`${input.id}-list`);
+  if (!list) { input.addEventListener('focus', () => input.select()); return; }
+
+  const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+
+  const paint = () => {
+    const query = input.value.trim().toLowerCase();
+    /* An exact match on the current selection is not a filter anybody typed - it
+     * is the value the field was left showing. Treat it as "show everything",
+     * which is what opening a closed picker is asking for. */
+    const isCurrent = options.some((o) => o.label.toLowerCase() === query);
+    const matches = (query && !isCurrent)
+      ? options.filter((o) => o.label.toLowerCase().includes(query))
+      : options;
+
+    list.innerHTML = matches.length
+      ? matches.map((o) => `
+        <li role="option" aria-selected="${o.label === input.value}">
+          <button type="button" data-pick="${escapeHtml(o.value)}"
+                  data-label="${escapeHtml(o.label)}">${escapeHtml(o.label)}</button>
+        </li>`).join('')
+      : `<li class="picker-empty">Nothing matches &ldquo;${escapeHtml(input.value)}&rdquo;.</li>`;
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  };
+
+  input.addEventListener('focus', () => { input.select(); paint(); });
+  input.addEventListener('input', paint);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { close(); return; }
+    if (event.key !== 'Enter') return;
+    const first = list.querySelector('[data-pick]');
+    if (first) { event.preventDefault(); first.click(); }
+  });
+  list.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-pick]');
+    if (!button) return;
+    input.value = button.dataset.label;
+    close();
+    if (onPick) onPick(button.dataset.pick);
+    else input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.combobox')) close();
+  });
 }
 
 /* Resolves what was typed back to an option value. Returns null when the text

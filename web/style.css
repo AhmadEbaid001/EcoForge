@@ -674,7 +674,7 @@ button:disabled, .btn:disabled {
 /* 30px is the floor for anything interactive. A per-row action in a 30px table
    row is the only place that floor is the whole budget. */
 button.small, button.ghost.small {
-  padding: 0 var(--s-sm); font-size: var(--fs-caption); min-height: var(--control-h);
+  padding: 0 var(--s-10); font-size: var(--fs-caption); min-height: 26px;
 }
 
 .map-controls button.ghost, .map-controls button.secondary,
@@ -1413,6 +1413,16 @@ label.check {
 .table-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .table-wrap { overflow: auto; flex: 1; min-height: 0; }
 
+/* A panel whose job is to hold a long table scrolls the TABLE, not the page.
+   `thead` is already `position: sticky`, but sticky resolves against the nearest
+   scroll container - `.table-wrap` - and that container only scrolls if it has a
+   height to overflow. Without one the page scrolled instead: a hundred rows made
+   a 4,100px document and the column headings left the screen after fifteen of
+   them, which on an inbox is the one thing that must not move.
+
+   Capped to the viewport less the header, the filter strip and the action bar. */
+.panel.flex:has(> .table-host) { max-height: calc(100vh - 17rem); }
+
 table { width: 100%; border-collapse: collapse; text-align: start; }
 
 /* .8125rem tabular rows under a .75rem tracked uppercase header, sticky, on the
@@ -1449,7 +1459,14 @@ td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
 /* Nowrap is right for a figure and wrong for a sentence. */
 td.wrap { white-space: normal; min-width: 9rem; }
 tr.denied td { color: var(--crit); }
-.row-actions { display: flex; gap: var(--s-xs); justify-content: flex-end; }
+/* A table cell that stays a table cell, aligned to the trailing edge like every
+   other action in the product. */
+td.row-actions { text-align: end; white-space: nowrap; }
+td.row-actions > button { vertical-align: middle; }
+/* A table carrying a row action gives every row the height to seat one, so the
+   control has air above and below it and the rows stay a single height whether
+   or not a given row still has an action left to offer. */
+.table-wrap:has(td.row-actions button) tbody td { height: 38px; }
 
 .col-select { width: 40px; text-align: center; }
 .col-select input { margin: 0; }
@@ -1504,9 +1521,10 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
 .action-bar {
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--s-md); flex-wrap: wrap; flex: none;
-  padding: var(--s-sm) var(--s-12); border-radius: var(--radius);
+  padding: var(--s-10) var(--pad-card); border-radius: var(--radius);
   background: var(--accentSoft); border: 1px solid var(--accentLine);
   color: var(--ink); font-size: var(--fs-body-sm); font-weight: 600;
+  position: sticky; top: var(--gap-box); z-index: 3; box-shadow: var(--shadow);
 }
 .action-bar[hidden] { display: none; }
 .action-bar .bulk-actions { display: flex; gap: var(--s-sm); align-items: center; flex-wrap: wrap; }
@@ -2177,27 +2195,31 @@ tbody tr.denied-row td { font-weight: 600; }
   margin-bottom: .1875rem;
 }
 .combobox { position: relative; }
-/* Absolutely positioned, so opening the list does not push the evidence below
-   it down the panel. */
-#picklist {
+/* Shared by every picker in the product, not only the map's. It was keyed to
+   `#picklist` when the map was the only screen with a real listbox; the filter
+   pickers used `<input list>` + `<datalist>`, which cannot be styled and cannot
+   show you the options while the field holds a value. Keyed on the role now, so
+   one list looks and behaves the same wherever it opens. */
+.combobox > [role="listbox"] {
   position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + var(--s-xs));
   list-style: none; margin: 0; padding: 0;
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--panel); box-shadow: var(--shadow);
   max-height: 11rem; overflow: auto;
 }
-#picklist[hidden] { display: none; }
-#picklist button {
+.combobox > [role="listbox"][hidden] { display: none; }
+.combobox > [role="listbox"] button {
   width: 100%; display: grid; grid-template-columns: 1fr auto; gap: var(--s-sm);
   text-align: start; justify-content: start; min-height: 2rem;
   padding: .3125rem var(--s-sm); border: 0; border-bottom: 1px solid var(--line);
   border-radius: 0; background: var(--panel); font-size: var(--fs-body-sm);
   font-weight: 400;
 }
-#picklist button:hover { background: var(--sunk); }
-#picklist [aria-selected="true"] button { background: var(--accentSoft); }
-#picklist .mono { font-size: var(--fs-caption); color: var(--ink3); }
+.combobox > [role="listbox"] button:hover { background: var(--sunk); }
+.combobox > [role="listbox"] [aria-selected="true"] button { background: var(--accentSoft); }
+.combobox > [role="listbox"] .mono { font-size: var(--fs-caption); color: var(--ink3); }
 .picker-empty { padding: var(--s-sm); font-size: var(--fs-body-sm); color: var(--ink2); }
+.toolbar .combobox > [role="listbox"] { min-width: 15rem; }
 
 /* The 2x3 fact grid, cells separated by hairlines rather than by whitespace —
    which is what lets it stay dense and still parse. */
@@ -2267,6 +2289,9 @@ tbody tr.denied-row td { font-weight: 600; }
   .map-controls { max-height: none; overflow: visible; position: static; }
   .map-controls > .control-body { overflow: visible; }
   :root { --gap-box: 8px; --pad-card: 12px; --pad-page: 16px; }
+  /* Stacked, the chrome above the table is taller and less predictable, so the
+     table goes back to growing and the page scrolls. */
+  .panel.flex:has(> .table-host) { max-height: none; }
   .page-head { padding: var(--s-10) var(--pad-page); min-height: 0; }
   .map-layout { grid-template-columns: 1fr; grid-template-areas: "ctl" "map" "sel"; }
 }
