@@ -26,7 +26,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -1321,7 +1321,7 @@ def evidence_claims() -> dict:
     # every row can read PASS while describing a system that has since changed.
     # The verdicts are only worth anything next to the moment they were measured.
     measured_at = datetime.fromtimestamp(
-        path.stat().st_mtime, tz=timezone.utc
+        path.stat().st_mtime, tz=UTC
     ).isoformat()
 
     return {

@@ -32,10 +32,16 @@ eight minutes of CPU on request is a denial-of-service waiting to be discovered.
 from __future__ import annotations
 
 import logging
-import subprocess
+
+# B404 and B603 below are permanent, not a backlog item: this module exists to
+# run a subprocess. The argv is a fixed constant in JOB_COMMANDS, nothing from
+# the request reaches it, and shell=False is the reason the path segment cannot
+# become a command. Marked in the source rather than in .security/allowlist.yml
+# because an expiry date on an architectural fact is a reminder to no one.
+import subprocess  # nosec B404
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 log = logging.getLogger("gemp.api.jobs")
 
@@ -70,7 +76,7 @@ _state: dict[str, dict] = {
 
 
 def _now() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()
 
 
 def status(kind: str) -> dict:
@@ -96,7 +102,8 @@ def running_kind() -> str | None:
 def _run(kind: str) -> None:
     command = JOB_COMMANDS[kind]
     try:
-        finished = subprocess.run(  # noqa: S603 - fixed argv, nothing from the request
+        # Fixed argv, nothing from the request; see the note at the import.
+        finished = subprocess.run(  # noqa: S603  # nosec B603
             command,
             capture_output=True,
             text=True,

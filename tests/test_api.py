@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
-import threading
 
 import pytest
 from fastapi.testclient import TestClient
