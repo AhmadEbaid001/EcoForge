@@ -198,7 +198,7 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
   <section class="panel detail" aria-labelledby="sel-h">
     <header>
       <h3 id="sel-h">Selected building</h3>
-      <button type="button" class="quiet" id="sel-clear" hidden>Clear</button>
+      <button type="button" class="secondary" id="sel-clear" hidden>Clear selection</button>
     </header>
 
     <!-- Fifty entries is too many to scroll and too few to page, so it filters
@@ -213,7 +213,7 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
       </div>
     </div>
 
-    <div class="empty" id="detail-empty">
+    <div class="empty-state" id="detail-empty">
       <h4>Nothing selected yet</h4>
       <p>Pick a building on the map, or use the filter above. This panel then shows its
          six costed facts and every retrofit option the optimizer weighed for it &mdash;
@@ -268,14 +268,7 @@ export const mapView = {
     canSolve = atLeast(ctx?.user?.role || 'viewer', 'analyst');
 
     root.innerHTML = `
-      ${pageHead({ root,
-        title: t('map.title'),
-        description: canSolve
-          ? 'Set a budget and a method; the optimizer decides which buildings get '
-            + 'which retrofit. Click a building to see every option it considered.'
-          : 'The most recent stored allocation. Click a building to see every option '
-            + 'the optimizer considered there, and which one it chose.',
-      })}
+      ${pageHead({ root, title: t('map.title') })}
       <div class="map-layout">${MAP_HTML()}</div>${MODAL_HTML}`;
 
     if (!canSolve) makeReadOnly(root);
