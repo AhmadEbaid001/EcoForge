@@ -1871,6 +1871,44 @@ tbody tr.denied-row td { font-weight: 600; }
    screen where the dialog's own heading already does this work. */
 .print-sheet-head, .print-foot { display: none; }
 
+/* ---- the security posture verdict ------------------------------------ */
+
+/* The same shape as the integrity verdict, for the same reason: a screen that
+   reports a state should say what the state IS before it lists the evidence. */
+.posture-verdict {
+  display: flex; align-items: flex-start; gap: var(--s-12);
+  padding: var(--pad-card); margin-bottom: var(--gap-box);
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+}
+.posture-verdict.good { background: var(--okSoft); border-color: var(--ok); }
+.posture-verdict.bad { background: var(--amberSoft); border-color: var(--amber); }
+.posture-verdict .verdict-shield { flex: none; }
+.posture-verdict .verdict-shield .icon { width: 22px; height: 22px; }
+.posture-verdict.good .verdict-shield .icon { color: var(--ok); }
+.posture-verdict.bad .verdict-shield .icon { color: var(--amber); }
+.posture-verdict .verdict-text { display: grid; gap: var(--s-xs); }
+.posture-verdict .verdict-word { font-size: var(--fs-subhead); font-weight: 700; color: var(--ink); }
+.posture-verdict .verdict-gloss {
+  font-size: var(--fs-body-sm); color: var(--ink2); line-height: 1.5;
+  text-wrap: pretty; max-width: 80ch;
+}
+
+/* Each warning is a finding, so it gets a row and a mark rather than a bullet in
+   a paragraph. */
+.posture-warnings {
+  list-style: none; margin: 0 0 var(--gap-box); padding: 0;
+  display: grid; gap: var(--s-sm);
+}
+.posture-warnings li {
+  display: flex; gap: var(--s-sm); align-items: flex-start;
+  padding: var(--s-10) var(--s-12);
+  border: 1px solid var(--line); border-inline-start: 3px solid var(--amber);
+  border-radius: var(--radius); background: var(--panel2);
+  font-size: var(--fs-body-sm); color: var(--ink2); line-height: 1.5;
+}
+.posture-warnings li .sev-mark, .posture-warnings li svg { flex: none; color: var(--amber); margin-top: 2px; }
+.posture-warnings li span { text-wrap: pretty; }
+
 /* ---- the chain figure ------------------------------------------------ */
 
 /* A diagram of a claim, not a chart of data: the proven run of the chain, the

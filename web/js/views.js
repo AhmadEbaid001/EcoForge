@@ -1518,9 +1518,6 @@ function passwordProblem({ password, confirm }) {
   return null;
 }
 
-const ADMIN_PURPOSE = 'Accounts, what this deployment is currently exposed to, and '
-  + 'who did what. Admin role only.';
-
 export const admin = {
   title: 'Administration',
   /* `requiredRole` is what dims this item in the rail, and the rail keeps it for
@@ -1531,7 +1528,7 @@ export const admin = {
   async render(root, ctx) {
     if (!can(ctx.user, 'admin')) {
       root.innerHTML = `
-        ${pageHead({ root, title: 'Administration', description: ADMIN_PURPOSE })}
+        ${pageHead({ root, title: 'Administration' })}
         <div class="note-panel" role="note">
           ${icon('lock')}
           <p><strong>Administration needs the admin role, and yours is
@@ -1559,10 +1556,7 @@ export const admin = {
     }
 
     root.innerHTML = `
-      ${pageHead({ root,
-        title: 'Administration',
-        description: ADMIN_PURPOSE,
-      })}
+      ${pageHead({ root, title: 'Administration' })}
       ${skeletonRows(6)}`;
 
     await guard(root, async () => {
@@ -1588,11 +1582,11 @@ export const admin = {
         { key: 'ip', label: 'Address', cls: 'mono', render: (r) => escapeHtml(r.ip || '—') },
       ];
       const auditState = { sortKey: 'ts', sortDir: 'desc', deniedOnly: false };
+      const warnings = posture.warnings || [];
 
       root.innerHTML = `
         ${pageHead({ root,
           title: 'Administration',
-          description: ADMIN_PURPOSE,
           actions: '<button id="recompute-btn" type="button" class="secondary">'
                    + 'Recompute candidates</button>'
                    + '<button id="user-add" type="button" class="primary">Add account</button>',
@@ -1602,10 +1596,34 @@ export const admin = {
           <header><h3>Security posture</h3>
             <span class="scope">what this deployment is exposed to right now</span></header>
 
-          <!-- The Secure flag gets a callout of its own because it is the one
-               item on this screen that changes what an attacker can do, and a
-               row in a fact grid reads exactly like the four rows that do not
-               matter. -->
+          <!-- The endpoint computes a list of warnings precisely so that somebody
+               can see them - "a security control nobody can see the state of is a
+               control nobody maintains" is the reason given in its own source -
+               and this screen was discarding every one of them except the cookie
+               flag. The verdict states how many stand, and each is named. -->
+          <div class="posture-verdict ${warnings.length ? 'bad' : 'good'}">
+            <span class="verdict-shield">${icon(warnings.length ? 'warning' : 'integrity')}</span>
+            <span class="verdict-text">
+              <span class="verdict-word">${warnings.length
+                ? `${warnings.length} thing${warnings.length === 1 ? '' : 's'} to fix`
+                : 'Nothing outstanding'}</span>
+              <span class="verdict-gloss">${warnings.length
+                ? 'Each one below changes what somebody who is not supposed to be here '
+                  + 'could do. None of them is cosmetic.'
+                : 'Every configuration check this deployment reports on is in the state '
+                  + 'it should be. It is not a claim that the deployment is secure — it '
+                  + 'is a claim that nothing it knows how to check is wrong.'}</span>
+            </span>
+          </div>
+
+          ${warnings.length ? `<ul class="posture-warnings">
+            ${warnings.map((w) => `<li>${mark('cross', { size: 12 })}<span>${
+              escapeHtml(w)}</span></li>`).join('')}
+          </ul>` : ''}
+
+          <!-- The Secure flag keeps a callout of its own even though it is also in
+               the list above: it is the one item on this screen that changes what
+               an attacker on the same network can do without a password. -->
           ${posture.cookie_secure ? '' : `
           <div class="posture-alert" role="alert">
             <h4 class="plain">The session cookie is being sent without the Secure flag.</h4>
@@ -1625,6 +1643,18 @@ export const admin = {
             <div><dt>Idle timeout</dt><dd>${posture.session_idle_timeout_hours} hours</dd></div>
             <div><dt>Absolute session lifetime</dt><dd>${posture.session_absolute_lifetime_days} days</dd></div>
             <div><dt>Minimum password length</dt><dd>${posture.password_min_length} characters</dd></div>
+            <div><dt>Password hash cost</dt><dd>${posture.password_hash_cost === undefined
+              ? '—' : `2^${Math.round(Math.log2(posture.password_hash_cost))} (n=${
+                  compact(posture.password_hash_cost)})`}</dd></div>
+            <div><dt>Hashes below that cost</dt><dd>${posture.password_hashes_below_current_cost
+              ? `<span class="sev high">${mark('dash', { size: 11 })}${
+                  posture.password_hashes_below_current_cost} account${
+                  posture.password_hashes_below_current_cost === 1 ? '' : 's'}</span>`
+              : `<span class="sev medium">${mark('check', { size: 11 })}none</span>`}</dd></div>
+            <div><dt>Audit rows that failed to write</dt><dd>${posture.audit_write_failures
+              ? `<span class="sev critical">${mark('cross', { size: 11 })}${
+                  posture.audit_write_failures}</span>`
+              : `<span class="sev medium">${mark('check', { size: 11 })}none</span>`}</dd></div>
             <div><dt>Accounts</dt><dd>${posture.users}${
               users.filter((u) => !u.is_active).length
                 ? `, ${users.filter((u) => !u.is_active).length} disabled` : ', none disabled'}</dd></div>
@@ -1648,7 +1678,7 @@ export const admin = {
           <header><h3>Accounts</h3><span class="muted small">${users.length} total</span></header>
           <div class="table-wrap"><table>
             <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th>
-              <th>Last login</th><th><span class="sr-only">Actions</span></th></tr></thead>
+              <th>Last login</th><th class="row-actions"><span class="sr-only">Actions</span></th></tr></thead>
             <!-- The two cells an admin cannot use on their own row show a lock
                  and the reason, not a greyed-out control. A disabled select
                  invites a click and explains nothing; the words do both. -->
@@ -1699,6 +1729,7 @@ export const admin = {
               returns, not a page of it</span>
             <button type="button" class="seg-btn deny-toggle" id="denied-only"
                     aria-pressed="false">Denied only</button>
+            <button type="button" class="secondary small" id="audit-export">Export CSV</button>
           </header>
           <div id="audit-body"></div>
         </section>`;
@@ -1736,6 +1767,23 @@ export const admin = {
         auditState.deniedOnly = !auditState.deniedOnly;
         event.currentTarget.setAttribute('aria-pressed', String(auditState.deniedOnly));
         paintAudit();
+      });
+
+      root.querySelector('#audit-export').addEventListener('click', () => {
+        const rows = auditState.deniedOnly
+          ? auditRows.filter((r) => r.outcome === 'denied')
+          : auditRows;
+        if (!rows.length) return;
+        /* The columns are named rather than spread from the row, so a field added
+         * to the API later cannot silently start appearing in an exported audit
+         * file that somebody is treating as a fixed format. */
+        downloadCsv(
+          `gemp-audit-${auditState.deniedOnly ? 'denied-' : ''}${
+            new Date().toISOString().slice(0, 10)}.csv`,
+          rows.map((r) => ({
+            ts: r.ts, username: r.username || '', action: r.action,
+            target: r.target || '', outcome: r.outcome, ip: r.ip || '',
+          })));
       });
 
       /* A role change used to fire on `change` with no confirmation and no
@@ -1895,28 +1943,21 @@ function browserName(agent) {
   return platform ? `${engine} on ${platform}` : engine;
 }
 
-const ACCOUNT_PURPOSE = 'Your password, and every place this account is currently '
-  + 'signed in. Changing the password is what ends the other sessions.';
-
 export const account = {
   title: 'Account',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({ root,
-        title: 'Your account',
-        description: ACCOUNT_PURPOSE,
-      })}
+      ${pageHead({ root, title: 'Your account' })}
       ${skeletonRows(4)}`;
 
     await guard(root, async () => {
       const sessions = await api.mySessions();
       const others = Math.max(0, sessions.length - 1);
+      const hereIp = (sessions.find((x) => x.current) || {}).ip || null;
+      const elsewhere = sessions.filter((x) => !x.current && x.ip && hereIp && x.ip !== hereIp);
 
       root.innerHTML = `
-        ${pageHead({ root,
-          title: 'Your account',
-          description: ACCOUNT_PURPOSE,
-        })}
+        ${pageHead({ root, title: 'Your account' })}
 
         <div class="two-col aside-first">
           <section class="panel">
@@ -1977,7 +2018,10 @@ export const account = {
                 <td class="mono">${fmtDateTime(s.created_at)}${s.current
                   ? `<span class="state-cell ok">${mark('check', { size: 11 })}this one</span>` : ''}</td>
                 <td class="mono">${fmtDateTime(s.last_seen_at)}</td>
-                <td class="mono">${escapeHtml(s.ip || '—')}</td>
+                <td class="mono">${escapeHtml(s.ip || '—')}${
+                  !s.current && s.ip && hereIp && s.ip !== hereIp
+                    ? `<span class="state-cell warn">${mark('dash', { size: 11 })
+                       }different address</span>` : ''}</td>
                 <td class="muted small wrap" title="${escapeHtml(s.user_agent || '')}"
                   >${escapeHtml(browserName(s.user_agent))}</td>
               </tr>`).join('')}</tbody>
@@ -1986,6 +2030,16 @@ export const account = {
               body: 'This account is signed in here and nowhere else. Others appear when '
                   + 'you sign in from another browser or machine, and drop off by '
                   + 'themselves after the 8-hour idle limit or the 7-day absolute one.' })}
+            ${elsewhere.length ? `
+            <div class="posture-alert" role="note">
+              <h4 class="plain">${elsewhere.length === 1
+                ? 'One other session is on a different address from this one.'
+                : `${elsewhere.length} other sessions are on different addresses from this one.`}</h4>
+              <p>That is normal if you also sign in from somewhere else &mdash; another
+              machine, another network. It is not normal if you do not recognise
+              ${elsewhere.length === 1 ? 'it' : 'them'}, and the only thing that ends
+              ${elsewhere.length === 1 ? 'it' : 'them'} is changing your password.</p>
+            </div>` : ''}
             <p class="caption">A session you do not recognise is a reason to change your
             password <strong>now</strong>, because that is what ends the others. There is
             no per-session sign-out in this platform, and this screen will not pretend
