@@ -734,6 +734,36 @@ def test_an_unfiltered_acknowledge_is_refused(client):
     assert "at least one" in response.json()["detail"]
 
 
+def test_closing_the_whole_inbox_needs_an_explicit_flag(client):
+    """Emptying the inbox is allowed, but only when it is asked for by name.
+
+    The guard above exists so that a forgotten selector cannot close the portfolio.
+    It is not there to make the operation impossible - the inbox has to be
+    emptiable - so `all_open` is the field that separates "I meant this" from "I
+    left something out". Omission is still refused; this is the deliberate path.
+    """
+    seed_anomalies(client, "b021", 3)
+    seed_anomalies(client, "b022", 2)
+
+    body = client.post("/api/v1/anomalies/acknowledge",
+                       json={"all_open": True}).json()
+
+    assert body["changed"] >= 5
+    assert body["open_remaining"] == 0
+
+
+def test_all_open_is_ignored_when_a_selector_is_given(client):
+    """A selector is narrower than "everything", so it wins."""
+    seed_anomalies(client, "b023", 3)
+    seed_anomalies(client, "b024", 2)
+
+    body = client.post("/api/v1/anomalies/acknowledge",
+                       json={"all_open": True, "building_id": "b023"}).json()
+
+    assert body["changed"] == 3
+    assert body["open_remaining"] == 0          # scoped to b023
+
+
 def test_acknowledging_by_age_uses_data_time(client):
     """Under 720x replay the wall clock is months behind the data."""
     seed_anomalies(client, "b013", 4)

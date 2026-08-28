@@ -194,7 +194,7 @@ export function setStatus(root, { kind = 'ok', message, actionLabel = '', action
   if (!message) return null;
 
   const strip = document.createElement('div');
-  strip.className = `strip ${kind === 'error' ? 'failed' : 'result'}`;
+  strip.className = `strip ${kind === 'error' ? 'failed' : 'ok'}`;
   strip.id = 'result-strip';
   strip.setAttribute('role', kind === 'error' ? 'alert' : 'status');
   strip.innerHTML = `
@@ -204,7 +204,7 @@ export function setStatus(root, { kind = 'ok', message, actionLabel = '', action
       ${actionLabel
         ? `<button type="button" class="undo" ${actionAttr}>${escapeHtml(actionLabel)}</button>`
         : ''}
-      <button type="button" class="quiet" data-dismiss>Dismiss</button>
+      <button type="button" class="secondary" data-dismiss>Dismiss</button>
     </span>`;
   strip.querySelector('[data-dismiss]').addEventListener('click', () => strip.remove());
   host.append(strip);

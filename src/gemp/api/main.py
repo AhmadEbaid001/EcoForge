@@ -772,9 +772,17 @@ class AcknowledgeRequest(BaseModel):
     """Selectors for a bulk acknowledgement. At least one is required.
 
     An unfiltered call would close every open alert in the portfolio, which is not a
-    thing anyone should be able to do by forgetting a field.
+    thing anyone should be able to do by forgetting a field - so omitting every
+    selector is still refused. Emptying the whole inbox is a real operation, though,
+    and `all_open` is how a caller says it meant to: a field that has to be set on
+    purpose cannot be set by leaving something out.
     """
 
+    all_open: bool = Field(
+        default=False,
+        description="Close every open alert in the portfolio. Only honoured when no "
+                    "other selector is given, and never the result of an omission.",
+    )
     ids: list[int] | None = None
     building_id: str | None = None
     before: datetime | None = Field(
@@ -811,11 +819,12 @@ def acknowledge(
     number only ever goes up, so nobody reads it.
     """
     selectors = request.selectors()
-    if not any(value for value in selectors.values()):
+    if not any(value for value in selectors.values()) and not request.all_open:
         raise HTTPException(
             422,
-            "provide at least one of ids, building_id, before or severity; an "
-            "unfiltered acknowledge would close every alert in the portfolio",
+            "provide at least one of ids, building_id, before or severity - or set "
+            "all_open to close the whole inbox deliberately; an unfiltered "
+            "acknowledge would close every alert in the portfolio",
         )
     if request.severity and request.severity not in SEVERITIES:
         raise HTTPException(422, f"unknown severity; choose from {sorted(SEVERITIES)}")

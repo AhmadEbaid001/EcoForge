@@ -794,6 +794,9 @@ export const alerts = {
             const selectors = { acknowledged: true };
             if (state.severity) selectors.severity = state.severity;
             if (state.building) selectors.building_id = state.building;
+            /* No selector means the whole inbox, which the API refuses unless the
+             * caller says so in a field it could not have set by accident. */
+            if (!filtered) selectors.all_open = true;
             /* `changed` is the row count; `acknowledged` in the response is the
              * boolean that was asked for, not a total. */
             const result = await api.acknowledge(selectors);

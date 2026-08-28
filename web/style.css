@@ -509,17 +509,27 @@ h1, h2, h3, h4 { line-height: 1.3; }
    consequently untrue. The numbers stay on screen: they were true when they
    were read, and blanking them would destroy the only record of the read. */
 .strip {
-  display: flex; align-items: center; gap: .625rem;
-  padding: var(--s-sm) var(--s-md); font-size: var(--fs-body-sm);
+  display: flex; align-items: center; gap: var(--s-10); flex-wrap: wrap;
+  /* The same inset as the page header and the content below it, so the message
+     starts on the line everything else on the screen starts on. It was 16 against
+     a 24 page margin, which reads as a strip that does not belong to the page. */
+  padding: var(--s-10) var(--pad-page); font-size: var(--fs-body-sm);
   border-bottom: 1px solid transparent;
 }
 .strip .icon { width: 16px; height: 16px; flex: none; }
 .strip strong { font-weight: 650; }
-.strip-act { margin-inline-start: auto; display: flex; gap: var(--s-sm); align-items: center; }
+/* The sentence keeps a readable measure instead of stretching to the width of the
+   window, and the actions sit at the trailing edge. On a narrow window the pair
+   wraps to a second row rather than crushing the message. */
+.strip-text { text-wrap: pretty; max-width: 90ch; }
+.strip-act {
+  margin-inline-start: auto; display: flex; gap: var(--s-sm);
+  align-items: center; flex: none;
+}
 .strip.stale { background: var(--amberSoft); border-bottom-color: var(--amber); }
 .strip.stale .icon { color: var(--amber); }
-.strip.result { background: var(--accentSoft); border-bottom-color: var(--accentLine); }
-.strip.result .icon { color: var(--accent); }
+.strip.ok { background: var(--accentSoft); border-bottom-color: var(--accentLine); }
+.strip.ok .icon { color: var(--accent); }
 .strip.failed { background: var(--critSoft); border-bottom-color: var(--crit); }
 .strip.failed .icon { color: var(--crit); }
 
@@ -2039,22 +2049,25 @@ tbody tr.denied-row td { font-weight: 600; }
 #map:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 /* The result of the solve, over the thing it decided: five cards top-left,
-   pointer-events off so they never intercept a drag. */
+   pointer-events off so they never intercept a drag.
+
+   Scoped to `.results`. As a bare `.result` this card also matched the status
+   strip, which carried a `result` modifier, and beat it on source order. */
 .results {
   position: absolute; top: var(--s-sm); left: var(--s-sm); right: var(--s-sm);
   z-index: 2; display: flex; gap: .375rem; flex-wrap: wrap; pointer-events: none;
 }
-.result {
+.results > .result {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); padding: .3125rem var(--s-sm);
   box-shadow: var(--shadow); display: grid; gap: 1px;
 }
-.result:first-child { border-color: var(--accentLine); }
-.result .v {
+.results > .result:first-child { border-color: var(--accentLine); }
+.results > .result .v {
   font-size: .625rem; text-transform: uppercase; letter-spacing: .05em;
   color: var(--ink3); white-space: nowrap;
 }
-.result .k {
+.results > .result .k {
   font-size: var(--fs-body-lg); font-weight: 650; line-height: 1.2;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
