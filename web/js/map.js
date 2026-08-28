@@ -227,7 +227,7 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
  * bubbles from inside the modal - and it is also what stops a keyboard user
  * being left behind on the button that opened it. */
 const MODAL_HTML = String.raw`<div id="narrative-modal" class="modal" hidden>
-  <div class="modal-inner" tabindex="-1" role="dialog" aria-modal="true"
+  <div class="modal-inner wide" tabindex="-1" role="dialog" aria-modal="true"
        aria-label="The best measure is building-specific">
     <button class="close" id="narrative-close" type="button" aria-label="Close">&times;</button>
     <h2>The best measure is building-specific</h2>
@@ -1150,8 +1150,10 @@ async function narrative() {
         <p class="caption">
           ${escapeHtml(b.occupancy_pattern)} · ${escapeHtml(b.insulation_quality)} insulation ·
           HVAC ${b.hvac_age_yr} yr · ${compact(b.annual_kwh)} kWh/yr</p>
-        <table><thead><tr><th>Measure</th><th>Cost EGP</th><th>Benefit /kEGP</th></tr></thead>
-        <tbody>${rows}</tbody></table>
+        <div class="card-table">
+          <table><thead><tr><th>Measure</th><th>Cost EGP</th><th>Benefit /kEGP</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+        </div>
         <p class="winner">Winner: <strong>${escapeHtml(ivName(b.best))}</strong>.</p>
       </div>`;
   }).join('');

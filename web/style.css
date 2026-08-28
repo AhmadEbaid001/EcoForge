@@ -1849,6 +1849,10 @@ tbody tr.denied-row td { font-weight: 600; }
   box-shadow: var(--shadow);
 }
 .modal-inner.narrow { width: min(26rem, 100%); }
+/* For a dialog whose content is several cards abreast rather than one column of
+   prose. Referenced by the print rules since they were written; never defined,
+   so it has been silently rendering at the default width. */
+.modal-inner.wide { width: min(64rem, 100%); }
 .modal h2 {
   margin: 0; padding: var(--s-md) var(--s-xl) var(--s-md) var(--s-md);
   font-size: var(--fs-record); font-weight: 700; letter-spacing: -.01em;
@@ -1882,15 +1886,22 @@ tbody tr.denied-row td { font-weight: 600; }
 /* And separately, the row you currently have selected in the controls. */
 .modal tr.chosen td { background: var(--accentSoft); }
 
-.card-row { display: flex; gap: var(--s-12); flex-wrap: wrap; }
+.card-row {
+  display: grid; gap: var(--gap-box);
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+}
+.card-row:has(> .card:nth-child(4)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .card-row > .card {
-  flex: 1 1 14rem; min-width: 14rem;
+  min-width: 0;
   border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--panel2); padding: var(--s-sm) var(--s-10);
+  background: var(--panel2); padding: var(--s-12);
 }
 .card h3 { font-size: var(--fs-body-sm); font-weight: 650; margin: 0 0 2px; }
 .card .caption { margin: 0 0 var(--s-sm); border: none; padding: 0; }
-.card table { font-size: var(--fs-body-sm); }
+.card-table { overflow-x: auto; }
+.card table { font-size: var(--fs-body-sm); width: 100%; }
+/* The head is three short labels; wrapping one costs less than a scrollbar. */
+.card table th { white-space: normal; }
 .card .winner {
   margin: var(--s-sm) 0 0; font-size: var(--fs-caption); color: var(--ink2);
 }
@@ -2144,7 +2155,8 @@ tbody tr.denied-row td { font-weight: 600; }
 
 .detail > *:not(header) { padding-inline: var(--pad-card); }
 .detail > .picker-wrap { padding-block: var(--pad-card) 0; }
-.detail > .empty-state { flex: 1; display: grid; align-content: center; }
+.detail > .empty-state:not([hidden]) { flex: 1; display: grid; align-content: center; }
+.detail > .empty-state[hidden] { display: none; }
 .detail > #detail-body { flex: 1; overflow-y: auto; min-height: 0; padding-block: var(--pad-card); }
 .detail h2 {
   margin: 0; font-size: var(--fs-record); font-weight: 600; letter-spacing: -.021em;
