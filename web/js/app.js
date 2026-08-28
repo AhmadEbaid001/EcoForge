@@ -548,15 +548,27 @@ async function showApp() {
     navigate(state.view);
   });
 
-  await navigate(fromHash() || 'overview');
+  const opening = splitHash();
+  await navigate(opening.key || 'overview', opening.key ? opening.search : '');
+}
+
+/* `#/alerts?building=b012` - a screen key, and the state the screen should open
+ * in. Deep links matter here because the product's screens ask about each other:
+ * integrity finds a broken chain and the next question is "what did the alert
+ * inbox say about this building", which is not a useful link if it lands on an
+ * unfiltered inbox of thirty thousand rows. */
+function splitHash() {
+  const raw = window.location.hash.replace(/^#\/?/, '');
+  const cut = raw.indexOf('?');
+  const key = cut >= 0 ? raw.slice(0, cut) : raw;
+  return { key: VIEWS[key] ? key : null, search: cut >= 0 ? raw.slice(cut + 1) : '' };
 }
 
 function fromHash() {
-  const key = window.location.hash.replace(/^#\/?/, '');
-  return VIEWS[key] ? key : null;
+  return splitHash().key;
 }
 
-async function navigate(key) {
+async function navigate(key, search = '') {
   const view = VIEWS[key];
   if (!view) return;
   /* `requiredRole` dims the rail item; it does not block the navigation. The
@@ -565,7 +577,8 @@ async function navigate(key) {
    * leave the previous screen on display with a rail item that looks broken. */
 
   state.view = key;
-  window.location.hash = `#/${key}`;
+  state.search = search;
+  window.location.hash = `#/${key}${search ? `?${search}` : ''}`;
 
   /* aria-current rather than a class, so the styling and the announcement to a
    * screen reader cannot drift apart: there is one source for both. */
@@ -616,6 +629,8 @@ async function navigate(key) {
       user: state.user,
       signal: state.viewLifetime.signal,
       onPasswordChanged: refreshSession,
+      /* Read-only, and empty for a screen opened from the rail. */
+      params: new URLSearchParams(search),
     });
 
     /* Both of these are done here rather than by each view, for the same reason
@@ -672,8 +687,13 @@ setPasswordChangeHandler(() => {
 });
 
 window.addEventListener('hashchange', () => {
-  const key = fromHash();
-  if (state.user && key && key !== state.view) navigate(key);
+  const { key, search } = splitHash();
+  /* The search is part of the address: arriving at the inbox filtered to one
+   * building from an inbox that is already open is a different screen, and
+   * comparing the key alone would have ignored it. */
+  if (state.user && key && (key !== state.view || search !== (state.search || ''))) {
+    navigate(key, search);
+  }
 });
 
 async function boot() {

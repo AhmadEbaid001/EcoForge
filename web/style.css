@@ -1559,7 +1559,7 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
   display: inline-flex; align-items: center; gap: var(--s-xs);
   font-weight: 700; color: var(--accent);
 }
-.prov-body { display: grid; gap: var(--s-12); padding: var(--s-12); }
+.prov-body { display: grid; gap: var(--pad-card); padding-block: var(--pad-card); }
 .prov-body .facts {
   display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin: 0;
   background: var(--line); border: 1px solid var(--line); border-radius: var(--radius);
@@ -1866,6 +1866,71 @@ tbody tr.denied-row td { font-weight: 600; }
   font-variant-numeric: tabular-nums;
 }
 
+/* The masthead and closing note of a printed document. Present in the markup at
+   all times so the sheet cannot drift from what the dialog shows, and hidden on
+   screen where the dialog's own heading already does this work. */
+.print-sheet-head, .print-foot { display: none; }
+
+/* ---- the chain figure ------------------------------------------------ */
+
+/* A diagram of a claim, not a chart of data: the proven run of the chain, the
+   point where it stopped being provable, and the anchor's position on it. */
+.chain-panel {
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--panel2); padding: var(--pad-card); margin-bottom: var(--gap-box);
+}
+.chain-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s-sm); flex-wrap: wrap; margin-bottom: var(--s-12);
+}
+.chain-head h4 { margin: 0; font-size: var(--fs-subhead); font-weight: 650; color: var(--ink); }
+.chain-head .scope { font-size: var(--fs-caption); color: var(--ink3); }
+.chain-svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.chain-proven { fill: var(--accent); }
+.chain-rest   { fill: url(#chain-unproven); }
+.chain-unproven-bg { fill: var(--sunk); }
+.chain-unproven-line { stroke: var(--crit); stroke-width: 3; }
+/* The break is the one thing on this figure that must not be missed, so it is
+   drawn twice - a full-height rule and a solid cap above it - and it carries the
+   severity colour the rest of the product uses for critical. */
+.chain-break { stroke: var(--crit); stroke-width: 2.5; }
+.chain-break-mark { fill: var(--crit); }
+.chain-anchor { stroke: var(--ink); stroke-width: 2; stroke-dasharray: 3 3; }
+.chain-tick {
+  font-family: var(--font); font-size: 11px; fill: var(--ink3);
+  font-variant-numeric: tabular-nums;
+}
+.chain-tick.break { fill: var(--crit); font-weight: 700; }
+
+.chain-legend {
+  display: flex; gap: var(--s-md); flex-wrap: wrap; margin: var(--s-10) 0 0;
+  font-size: var(--fs-caption); color: var(--ink2);
+}
+.chain-legend .key { display: inline-flex; align-items: center; gap: var(--s-6); }
+.chain-legend .swatch {
+  width: 14px; height: 10px; border-radius: 2px; flex: none;
+  background: var(--accent);
+}
+.chain-legend .swatch.rest {
+  background: repeating-linear-gradient(45deg, var(--sunk) 0 3px, var(--crit) 3px 5px);
+}
+.chain-legend .swatch.anchor {
+  background: none; width: 0; height: 14px;
+  border-inline-start: 2px dashed var(--ink);
+}
+
+/* The definitions are available, not imposed. */
+.glossary-wrap > summary {
+  cursor: pointer; list-style: none;
+  font-size: var(--fs-body-sm); font-weight: 600; color: var(--ink2);
+  padding: var(--s-sm) 0;
+}
+.glossary-wrap > summary::-webkit-details-marker { display: none; }
+.glossary-wrap > summary::before { content: "+ "; color: var(--ink3); }
+.glossary-wrap[open] > summary::before { content: "2 "; }
+.glossary-wrap > summary:hover { color: var(--ink); }
+
 /* =====================================================================
    11. Modals and dialogs
    ===================================================================== */
@@ -1894,17 +1959,30 @@ tbody tr.denied-row td { font-weight: 600; }
    so it has been silently rendering at the default width. */
 .modal-inner.wide { width: min(64rem, 100%); }
 .modal h2 {
-  margin: 0; padding: var(--s-md) var(--s-xl) var(--s-md) var(--s-md);
+  /* The same leading inset as everything under it. The trailing side keeps room
+     for the close button. */
+  margin: 0; padding: var(--pad-card) var(--s-xl) var(--pad-card) var(--pad-card);
   font-size: var(--fs-record); font-weight: 700; letter-spacing: -.01em;
   border-bottom: 1px solid var(--line);
 }
 .modal .dialog-lede, .modal > .modal-inner > p { margin: 0; }
+/* One gap between a dialog's blocks, matching the gap between boxes elsewhere. */
+.modal-inner > :not(h2):not(.close) + :not(h2):not(.close) { margin-top: var(--gap-box); }
+.modal-inner > .caption { padding-top: var(--gap-box); }
 .dialog-lede {
   padding: var(--s-md) var(--s-md) 0; margin: 0;
   color: var(--ink2); font-size: var(--fs-body-sm); line-height: 1.55;
 }
-.modal-inner > table, .modal-inner > .caption, .modal-inner > div:not(.form) { padding: 0; }
-.modal-inner > #compare-body, .modal-inner > #narrative-body { padding: var(--s-md); }
+/* A dialog insets its content the way a panel does.
+
+   This used to zero the padding on every direct child and then hand it back to
+   two named ids. Any dialog that was not one of those two - Provenance, the bill
+   of quantities - drew its content hard against the box, with the heading of a
+   section clipped at the edge and the closing caption running the full width of
+   the border. Naming the exceptions is why the rule only worked for the two
+   dialogs somebody happened to be looking at when it was written. */
+.modal-inner > :not(h2):not(.close) { padding-inline: var(--pad-card); }
+.modal-inner > :last-child { padding-bottom: var(--pad-card); }
 .close {
   position: absolute; top: var(--s-sm); inset-inline-end: var(--s-sm);
   background: none; border: 0; color: var(--ink2);
@@ -2337,20 +2415,55 @@ body.booting .login-wrap, body.signed-out { background: var(--bg); }
    `:has()` is what tells the two apart: when a dialog is open it IS the page, so
    the view behind it is hidden rather than printed underneath. */
 @media print {
-  :root {
-    --bg: #fff; --panel: #fff; --panel2: #fff;
+  /* A4 with a real margin. Without a declared page box the browser uses its own
+     default, which differs per browser and per printer, so the same document
+     came out with different margins depending on who printed it. */
+  @page { size: A4; margin: 15mm 12mm 18mm; }
+
+  /* Paper is white whatever the reader's appearance is.
+
+     This has to out-specify the dark palette, not merely come after it. The dark
+     tokens are declared on `:root[data-theme="dark"]` and on
+     `:root:not([data-theme="light"])`, both a class-level selector; a bare
+     `:root` here loses to either. The result was a tender document printing on a
+     near-black ground with pale text - most of a cartridge, and unreadable if
+     the printer drops backgrounds. */
+  :root,
+  :root[data-theme="dark"],
+  :root[data-theme="light"],
+  :root:not([data-theme="light"]) {
+    --bg: #fff; --panel: #fff; --panel2: #fff; --sunk: #fff;
     --ink: #000; --ink2: #333; --ink3: #555;
     --line: #bbb; --lineStrong: #888;
+    --accent: #000; --accentInk: #fff; --accentSoft: #fff; --accentLine: #666;
+    --shadow: none; --scrim: none;
+    color-scheme: light;
   }
 
-  html, body { background: #fff; color: #000; }
+  html, body { background: #fff !important; color: #000; }
+  /* Some of the surfaces are painted from tokens on the element rather than
+     inherited, so the ground is stated once more here. */
+  .shell, main, .panel, .modal-inner { background: #fff !important; }
 
-  /* Chrome, and anything that only makes sense to click. */
+  /* Chrome, and anything that only makes sense to click. The read-state controls
+     go with it: a data clock, a text-size switch and a light/dark toggle are
+     things you press, and none of them means anything once the page is paper. */
   .rail, .skip-link, #strips, #page-head-actions, .stale-strip,
   .form-actions, .modal-inner > .close, .segmented, .refresh,
+  .clock, .textscale, .appearance, .lang-toggle, .page-head-side,
   button, input, select, .chart-tip { display: none !important; }
 
-  .shell { display: block; }
+  /* When a dialog is the document, the application's own page header is not part
+     of it. The printed masthead says what this sheet is; the screen header said
+     which screen it was opened from, which is not the same thing and was landing
+     at the top of every printed brief. */
+  body:has(.modal:not([hidden])) .page-head { display: none !important; }
+
+  /* `min-height: 100vh` is right on screen and wrong on paper: with the rail,
+     the header and the view all hidden, the shell still reserved a full viewport
+     of nothing, so the first sheet came out blank and the document started on
+     page two. */
+  .shell { display: block; min-height: 0; }
   main#view { padding: 0; }
 
   /* A dialog is the sheet, not an overlay on top of one. */
@@ -2367,6 +2480,74 @@ body.booting .login-wrap, body.signed-out { background: var(--bg); }
   /* Keep rows and panels whole across a page break. */
   tr, .panel, .stat { break-inside: avoid; }
   thead { display: table-header-group; }
+
+  /* Nothing on a printed page scrolls, so every scroll container has to be
+     released or the printer gets one page of a table that has four hundred rows.
+     This is what cut the bill of quantities off partway down the first sheet:
+     `.table-wrap` is `overflow: auto`, and an overflow container prints clipped
+     to its own box rather than flowing onto the next page. */
+  .table-wrap, .chart-table-wrap, .table-host, .modal-inner,
+  .detail, .map-controls, .control-body, #detail-body, .panel.flex {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+  /* A disclosure the reader opened on screen is closed again on paper unless it
+     is told otherwise; the bill IS the document. */
+  details { display: block; }
+  details > summary { display: none; }
+
+  /* ---- the printed masthead ---- */
+  .print-sheet-head {
+    display: grid; grid-template-columns: auto 1fr;
+    gap: 4mm 6mm; align-items: center;
+    padding: 0 0 4mm; margin: 0 0 5mm;
+    border-bottom: 2px solid #000;
+    break-after: avoid;
+  }
+  .print-brand .wordmark-svg {
+    width: 34mm; height: auto; display: block;
+    /* Browsers drop colour from printed output unless asked not to. */
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  /* The mark prints in the brand's own two colours, and they are written out
+     here rather than taken from --logoInk/--logoMint. Those tokens follow the
+     reader's appearance: on dark they resolve to #e8edf2, which is a white
+     wordmark on white paper. The mark on a document is the brand's, not the
+     theme's. */
+  .print-brand .wm-ink { fill: #003663; }
+  .print-brand .wm-accent { fill: #85e199; }
+  .print-title h1 { margin: 0; font-size: 16pt; letter-spacing: -.01em; }
+  .print-title p { margin: 1mm 0 0; font-size: 9pt; color: #333; }
+  .print-meta {
+    grid-column: 1 / -1; margin: 0;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm 6mm;
+  }
+  .print-meta > div.wide { grid-column: 1 / -1; }
+  .print-meta dt {
+    font-size: 7pt; text-transform: uppercase; letter-spacing: .08em; color: #555;
+  }
+  .print-meta dd { margin: 0; font-size: 9.5pt; }
+  .print-meta .mono { font-size: 8pt; word-break: break-all; }
+
+  .print-foot {
+    display: block; margin-top: 5mm; padding-top: 3mm;
+    border-top: 1px solid #bbb; font-size: 8pt; color: #333;
+    break-inside: avoid;
+  }
+
+  /* The dialog's own screen heading and its screen summary line are replaced by
+     the masthead above, which says the same things and more. */
+  .modal-inner > h2, .modal-inner > .caption { display: none; }
+
+  /* A costed table on paper: hairlines, repeated head, nothing coloured. */
+  .modal-inner table { font-size: 8.5pt; width: 100%; }
+  .modal-inner thead th {
+    border-bottom: 1px solid #000; color: #000; background: none;
+    font-size: 7.5pt; letter-spacing: .06em;
+  }
+  .modal-inner tbody td { border-bottom: 1px solid #ddd; height: auto; padding: 1.6mm 2mm; }
+  .modal-inner .muted { color: #444; }
 
   /* A URL printed after every link is noise on a costed document. */
   a[href]::after { content: ""; }

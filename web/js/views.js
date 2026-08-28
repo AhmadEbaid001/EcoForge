@@ -18,10 +18,11 @@
 'use strict';
 
 import { api, ApiError } from './api.js';
+import { wordmark } from './brand.js';
 import { t } from './i18n.js';
 import {
-  compact, escapeHtml, icon, lineChart, mark, proportionBar, sevChip, stackedBars,
-  statTile,
+  chainFigure, compact, escapeHtml, icon, lineChart, mark, proportionBar, sevChip,
+  stackedBars, statTile,
 } from './charts.js';
 import {
   clearStatus, confirmAction, dataTable, emptyState, markRead, onReread,
@@ -485,7 +486,10 @@ export const alerts = {
   title: 'Alerts',
   async render(root, ctx) {
     const state = {
-      severity: '', building: '', onlyOpen: true,
+      /* Opened from the rail this is empty; opened from another screen that had
+       * a building in hand - integrity, say - the inbox arrives already narrowed
+       * to it, which is the whole reason that link exists. */
+      severity: '', building: ctx.params?.get('building') || '', onlyOpen: true,
       rows: [], selected: new Set(), total: null, bySeverity: {},
       sortKey: 'robust_z', sortDir: 'desc',
     };
@@ -501,6 +505,10 @@ export const alerts = {
       ]);
       const options = [{ value: '', label: 'All buildings' }, ...buildingOptions(buildings)];
       const summaryTotal = firstSummary.open_anomalies;
+      /* An id that names no building is a filter that would silently return
+       * nothing, so it is dropped rather than honoured. */
+      if (state.building && !buildings.some((b) => b.id === state.building)) state.building = '';
+      const arrivedFiltered = Boolean(state.building);
 
       /* One sentence, stated rather than implied. The list is a capped slice of
        * about thirty thousand rows; acknowledging one used to refill it from the
@@ -735,7 +743,8 @@ export const alerts = {
             </div>
             <span class="rule"></span>
             <div class="group">
-              ${picker({ id: 'alert-building', label: 'Building', options, value: '' })}
+              ${picker({ id: 'alert-building', label: 'Building', options,
+                         value: state.building })}
             </div>
             <span class="rule"></span>
             <label class="check"><input type="checkbox" id="alert-open" checked> Open only</label>
@@ -867,6 +876,15 @@ export const alerts = {
       }
 
       await load();
+
+      if (arrivedFiltered) {
+        const b = buildings.find((x) => x.id === state.building);
+        setStatus(root, {
+          kind: 'hint',
+          message: `Showing only ${b ? b.code : 'one building'}. Clear filters for the `
+                 + 'whole inbox.',
+        });
+      }
     });
   },
 };
@@ -876,9 +894,6 @@ export const alerts = {
 /* This screen is provenance, not history-as-a-feature. It exists so a run can be
  * re-found and reproduced from its input hash, which is also why the hash gets a
  * control of its own rather than being quietly truncated. */
-const RUNS_PURPOSE = 'Every allocation the optimizer has stored, and the 64-character '
-  + 'hash of the inputs that produced it. Same hash, same allocation.';
-
 export const runs = {
   title: 'Allocations',
   async render(root, ctx) {
@@ -889,10 +904,7 @@ export const runs = {
     const state = { rows: [], sortKey: 'created_at', sortDir: 'desc', hashFull: false };
 
     root.innerHTML = `
-      ${pageHead({ root,
-        title: 'Stored allocations',
-        description: RUNS_PURPOSE,
-      })}
+      ${pageHead({ root, title: 'Stored allocations' })}
       ${skeletonRows(6)}`;
 
     await guard(root, async () => {
@@ -952,10 +964,7 @@ export const runs = {
       };
 
       root.innerHTML = `
-        ${pageHead({ root,
-          title: 'Stored allocations',
-          description: RUNS_PURPOSE,
-        })}
+        ${pageHead({ root, title: 'Stored allocations' })}
         <section class="panel">
           <header>
             <h3>Runs</h3>
@@ -1208,11 +1217,37 @@ async function showBoq(runId) {
          aria-label="Bill of quantities">
       <button class="close" type="button" data-close aria-label="Close">&times;</button>
       <h2>Bill of quantities</h2>
+
+      <!-- The printed sheet's masthead. Hidden on screen, because on screen the
+           dialog already has a heading and the app already has a wordmark; on
+           paper neither is there, and a costed document that does not say who
+           issued it, for which run, against which inputs, is not a document
+           anybody can file. -->
+      <div class="print-sheet-head" aria-hidden="true">
+        <div class="print-brand">${wordmark('GEMP')}</div>
+        <div class="print-title">
+          <h1>Bill of quantities</h1>
+          <p>Green Energy Monitoring Platform &middot; New Cairo retrofit portfolio</p>
+        </div>
+        <dl class="print-meta">
+          <div><dt>Run</dt><dd class="mono">${escapeHtml(String(runId))}</dd></div>
+          <div><dt>Issued</dt><dd>${escapeHtml(new Date().toLocaleString('en-GB'))}</dd></div>
+          <div><dt>Lines</dt><dd>${boq.lines.length}</dd></div>
+          <div><dt>Total</dt><dd><strong>${compact(boq.total_egp)} EGP</strong></dd></div>
+          <div class="wide"><dt>Input hash</dt>
+            <dd class="mono">${escapeHtml(String(boq.inputs_hash))}</dd></div>
+        </dl>
+      </div>
+
       <p class="caption">Run <span class="mono">${escapeHtml(String(runId).slice(0, 10))}
         &hellip;</span> &middot; ${boq.lines.length} lines &middot; total
         ${compact(boq.total_egp)} EGP &middot; input hash
         <span class="mono">${escapeHtml(String(boq.inputs_hash).slice(0, 10))}&hellip;</span></p>
       <div id="boq-body"></div>
+      <p class="print-foot" aria-hidden="true">Every rate in this bill is drawn from the
+      platform's costing catalog against the inputs identified by the hash above. Rates
+      marked &ldquo;rate uncited&rdquo; carry an open TODO in that catalog and must be
+      sourced before tender.</p>
       <div class="form-actions">
         <button type="button" class="primary" data-download>Download CSV</button>
         <button type="button" class="secondary" data-print>Print brief</button>
@@ -1236,7 +1271,18 @@ async function showBoq(runId) {
   });
   host.querySelector('[data-download]').addEventListener('click', () =>
     downloadCsv(`gemp-boq-${String(runId).slice(0, 8)}.csv`, boq.lines));
-  host.querySelector('[data-print]').addEventListener('click', () => window.print());
+  host.querySelector('[data-print]').addEventListener('click', () => {
+    const previous = document.title;
+    document.title = `GEMP bill of quantities — run ${String(runId).slice(0, 8)}`;
+    /* Restored after the dialog closes, whether the sheet was printed or the
+     * print dialog was dismissed. `afterprint` fires for both. */
+    const restore = () => {
+      document.title = previous;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    window.print();
+  });
 
   document.body.appendChild(host);
   host.querySelector('.modal-inner').focus();
@@ -1251,17 +1297,11 @@ async function showBoq(runId) {
  * whole subsystem exists for, and it has to say what broke, where, what is still
  * true, and why there is no button here that fixes it.
  */
-const INTEGRITY_PURPOSE = 'Whether the stored readings are the ones that were signed '
-  + 'on arrival. The walk reads and never writes.';
-
 export const integrity = {
   title: 'Integrity',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({ root,
-        title: 'Reading integrity',
-        description: INTEGRITY_PURPOSE,
-      })}
+      ${pageHead({ root, title: 'Reading integrity' })}
       ${skeletonRows(4)}`;
 
     await guard(root, async () => {
@@ -1274,10 +1314,7 @@ export const integrity = {
       const state = { building: '', phase: 'idle' };
 
       root.innerHTML = `
-        ${pageHead({ root,
-          title: 'Reading integrity',
-          description: INTEGRITY_PURPOSE,
-        })}
+        ${pageHead({ root, title: 'Reading integrity' })}
 
         <div class="two-col aside-first">
           <section class="panel">
@@ -1291,7 +1328,11 @@ export const integrity = {
 
               <!-- Three words this screen cannot avoid using, defined before it
                    uses them. A verdict in vocabulary the reader does not share
-                   is not a verdict. -->
+                   is not a verdict - but a reader who already has the vocabulary
+                   should not have to scroll past it on every visit, so it opens
+                   rather than occupying the column. -->
+              <details class="glossary-wrap">
+                <summary>What these three checks mean</summary>
               <dl class="glossary">
                 <div><dt>Chain walk</dt><dd>Re-reading every stored reading for the
                   building in order and checking that each one still hashes to the value
@@ -1303,6 +1344,7 @@ export const integrity = {
                   head the database currently reports are the same value &mdash; nobody
                   rebuilt the chain and updated only one of the two.</dd></div>
               </dl>
+              </details>
             </div>
           </section>
 
@@ -1370,6 +1412,27 @@ export const integrity = {
             <span class="verdict-rows"><strong>${compact(report.rows)}</strong> rows checked</span>
           </div>
 
+          <section class="chain-panel" aria-labelledby="chain-fig-h">
+            <div class="chain-head">
+              <h4 id="chain-fig-h" class="plain">The chain, end to end</h4>
+              <span class="scope">sequence 1 to ${compact(report.rows)}</span>
+            </div>
+            ${chainFigure({
+              rows: report.rows,
+              breakSeq: report.break ? report.break.seq : null,
+              anchorSeq: report.checkpoint_seq || null,
+              ok,
+            })}
+            <p class="caption">${report.break
+              ? `Every link up to <strong>${compact(Math.max(0, report.break.seq - 1))}</strong>
+                 was re-computed and matched. From <strong>${compact(report.break.seq)}</strong>
+                 onward nothing can be proved either way — the readings are still there,
+                 the proof is not.`
+              : `Every one of <strong>${compact(report.rows)}</strong> links was
+                 re-computed from the stored reading and matched the value the next one
+                 recorded for it.`}</p>
+          </section>
+
           <div class="checks">
             ${check(report.chain_ok, 'Chain walk verifies',
                     'Every reading still hashes to the value the next one recorded for it.')}
@@ -1407,7 +1470,8 @@ export const integrity = {
 
           <div class="form-actions">
             <button type="button" class="secondary" data-verify-again>Verify again</button>
-            <a class="btn secondary" href="#/alerts">See this building&rsquo;s alerts</a>
+            <a class="btn secondary" href="#/alerts?building=${
+              encodeURIComponent(state.building)}">See ${escapeHtml(b ? b.code : 'this building')}&rsquo;s alerts</a>
           </div>
 
           <p class="caption">${ok

@@ -573,6 +573,80 @@ function thin(list) {
   return { rows: list.filter((_, i) => i % stride === 0), stride };
 }
 
+/* ------------------------------------------------------------- chain figure */
+
+/* The reading chain, drawn as the thing it is: one run of sequence numbers, a
+ * point up to which every link was re-computed and matched, and - when there is
+ * one - the sequence where that stopped being true.
+ *
+ * A verdict of "Broken at 4718 of 555,600" is a sentence a reader has to hold
+ * three numbers in their head to picture. Drawn, the proportion is the argument:
+ * the verified prefix IS most of the bar, and the break is a hairline near its
+ * start with everything after it unproven. That is what the screen is claiming,
+ * and it is easier to check by eye than to reconstruct from figures.
+ *
+ * Not a chart of data. It is a diagram of a claim, so it carries no axis - only
+ * the three sequence numbers that bound it, and a legend that says what the two
+ * regions mean.
+ */
+export function chainFigure({ rows, breakSeq = null, anchorSeq = null, ok = true }) {
+  const total = Math.max(1, Number(rows) || 1);
+  const W = 1000, H = 74, TRACK_Y = 22, TRACK_H = 26;
+  const at = (seq) => Math.max(0, Math.min(W, (seq / total) * W));
+
+  /* A break at sequence 1 of half a million is a zero-width verified region, and
+   * a break at the last row is a zero-width unproven one. Both still have to be
+   * visible, so each region keeps a floor of two pixels once it exists at all. */
+  const cut = breakSeq === null ? W : at(breakSeq);
+  const provenW = breakSeq === null ? W : Math.max(2, cut);
+  const restW = breakSeq === null ? 0 : Math.max(2, W - cut);
+
+  const anchor = anchorSeq ? at(anchorSeq) : null;
+
+  return `<figure class="chain-figure">
+    <svg viewBox="0 0 ${W} ${H}" class="chain-svg" role="img"
+         aria-label="${breakSeq === null
+           ? `Every one of ${exact(total)} links re-computed and matched.`
+           : `Links 1 to ${exact(Math.max(0, breakSeq - 1))} matched. `
+             + `From ${exact(breakSeq)} to ${exact(total)} the chain is unproven.`}">
+      <defs>
+        <pattern id="chain-unproven" width="7" height="7" patternUnits="userSpaceOnUse"
+                 patternTransform="rotate(45)">
+          <rect width="7" height="7" class="chain-unproven-bg"/>
+          <line x1="0" y1="0" x2="0" y2="7" class="chain-unproven-line"/>
+        </pattern>
+      </defs>
+
+      <rect x="0" y="${TRACK_Y}" width="${provenW.toFixed(1)}" height="${TRACK_H}"
+            rx="3" class="chain-proven"/>
+      ${restW ? `<rect x="${cut.toFixed(1)}" y="${TRACK_Y}" width="${restW.toFixed(1)}"
+            height="${TRACK_H}" rx="3" class="chain-rest"/>` : ''}
+
+      ${breakSeq !== null ? `
+        <line x1="${cut.toFixed(1)}" y1="${TRACK_Y - 8}" x2="${cut.toFixed(1)}"
+              y2="${TRACK_Y + TRACK_H + 8}" class="chain-break"/>
+        <path d="M${(cut - 6).toFixed(1)} ${TRACK_Y - 9}h12l-6 8Z" class="chain-break-mark"/>` : ''}
+
+      ${anchor !== null ? `
+        <line x1="${anchor.toFixed(1)}" y1="${TRACK_Y - 4}" x2="${anchor.toFixed(1)}"
+              y2="${TRACK_Y + TRACK_H + 4}" class="chain-anchor"/>` : ''}
+
+      <text x="0" y="${H - 6}" class="chain-tick" text-anchor="start">1</text>
+      ${breakSeq !== null ? `<text x="${cut.toFixed(1)}" y="14" class="chain-tick break"
+        text-anchor="${cut > W * 0.85 ? 'end' : cut < W * 0.15 ? 'start' : 'middle'}"
+        >${exact(breakSeq)}</text>` : ''}
+      <text x="${W}" y="${H - 6}" class="chain-tick" text-anchor="end">${exact(total)}</text>
+    </svg>
+    <figcaption class="chain-legend">
+      <span class="key"><span class="swatch proven"></span>${breakSeq === null
+        ? 'Re-computed and matched' : 'Matched up to the break'}</span>
+      ${breakSeq !== null
+        ? '<span class="key"><span class="swatch rest"></span>Unproven after it</span>' : ''}
+      ${anchorSeq ? '<span class="key"><span class="swatch anchor"></span>External anchor</span>' : ''}
+    </figcaption>
+  </figure>`;
+}
+
 /* --------------------------------------------------------------- line chart */
 
 /* A time series, one or more lines. series = [{label, points: [[iso, y], ...]}] */
