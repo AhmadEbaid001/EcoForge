@@ -919,6 +919,14 @@ label.check {
   text-wrap: pretty; max-width: 90ch;
 }
 .note-panel strong, .note-panel em { color: var(--ink); font-style: normal; }
+/* A note that reports a condition rather than a standing fact. Amber says the
+   screen is degraded, red says the thing the panel below it exists to draw is
+   not there at all - and the icon carries the same distinction as the border, so
+   the state is never colour alone. */
+.note-panel.warn { background: var(--amberSoft); border-color: var(--amber); }
+.note-panel.warn .icon { color: var(--amber); }
+.note-panel.bad { background: var(--critSoft); border-color: var(--crit); }
+.note-panel.bad .icon { color: var(--crit); }
 
 /* Severity as three toggles rather than a dropdown: the three are the whole
    vocabulary, they each carry their shape, and a closed <select> hides two
@@ -1439,6 +1447,10 @@ table { width: 100%; border-collapse: collapse; text-align: start; }
    control face with a hairline under it. */
 thead th {
   position: sticky; top: 0; z-index: 1;
+  /* The user agent aligns `th` to centre. Every cell under it is aligned to the
+     start, so without this the heading and its column pull apart as the column
+     gets wider. `th.num` below still overrides to end, with its column. */
+  text-align: start;
   background: var(--panel2); border-bottom: 1px solid var(--line);
   padding: var(--s-6) var(--s-xs);
   font-size: var(--fs-label); font-weight: 700; letter-spacing: .07em;
@@ -1471,7 +1483,7 @@ td.wrap { white-space: normal; min-width: 9rem; }
 tr.denied td { color: var(--crit); }
 /* A table cell that stays a table cell, aligned to the trailing edge like every
    other action in the product. */
-td.row-actions { text-align: end; white-space: nowrap; }
+td.row-actions, th.row-actions { text-align: end; white-space: nowrap; }
 td.row-actions > button { vertical-align: middle; }
 /* A table carrying a row action gives every row the height to seat one, so the
    control has air above and below it and the rows stay a single height whether

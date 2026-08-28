@@ -725,6 +725,21 @@ def forecast_metrics(session: Session = Depends(get_session)) -> dict:
         SELECT annual_kwh_source, count(*) FROM building GROUP BY annual_kwh_source
     """)).all()
 
+    # How current the forecasts are, in DATA time.
+    #
+    # Without this the forecast panel can only fail silently: it asks for the last
+    # two weeks of readings and draws whatever forecast rows fall inside them, so a
+    # refit that has not run for months produces an empty second series and a chart
+    # that looks like a bug rather than like stale data. The screen can say which it
+    # is only if the numbers are here to say it with.
+    newest_forecast = session.execute(text("SELECT max(ts) FROM forecast")).scalar()
+    newest_reading = latest_reading_ts(session)
+    covered = session.execute(text("""
+        SELECT count(DISTINCT building_id) FROM forecast
+        WHERE ts >= :cutoff
+    """), {"cutoff": (newest_reading - timedelta(hours=336))
+           if newest_reading else None}).scalar() if newest_reading else 0
+
     return {
         "by_model": [
             {"model_version": r[0], "buildings": r[1], "points": r[2]} for r in rows
@@ -732,6 +747,12 @@ def forecast_metrics(session: Session = Depends(get_session)) -> dict:
         # F3: how many buildings are costed against measured consumption rather than
         # the figure the portfolio fixture shipped with.
         "annual_kwh_source": {row[0]: row[1] for row in sources},
+        "newest_forecast_ts": newest_forecast.isoformat() if newest_forecast else None,
+        "newest_reading_ts": newest_reading.isoformat() if newest_reading else None,
+        # Buildings whose forecast reaches into the window the panel draws. Zero
+        # here is the difference between "no model ran" and "the model ran in
+        # December and the readings are in May".
+        "buildings_covered_recently": int(covered or 0),
     }
 
 

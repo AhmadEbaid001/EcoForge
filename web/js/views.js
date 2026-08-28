@@ -307,22 +307,24 @@ export const overview = {
 
 /* ----------------------------------------------------------------- forecasts */
 
-/* Names the question and the one thing this screen cannot answer, in the same
- * breath. There is no per-building error metric anywhere in this system, so a
- * reader who comes here looking for one is told immediately rather than after
- * hunting the screen for it. */
-const FORECASTS_PURPOSE = 'What each building is costed against, and which model '
-  + 'produced it. There is no per-building error figure here — the screen reports '
-  + 'which model was selected and lets you compare the two lines by eye.';
+/* How far apart two data-time stamps are, in the largest unit that still reads as
+ * a quantity. Forecast staleness is the number this screen exists to expose and
+ * "13,058 hours" is not a number anyone converts in their head. */
+function ageBetween(fromIso, toIso) {
+  if (!fromIso || !toIso) return null;
+  const hours = (Date.parse(toIso) - Date.parse(fromIso)) / 3.6e6;
+  if (!Number.isFinite(hours)) return null;
+  if (hours < 48) return `${Math.max(0, Math.round(hours))} hours`;
+  const days = hours / 24;
+  if (days < 60) return `${Math.round(days)} days`;
+  return `${(days / 30.44).toFixed(1)} months`;
+}
 
 export const forecasts = {
   title: 'Forecasts',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({ root,
-        title: 'Load forecasting',
-        description: FORECASTS_PURPOSE,
-      })}
+      ${pageHead({ root, title: 'Load forecasting' })}
       ${skeletonChart()}`;
 
     await guard(root, async () => {
@@ -342,26 +344,68 @@ export const forecasts = {
        * one: it aggregates by model_version. A MAPE chip here would be a number
        * this screen invented, and the purpose sentence says so out loud. */
 
+      /* A bar divided into one segment is a bar that says nothing: it draws a
+       * full-width block labelled 100% and asks the reader to work out that the
+       * portfolio is unanimous. When one model has won everywhere, say so; keep
+       * the bar for when there is a split to see. */
+      const models = (metrics.by_model || []).slice()
+        .sort((a, b) => b.buildings - a.buildings);
+      const unanimous = models.length === 1 ? models[0] : null;
+      const staleBy = ageBetween(metrics.newest_forecast_ts, metrics.newest_reading_ts);
+      const covered = metrics.buildings_covered_recently;
+      /* Coverage is what the chart below actually depends on, so it is reported
+       * as a state rather than left for the reader to infer from an empty panel. */
+      const coverState = covered === 0 ? 'none'
+        : covered < buildings.length ? 'partial' : 'full';
+
       root.innerHTML = `
-        ${pageHead({ root,
-          title: 'Load forecasting',
-          description: FORECASTS_PURPOSE,
-        })}
+        ${pageHead({ root, title: 'Load forecasting' })}
 
         <section class="panel">
           <header>
-            <h3>Which forecaster won, per building</h3>
-            <span class="scope">one bar over all ${buildings.length}, segments labelled
-              in place</span>
+            <h3>Forecast coverage</h3>
+            <span class="scope">${buildings.length} buildings, in data time</span>
           </header>
-          ${proportionBar((metrics.by_model || []).map((m) => ({
+
+          <div class="stat-row compact">
+            ${statTile('Costed from', unanimous ? unanimous.model_version
+                       : `${models.length} models`,
+                       unanimous ? `All ${unanimous.buildings} buildings.`
+                                 : 'Split across the portfolio.')}
+            ${statTile('Reaching the last 14 days', `${covered} of ${buildings.length}`,
+                       coverState === 'full' ? 'Every building has a comparable line.'
+                       : coverState === 'none' ? 'No building has one.'
+                       : 'The rest have nothing to compare against.')}
+            ${statTile('Forecast age', staleBy || '—',
+                       'Behind the newest meter reading.')}
+          </div>
+
+          ${coverState === 'full' ? '' : `
+          <div class="note-panel ${coverState === 'none' ? 'bad' : 'warn'}" role="note">
+            ${icon('warning')}
+            <p>The stored forecasts end <strong>${escapeHtml(staleBy || 'some time')}</strong>
+            before the newest reading, so ${coverState === 'none'
+              ? 'no building has a forecast inside the two weeks the panel below draws'
+              : `only ${covered} of ${buildings.length} buildings have one inside the two `
+                + 'weeks the panel below draws'}. The chart is not broken &mdash; there is
+            nothing recent to draw. Re-running the nightly refit regenerates them.</p>
+          </div>`}
+
+          ${unanimous ? '' : proportionBar(models.map((m) => ({
             label: m.model_version, value: m.buildings,
           })))}
-          <p class="caption">The seasonal-naive baseline winning on most of the portfolio
-          is <strong>information, not a shortfall</strong>. Those buildings have a load
-          shape stable enough that last week predicts this week, and a heavier model
-          would only add variance to the very figure the optimizer costs against. It is
-          why the baseline is kept and reported rather than quietly replaced.</p>
+
+          <p class="caption">${unanimous
+            ? `Every building is costed from <strong>${escapeHtml(unanimous.model_version)}</strong>.
+               A single winner is a finding, not a default: the selector keeps a
+               seasonal-naive baseline and reports it whenever it wins, so a portfolio
+               reading like this one is saying the learned model beat that baseline
+               everywhere it was measured.`
+            : `Where the seasonal-naive baseline wins, that is
+               <strong>information, not a shortfall</strong>. Those buildings have a load
+               shape stable enough that last week predicts this week, and a heavier model
+               would only add variance to the figure the optimizer costs against. It is
+               why the baseline is kept and reported rather than quietly replaced.`}</p>
         </section>
 
         <section class="panel">
@@ -382,7 +426,7 @@ export const forecasts = {
           })}</div>
           <div class="stroke-legend" id="fc-legend" hidden>
             <span class="key"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--ink)" stroke-width="1.8" fill="none"/></svg>Metered actual</span>
-            <span class="key"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 3" fill="none"/></svg>Forecast</span>
+            <span class="key" data-key="forecast"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 3" fill="none"/></svg>Forecast</span>
           </div>
         </section>`;
 
@@ -393,11 +437,22 @@ export const forecasts = {
         target.innerHTML = skeletonChart();
         const data = await api.forecast(state.building, 336);
         const b = byId.get(state.building);
+        const hasForecast = (data.forecast || []).length > 0;
+
         target.innerHTML = lineChart([
           { label: 'Actual', points: data.actual },
           { label: 'Forecast', points: data.forecast },
-        ], { unit: 'kW' });
-        root.querySelector('#fc-legend').hidden = false;
+        ], { unit: 'kW' }) + (hasForecast ? '' : `
+          <p class="note warn">No forecast is stored for this building inside this
+          window, so only the metered line is drawn. The panel above says how far
+          behind the stored forecasts are.</p>`);
+
+        /* The legend named a dashed forecast line whether or not one had been
+         * drawn, which on a building with no recent forecast is the screen
+         * describing something that is not there. */
+        const legend = root.querySelector('#fc-legend');
+        legend.hidden = false;
+        legend.querySelector('[data-key="forecast"]').hidden = !hasForecast;
         /* Name, code, district, the model that won here, and the figure this
          * building is costed at - so the chart is anchored to a building rather
          * than floating as "a forecast". */

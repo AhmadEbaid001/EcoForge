@@ -545,9 +545,16 @@ function textured(index, id, shape) {
  */
 function tableView(caption, columns, rows, note = '') {
   if (!rows.length) return '';
-  const head = columns.map((c) => `<th scope="col">${escapeHtml(c)}</th>`).join('');
+  /* A cell counts as numeric if what it shows starts with a digit or a sign -
+   * "1,240", "-3.2", "97%", "12.4k" all do, "2042-04-20 12:23" deliberately does
+   * not, because a timestamp is read left to right like a word. */
+  const numericColumn = columns.map((_, i) =>
+    rows.every((r) => /^[-+]?[\d.,]+\s*[%a-zA-Z/]{0,6}$/.test(String(r[i] ?? '').trim())));
+  const head = columns.map((c, i) =>
+    `<th scope="col"${numericColumn[i] ? ' class="num"' : ''}>${escapeHtml(c)}</th>`).join('');
   const body = rows.map((r) =>
-    `<tr>${r.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('');
+    `<tr>${r.map((cell, i) =>
+      `<td${numericColumn[i] ? ' class="num"' : ''}>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('');
   return `<details class="chart-table">
     <summary>${icon('table')}<span>${escapeHtml(caption)}</span></summary>
     ${note ? `<p class="caption">${escapeHtml(note)}</p>` : ''}

@@ -308,6 +308,21 @@ def test_forecast_metrics_report_which_model_is_in_use(client):
     assert "annual_kwh_source" in body
 
 
+def test_forecast_metrics_report_how_stale_the_forecasts_are(client):
+    """The forecast panel draws the last fortnight of readings and whatever
+    forecast falls inside it. When a refit has not run, that second series is
+    empty and the chart looks broken rather than stale - so the screen needs the
+    numbers to tell those two apart.
+    """
+    body = client.get("/api/v1/metrics/forecast").json()
+
+    assert "newest_forecast_ts" in body
+    assert "newest_reading_ts" in body
+    covered = body["buildings_covered_recently"]
+    assert isinstance(covered, int)
+    assert covered >= 0
+
+
 def test_anomaly_metrics_expose_the_threshold_actually_in_use(client):
     """The threshold is tuned, so the dashboard must say which value produced the
     numbers on it - otherwise a re-tuning silently changes what the counts mean."""

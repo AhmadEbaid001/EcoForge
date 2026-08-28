@@ -275,7 +275,7 @@ export function dataTable({ columns, rows, sortKey, sortDir = 'desc', selectable
                c.key === sortKey ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span></button>`
         : escapeHtml(c.label))
       : '<span class="sr-only">Actions</span>';
-    return `<th class="${c.num ? 'num' : ''}" aria-sort="${aria}">${label}</th>`;
+    return `<th class="${c.num ? 'num' : ''}${c.cls ? ` ${c.cls}` : ''}" aria-sort="${aria}">${label}</th>`;
   }).join('');
 
   const body = sorted.map((row) => `
