@@ -1,0 +1,37 @@
+Copyright (c) 2026 Team Ecoforge — Ahmed Ebaid and Nada Wagdy.
+All rights reserved.
+
+This software and its accompanying documentation, data, figures and design
+assets (together, "the Work") are proprietary and confidential.
+
+No licence is granted. In particular, and without limiting the foregoing, no
+permission is given to any person to use, copy, modify, merge, publish,
+distribute, sublicense, sell, host, or create derivative works from the Work, in
+whole or in part, in source or binary form, by any means and for any purpose,
+except with the prior written permission of the copyright holders.
+
+Access to a copy of the Work — including access granted through a source code
+repository, a deployed instance, a demonstration, or a submission to a
+competition, conference or academic body — is permission to READ and EVALUATE
+the Work for that purpose alone. It is not permission to run it for any other
+purpose, to reuse any part of it in another project, or to redistribute it.
+
+The Work incorporates third-party components under their own licences. Those
+licences govern those components and nothing in this file restricts the rights
+they grant. The dependency set is declared in pyproject.toml and the container
+images in docker-compose.yml; each carries its own terms.
+
+The Work is provided "AS IS", without warranty of any kind, express or implied,
+including but not limited to the warranties of merchantability, fitness for a
+particular purpose and non-infringement. In no event shall the copyright holders
+be liable for any claim, damages or other liability, whether in an action of
+contract, tort or otherwise, arising from, out of or in connection with the Work
+or the use or other dealings in the Work.
+
+The Work makes quantitative claims about building energy retrofits. Those claims
+are measured against simulated data and a partially uncited cost catalog, as the
+platform itself states on every screen where it presents them. Nothing in the
+Work is engineering advice, and no part of it should be relied upon for a
+procurement, tender or construction decision without independent verification.
+
+For permissions beyond the scope of this notice, contact the copyright holders.
