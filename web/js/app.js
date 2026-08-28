@@ -14,7 +14,8 @@
 'use strict';
 
 import { api, setPasswordChangeHandler, setUnauthenticatedHandler } from './api.js';
-import { builtFigure, signInArtwork, stageFigure, wordmark } from './brand.js';
+import { builtFigure, signInArtwork, stackStrip, stageFigure, wordmark }
+  from './brand.js';
 import { escapeHtml, hydrateCharts, icon } from './charts.js';
 import { currentLang, locale, setLangCode, t } from './i18n.js';
 import { markRead, startClock, wireReread } from './ui.js';
@@ -236,17 +237,12 @@ function showLanding() {
         <div class="lp-hero-art lp-enter lp-enter-art">${signInArtwork()}</div>
       </section>
 
-      <!-- The proof strip. Where a commercial site puts customer logos, this puts
-           the four numbers that are true by construction. -->
-      <section class="lp-proof lp-rise-group" aria-label="At a glance">
-        <div><strong>50</strong><span>public buildings, each costed
-          from its own metered consumption</span></div>
-        <div><strong>4</strong><span>allocation methods solved side by side,
-          including the status quo</span></div>
-        <div><strong>64</strong><span>character input hash on every stored
-          allocation</span></div>
-        <div><strong>720&times;</strong><span>replay speed, so a fortnight of
-          behaviour appears in half an hour</span></div>
+      <!-- Where a commercial site puts customer logos. The numbers that used to
+           be here have a section of their own further down, which is where they
+           can carry the sentence each of them needs. -->
+      <section class="lp-stack" aria-label="Built with">
+        <h2 class="sr-only">Built with</h2>
+        <div class="stack-viewport">${stackStrip()}</div>
       </section>
 
       <section class="lp-band" id="what">
@@ -282,72 +278,166 @@ function showLanding() {
         </ol>
       </section>
 
+      <section class="lp-band" id="numbers">
+        <div class="band-head lp-rise">
+          <p class="lp-kicker">Reference figures</p>
+          <h2 class="lp-h">Four numbers, and where each one comes from</h2>
+          <p class="lp-sub">None of these is a target or an average. Each is a
+          property of how the platform is built, which is why it can be quoted
+          without a footnote.</p>
+        </div>
+        <dl class="num-strip lp-rise-group">
+          <div class="num-cell">
+            <dt class="num-key">Public buildings</dt>
+            <dd class="num-body">
+              <span class="num-val"><span class="num-digits d2">50</span></span>
+              <span class="num-note">Each costed from its own metered consumption
+              rather than from a floor-area rule of thumb.</span>
+              <span class="num-src">data/buildings.geojson</span>
+            </dd>
+          </div>
+          <div class="num-cell">
+            <dt class="num-key">Allocation methods</dt>
+            <dd class="num-body">
+              <span class="num-val"><span class="num-digits d1">4</span></span>
+              <span class="num-note">Solved side by side on identical inputs, the
+              status quo among them, so the recommendation has something to
+              beat.</span>
+              <span class="num-src">optimize.SOLVERS</span>
+            </dd>
+          </div>
+          <div class="num-cell">
+            <dt class="num-key">Input hash</dt>
+            <dd class="num-body">
+              <span class="num-val"><span class="num-digits d2">64</span><span
+                class="num-unit">chars</span></span>
+              <span class="num-note">Stored with every allocation, so a run can be
+              tied to the exact data it was solved against.</span>
+              <span class="num-src">sha256 &middot; services.inputs_hash</span>
+            </dd>
+          </div>
+          <div class="num-cell">
+            <dt class="num-key">Replay speed</dt>
+            <dd class="num-body">
+              <span class="num-val"><span class="num-digits d3">720</span><span
+                class="num-mult">&times;</span></span>
+              <span class="num-note">The simulator&rsquo;s clock, so a fortnight of
+              behaviour plays out in half an hour of demonstration.</span>
+              <span class="num-src">GEMP_SIM_SPEED</span>
+            </dd>
+          </div>
+        </dl>
+      </section>
+
       <section class="lp-band lp-band-alt" id="built">
-        <h2 class="lp-h lp-rise">How it is built</h2>
+        <div class="band-head lp-rise">
+          <h2 class="lp-h">How it is built</h2>
+          <p class="lp-sub">Four decisions taken early, each of which closed off an
+          easier option. They are the reason the platform behaves the way it does in
+          a room with no network and a reviewer asking where a number came from.</p>
+        </div>
         <div class="built-grid lp-rise-group">
           <article class="built-card">
             <div class="built-fig">${builtFigure('offline')}</div>
-            <h3>It works with the network unplugged</h3>
-            <p>No CDN, no web fonts, no map tiles, no charting library. The allocation
-            map is schematic SVG over local geometry and every chart is drawn by hand,
-            so a demonstration does not depend on conference wifi.</p>
+            <div class="built-body">
+              <h3>It works with the network unplugged</h3>
+              <p>No CDN, no web fonts, no map tiles, no charting library. The
+              allocation map is schematic SVG over local geometry and every chart is
+              drawn by hand, so a demonstration does not depend on conference wifi.</p>
+            </div>
           </article>
           <article class="built-card">
             <div class="built-fig">${builtFigure('roles')}</div>
-            <h3>Three roles, and refusals are recorded</h3>
-            <p>Viewers read, analysts solve and acknowledge, administrators manage
-            accounts. Every authenticated action is written to an audit log
-            <em>including the ones that were denied</em>, which is the half most audit
-            logs leave out.</p>
+            <div class="built-body">
+              <h3>Three roles, and refusals are recorded</h3>
+              <p>Viewers read, analysts solve and acknowledge, administrators manage
+              accounts. Every authenticated action is written to an audit log
+              <em>including the ones that were denied</em>, which is the half most
+              audit logs leave out.</p>
+            </div>
           </article>
           <article class="built-card">
             <div class="built-fig">${builtFigure('reproducible')}</div>
-            <h3>Reproducible by construction</h3>
-            <p>Candidate expansion is deterministic and the optimizer is exact, so the
-            same inputs give the same allocation on any machine. That is a measured
-            claim rather than an aspiration &mdash; the harness checks it.</p>
+            <div class="built-body">
+              <h3>Reproducible by construction</h3>
+              <p>Candidate expansion is deterministic and the optimizer is exact, so
+              the same inputs give the same allocation on any machine. That is a
+              measured claim rather than an aspiration &mdash; the harness checks
+              it.</p>
+            </div>
           </article>
           <article class="built-card">
             <div class="built-fig">${builtFigure('arguable')}</div>
-            <h3>Built to be argued with</h3>
-            <p>Every recommendation shows the options that lost, not only the one that
-            won. An answer a reviewer cannot interrogate is an answer they are being
-            asked to take on trust.</p>
+            <div class="built-body">
+              <h3>Built to be argued with</h3>
+              <p>Every recommendation shows the options that lost, not only the one
+              that won. An answer a reviewer cannot interrogate is an answer they are
+              being asked to take on trust.</p>
+            </div>
           </article>
         </div>
       </section>
 
       <section class="lp-band lp-band-dark" id="limits">
-        <div class="limits-head lp-rise">
-          <p class="lp-badge lp-badge-quiet">Stated in place, collected here</p>
-          <h2 class="lp-h">What it does not claim</h2>
-          <p class="lp-sub">Every screen says these where somebody could be misled by
-          not knowing them. They are gathered here so none of them is a surprise.</p>
+        <div class="limits-layout">
+          <div class="limits-head lp-rise">
+            <p class="lp-kicker">Stated in place &middot; collected here</p>
+            <h2 class="lp-h">What it does not claim</h2>
+            <p class="lp-sub">Every screen says these where somebody could be misled
+            by not knowing them. They are gathered here so none of them is a
+            surprise.</p>
+            <p class="limits-count"><span>05</span> limitations</p>
+          </div>
+          <ol class="limit-list lp-rise-group">
+            <li>
+              <span class="limit-n">01</span>
+              <div class="limit-body">
+                <h3>Lifetime carbon is an estimate</h3>
+                <p class="limit-where">Stored allocations</p>
+                <p>A projection over the horizon in the parameters, not a measurement
+                of anything that has happened.</p>
+              </div>
+            </li>
+            <li>
+              <span class="limit-n">02</span>
+              <div class="limit-body">
+                <h3>Integrity is not accuracy</h3>
+                <p class="limit-where">Reading integrity</p>
+                <p>A verified chain says nobody altered what the meter sent. Whether
+                the meter itself behaved is a separate question, and one the alert
+                inbox answers.</p>
+              </div>
+            </li>
+            <li>
+              <span class="limit-n">03</span>
+              <div class="limit-body">
+                <h3>No per-building error figure</h3>
+                <p class="limit-where">Load forecasting</p>
+                <p>The platform reports which model was selected and draws both
+                lines. It does not publish a per-building error metric, so it does
+                not invent one.</p>
+              </div>
+            </li>
+            <li>
+              <span class="limit-n">04</span>
+              <div class="limit-body">
+                <h3>Some rates are still uncited</h3>
+                <p class="limit-where">Stored allocations &middot; BOQ</p>
+                <p>Marked as such wherever they appear, including on the printed bill
+                of quantities, and they must be sourced before tender.</p>
+              </div>
+            </li>
+            <li>
+              <span class="limit-n">05</span>
+              <div class="limit-body">
+                <h3>The data is simulated</h3>
+                <p class="limit-where">Portfolio overview</p>
+                <p>Fifty real buildings, a real street network and a real catalog
+                structure, driven by a simulator rather than by fifty real meters.</p>
+              </div>
+            </li>
+          </ol>
         </div>
-        <ul class="limit-grid lp-rise-group">
-          <li><span class="limit-n">01</span>
-            <h3>Lifetime carbon is an estimate</h3>
-            <p>A projection over the horizon in the parameters, not a measurement of
-            anything that has happened.</p></li>
-          <li><span class="limit-n">02</span>
-            <h3>Integrity is not accuracy</h3>
-            <p>A verified chain says nobody altered what the meter sent. Whether the
-            meter itself behaved is a separate question, and one the alert inbox
-            answers.</p></li>
-          <li><span class="limit-n">03</span>
-            <h3>No per-building error figure</h3>
-            <p>The platform reports which model was selected and draws both lines. It
-            does not publish a per-building error metric, so it does not invent
-            one.</p></li>
-          <li><span class="limit-n">04</span>
-            <h3>Some rates are still uncited</h3>
-            <p>Marked as such wherever they appear, including on the printed bill of
-            quantities, and they must be sourced before tender.</p></li>
-          <li><span class="limit-n">05</span>
-            <h3>The data is simulated</h3>
-            <p>Fifty real buildings, a real street network and a real catalog structure,
-            driven by a simulator rather than by fifty real meters.</p></li>
-        </ul>
       </section>
 
       <section class="lp-close lp-rise">
@@ -390,6 +480,67 @@ function showLanding() {
     });
   }
 
+  /* A figure that counts up to itself when it arrives.
+   *
+   * The constraint this is built around: it must never leave a number on screen
+   * that is not the real one. Two things follow from that, and the first draft
+   * of this had neither.
+   *
+   * It does not start from zero. A count that begins at nothing spends its first
+   * frames displaying a figure that is flatly wrong, and it changes digit count
+   * on the way up. Starting a little over half way keeps every intermediate the
+   * same width as the answer and within sight of it, so a frame caught mid-count
+   * reads as a value settling rather than as a different claim.
+   *
+   * And it gives up the moment the frames stop arriving on time. Under a
+   * throttled renderer - a background tab, a window behind another - the gap
+   * between frames stretched to a third of a second, and whatever was painted
+   * stayed on screen for all of it. So a late frame is treated as the animation
+   * being over: write the real figure and stop. The reader loses an effect,
+   * which is the cheaper of the two things that could be lost.
+   *
+   * The digits also keep a fixed width in `ch`, declared in the markup, so the
+   * multiplication sign beside `720` has nothing to walk left into.
+   */
+  const COUNT_MS = 900;
+  const STALL_MS = 90;   /* about five dropped frames */
+  const FROM = 0.55;
+
+  const countUp = (el) => {
+    const final = el.textContent;
+    const target = Number(final.replace(/[^0-9]/g, ''));
+    if (!Number.isFinite(target) || target < 4) return;
+
+    const first = Math.round(target * FROM);
+    let started = null;
+    let previous = null;
+
+    const frame = (now) => {
+      if (started === null) { started = now; previous = now; }
+      const late = now - previous > STALL_MS;
+      previous = now;
+
+      const t = Math.min(1, (now - started) / COUNT_MS);
+      if (t >= 1 || late) { el.textContent = final; return; }
+
+      /* Decelerating, because a figure that arrives at speed and stops dead
+         reads as a glitch rather than as a measurement settling. */
+      const eased = 1 - ((1 - t) ** 3);
+      el.textContent = String(Math.round(first + (target - first) * eased));
+      requestAnimationFrame(frame);
+    };
+
+    requestAnimationFrame(frame);
+  };
+
+  /* Called for each element the pass below reveals, so the counters are driven
+     by the same rectangle check as everything else rather than by a second
+     mechanism that could disagree with it. */
+  const onRevealed = (el) => {
+    if (still) return;
+    el.querySelectorAll('.num-digits').forEach(countUp);
+  };
+
   /* Position-checked on scroll rather than observed.
    *
    * An IntersectionObserver is the tidier tool and it was the first thing here,
@@ -412,8 +563,10 @@ function showLanding() {
        * scrolled past: a reader who follows a nav anchor jumps over whole
        * sections, and those must not be left invisible behind them. */
       if (box.top < window.innerHeight * 0.92) {
-        rising[i].classList.add('is-in');
+        const el = rising[i];
+        el.classList.add('is-in');
         rising.splice(i, 1);
+        onRevealed(el);
       }
     }
   };
@@ -494,7 +647,7 @@ function showLogin(message = '') {
               <span class="password-field">
                 <input id="login-pass" name="password" type="password" class="mono"
                        autocomplete="current-password" required>
-                <button type="button" class="lp-rise" id="login-reveal"
+                <button type="button" class="reveal" id="login-reveal"
                         aria-pressed="false" aria-label="Show password">
                   ${icon('eye')}
                 </button>
@@ -815,7 +968,12 @@ async function showApp() {
   $('sign-out').addEventListener('click', async () => {
     await api.logout().catch(() => {});
     state.user = null;
-    showLogin();
+    /* Out to the landing page, not to the form. Signing out is a decision to
+     * leave, and the front door is where leaving puts you - the same place the
+     * link puts a visitor who has never signed in. A form with nothing above it
+     * is where the session ENDED handler sends people, because that is the case
+     * where somebody was in the middle of something and needs to get back. */
+    showLanding();
   });
 
   /* Language: flip direction and strings immediately, then re-render the screen

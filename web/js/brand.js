@@ -102,30 +102,55 @@ function isoBox(gx, gy, h, solar) {
        + panel;
 }
 
-function turbine(cx, cy, scale) {
+function turbine(cx, cy, scale, variant) {
   const H = 96 * scale;
   const R = 30 * scale;
   const pad = R + 6;
 
-  /* The rotor lives in its own nested <svg> centred on the hub.
+  /* The rotor lives in its own nested <svg> whose centre is the hub, so the
+   * group can be positioned without a `transform` - a CSS animation on
+   * `transform` would overwrite a transform attribute, and an inline style is
+   * dropped by this project's Content-Security-Policy.
+   *
+   * What turns the rotor is `transform-origin`, and getting that wrong is why
+   * the blades used to orbit a point below and to the right of the mast instead
+   * of turning on it. `transform-box: view-box` resolves against a viewport that
+   * is not the one this markup establishes, so the origin landed 55px away from
+   * the hub. `fill-box` resolves against the group's own bounding box, which is
+   * a box this code controls: the invisible circle below is centred on the hub
+   * and reaches as far as the blades do, so the bounding box is symmetric about
+   * the hub whatever the blades are doing. Then `transform-origin: center` can
+   * only mean the hub. */
+  const rot = (a, x, y) => {
+    const r = a * Math.PI / 180;
+    return `${(x * Math.cos(r) - y * Math.sin(r)).toFixed(1)},`
+         + `${(x * Math.sin(r) + y * Math.cos(r)).toFixed(1)}`;
+  };
 
-   * A CSS rotation needs a transform-origin, and the only way to give one to a
-   * shape sitting at an arbitrary point of a shared coordinate system is an
-   * inline `style` - which this project's Content-Security-Policy drops. A
-   * nested viewBox whose origin IS the hub makes `transform-origin: center`
-   * mean the right thing, with no inline anything. */
-  const blades = [0, 120, 240].map((a) => {
-    const rad = (a - 90) * Math.PI / 180;
-    return `<line class="iso-blade" x1="0" y1="0"
-      x2="${(R * Math.cos(rad)).toFixed(1)}" y2="${(R * Math.sin(rad)).toFixed(1)}"/>`;
+  /* A real blade is wide at the root and narrow at the tip. Three lines of equal
+   * weight read as a peace sign; the taper is what reads as a turbine. */
+  const w = 3.6 * scale;
+  const blades = [90, 210, 330].map((a) => {
+    const pts = [
+      rot(a, -w, 0.06 * R),
+      rot(a, -w * 0.3, R),
+      rot(a, w * 0.3, R),
+      rot(a, w, 0.06 * R),
+    ].join(' ');
+    return `<polygon class="iso-blade" points="${pts}"/>`;
   }).join('');
+
+  const cls = `iso-rotor${variant ? ` iso-rotor-${variant}` : ''}`;
 
   return `<line class="iso-mast" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - H}"/>`
     + `<svg class="iso-rotor-box" x="${(cx - pad).toFixed(1)}" y="${(cy - H - pad).toFixed(1)}"
          width="${(pad * 2).toFixed(1)}" height="${(pad * 2).toFixed(1)}"
          viewBox="${-pad} ${-pad} ${pad * 2} ${pad * 2}" overflow="visible">
-        <g class="iso-rotor">${blades}</g>
-        <circle class="iso-hub" cx="0" cy="0" r="${(3 * scale).toFixed(1)}"/>
+        <g class="${cls}">
+          <circle class="iso-rotor-bounds" cx="0" cy="0" r="${R.toFixed(1)}"/>
+          ${blades}
+        </g>
+        <circle class="iso-hub" cx="0" cy="0" r="${(3.2 * scale).toFixed(1)}"/>
       </svg>`;
 }
 
@@ -163,8 +188,8 @@ export function signInArtwork() {
     <rect x="-250" y="-120" width="500" height="430" fill="url(#scene-glow)"/>
     <g class="iso-scene">
       ${plate}
-      ${turbine(-158, 62, 1)}
-      ${turbine(-112, 30, 0.72)}
+      ${turbine(-158, 62, 1, 'a')}
+      ${turbine(-112, 30, 0.72, 'b')}
       ${drawn.map((d) => d.svg).join('')}
     </g>
   </svg>`;
@@ -242,7 +267,7 @@ const BUILT = {
     <path class="fig-muted" d="M8 36h42"/>
     <rect class="fig-stroke" x="82" y="26" width="42" height="32" rx="4"/>
     <path class="fig-muted" d="M90 36h26M90 44h18"/>
-    <path class="fig-accent" d="M50 42h32"/>
+    <path class="fig-accent fig-flow" d="M50 42h32"/>
     <g class="fig-cloud">
       <path class="fig-muted" d="M52 14a9 9 0 0 1 17-3 8 8 0 0 1 11 8 7 7 0 0 1-7 7H58a7 7 0 0 1-6-12z"/>
       <path class="fig-strike" d="M48 6l38 30"/>
@@ -260,7 +285,7 @@ const BUILT = {
       <circle cx="20" cy="21.5" r="4"/><circle cx="20" cy="43.5" r="4"/>
       <circle cx="20" cy="65.5" r="4"/>
     </g>
-    <path class="fig-warn" d="M100 36l10 10M110 36l-10 10"/>
+    <path class="fig-warn fig-blink" d="M100 36l10 10M110 36l-10 10"/>
     <path class="fig-muted" d="M96 58h28"/>`,
 
   /* The same inputs twice, and the same answer twice. */
@@ -277,7 +302,7 @@ const BUILT = {
       <path d="M74 26h16M74 34h16"/>
       <path d="M74 60h16M74 68h16"/>
     </g>
-    <path class="fig-accent fig-eq" d="M100 40h18M100 50h18"/>`,
+    <path class="fig-accent fig-eq fig-blink" d="M100 40h18M100 50h18"/>`,
 
   /* One option chosen, and the ones that lost still on the page. */
   arguable: `
@@ -285,7 +310,7 @@ const BUILT = {
       ${[0, 1, 2, 3].map((i) => `<rect x="20" y="${12 + i * 18}" width="92" height="13" rx="3"/>`).join('')}
     </g>
     <path class="fig-accent-fill fig-chosen" d="M20 12h92v13H20z"/>
-    <path class="fig-accent" d="M26 18.5l3.5 3.5 6 -7"/>
+    <path class="fig-accent fig-draw" d="M26 18.5l3.5 3.5 6 -7"/>
     <g class="fig-muted">
       <path d="M28 36.5h60M28 54.5h48M28 72.5h66"/>
     </g>`,
@@ -294,6 +319,98 @@ const BUILT = {
 export function builtFigure(kind) {
   return `<svg class="stage-fig" viewBox="0 0 132 92" role="img" aria-hidden="true"
        focusable="false">${BUILT[kind] || ''}</svg>`;
+}
+
+/* ---- the stack strip ----------------------------------------------------- */
+
+/* These are not the vendors' logos.
+ *
+ * Two reasons, and the second is the one that decided it. A brand mark is a
+ * trademark, and redrawing eleven of them from memory produces eleven slightly
+ * wrong trademarks. And every one of them would have to be fetched or embedded
+ * as raster - this page loads nothing from anywhere, which is the first thing it
+ * claims about itself, and a strip of logos would be an odd place to break that.
+ *
+ * So each technology gets a mark drawn in the same line language as the rest of
+ * the page, saying what the thing DOES, next to its name in text. The name is
+ * what a reader actually reads in a strip like this one. */
+const STACK = [
+  ['Python', `
+    <path class="sm-line" d="M12 3.5h4.5a3 3 0 0 1 3 3V10a3 3 0 0 1-3 3H8.5a3 3 0 0 0-3 3v1.5"/>
+    <path class="sm-line" d="M12 20.5H7.5a3 3 0 0 1-3-3V14a3 3 0 0 1 3-3h8a3 3 0 0 0 3-3V6.5"/>
+    <circle class="sm-dot" cx="8.4" cy="7.2" r="1.15"/>
+    <circle class="sm-dot" cx="15.6" cy="16.8" r="1.15"/>`],
+  ['FastAPI', `
+    <rect class="sm-line" x="3.5" y="3.5" width="17" height="17" rx="4.5"/>
+    <path class="sm-fill" d="M13.4 6.2l-5.1 7h3.3l-1 4.6 5.1-7h-3.3z"/>`],
+  ['PostgreSQL', `
+    <ellipse class="sm-line" cx="12" cy="6.4" rx="7" ry="2.9"/>
+    <path class="sm-line" d="M5 6.4v11.2c0 1.6 3.1 2.9 7 2.9s7-1.3 7-2.9V6.4"/>
+    <path class="sm-muted" d="M5 12c0 1.6 3.1 2.9 7 2.9s7-1.3 7-2.9"/>`],
+  ['TimescaleDB', `
+    <ellipse class="sm-line" cx="12" cy="6.4" rx="7" ry="2.9"/>
+    <path class="sm-line" d="M5 6.4v11.2c0 1.6 3.1 2.9 7 2.9s7-1.3 7-2.9V6.4"/>
+    <path class="sm-accent" d="M8.2 15.4l2.4-2.9 2.1 1.8 3.1-4"/>`],
+  ['OR-Tools CP-SAT', `
+    <rect class="sm-line" x="3.5" y="3.5" width="17" height="17" rx="2.5"/>
+    <path class="sm-muted" d="M9.2 3.5v17M14.8 3.5v17M3.5 9.2h17M3.5 14.8h17"/>
+    <rect class="sm-fill" x="9.2" y="9.2" width="5.6" height="5.6"/>`],
+  ['scikit-learn', `
+    <path class="sm-muted" d="M4 20h16M4 20V4"/>
+    <path class="sm-accent" d="M5.6 17.6L18.4 6.6"/>
+    <circle class="sm-dot" cx="8" cy="16.4" r="1.1"/>
+    <circle class="sm-dot" cx="11.6" cy="12.2" r="1.1"/>
+    <circle class="sm-dot" cx="15.4" cy="10.6" r="1.1"/>`],
+  ['MQTT', `
+    <circle class="sm-fill" cx="6.4" cy="17.6" r="1.9"/>
+    <path class="sm-line" d="M6.4 12.2a5.4 5.4 0 0 1 5.4 5.4"/>
+    <path class="sm-line" d="M6.4 7.2a10.4 10.4 0 0 1 10.4 10.4"/>
+    <path class="sm-accent" d="M6.4 3.2a14.4 14.4 0 0 1 14.4 14.4"/>`],
+  ['Docker', `
+    <path class="sm-line" d="M3.5 12.6h14.2a3.6 3.6 0 0 1-3.6 6H8.4a4.9 4.9 0 0 1-4.9-4.9z"/>
+    <path class="sm-muted" d="M6.4 12.6V9.4h2.9v3.2M10.6 12.6V9.4h2.9v3.2M10.6 8.2V5h2.9v3.2"/>
+    <path class="sm-accent" d="M17.7 11.2c1.4-.9 2.6-.6 3.3 0"/>`],
+  ['nginx', `
+    <path class="sm-line" d="M12 3.2l7.6 4.4v8.8L12 20.8 4.4 16.4V7.6z"/>
+    <path class="sm-accent" d="M9.2 15.8V8.4l5.6 7.2V8.4"/>`],
+  ['ES modules', `
+    <path class="sm-line" d="M9 5.6L4.2 12 9 18.4M15 5.6L19.8 12 15 18.4"/>
+    <path class="sm-accent" d="M13.4 5.2l-2.8 13.6"/>`],
+];
+
+/* One chip. `aria-hidden` on the drawing because the name beside it already
+   says what this is, and a screen reader does not need it twice. */
+function stackChip([name, art]) {
+  return `<li class="stack-chip">
+      <svg class="stack-mark" viewBox="0 0 24 24" role="img" aria-hidden="true"
+           focusable="false">${art}</svg>
+      <span>${name}</span>
+    </li>`;
+}
+
+/* The strip is the same list three times.
+ *
+ * Every copy slides left by exactly its own width and the animation restarts, so
+ * what the reader sees at the end of a cycle is the next copy sitting where the
+ * last one began - identical content in the same place, which is what makes the
+ * loop invisible. Four copies rather than two: at the end of a cycle only the
+ * copies behind the first one are still on screen, so what they cover has to be
+ * at least the width of the window. One copy measures about 1200px, and three of
+ * them behind the first carry it past any monitor this will be shown on. Two
+ * copies would leave a gap crossing the strip once per cycle on anything wider
+ * than about 1200px, which is most of them.
+ *
+ * The extra copies are decoration and are hidden from assistive technology,
+ * which would otherwise read the whole stack out three times. */
+const STACK_COPIES = 4;
+
+export function stackStrip() {
+  const items = STACK.map(stackChip).join('');
+  let out = `<ul class="stack-track">${items}</ul>`;
+  for (let i = 1; i < STACK_COPIES; i += 1) {
+    out += `<ul class="stack-track" aria-hidden="true">${items}</ul>`;
+  }
+  return out;
 }
 
 export function stageFigure(kind) {
