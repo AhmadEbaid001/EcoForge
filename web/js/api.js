@@ -123,4 +123,8 @@ export const api = {
   audit: (limit = 200) => request('GET', `/admin/audit?limit=${limit}`),
   securityPosture: () => request('GET', '/admin/security'),
   recompute: () => request('POST', '/candidates/recompute'),
+
+  /* --- maintenance jobs --- */
+  jobStart: (kind) => request('POST', `/jobs/${encodeURIComponent(kind)}`),
+  jobStatus: (kind) => request('GET', `/jobs/${encodeURIComponent(kind)}`),
 };

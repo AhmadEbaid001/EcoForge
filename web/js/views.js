@@ -26,7 +26,7 @@ import {
 } from './charts.js';
 import {
   clearStatus, confirmAction, dataTable, emptyState, markRead, onReread,
-  openDialog, pageHead, picker, pickerValue, selectWrap, setStatus,
+  openDialog, pageHead, picker, pickerValue, runJob, selectWrap, setStatus,
   skeletonChart, skeletonRows, skeletonTiles, wirePicker, wireSort,
 } from './ui.js';
 
@@ -306,6 +306,61 @@ export const overview = {
   },
 };
 
+/* Wires a button that starts a maintenance job and reports it to the end.
+ *
+ * These run for minutes. The button disables itself, the strip narrates, and the
+ * screen reloads itself when the job finishes - because the whole point of both
+ * jobs is that the numbers on the screen change.
+ */
+function wireJobButton(root, ctx, { selector, kind, label, confirm, onDone }) {
+  /* The action slot is in the shell header, which is a sibling of the view root
+   * rather than a child of it, so this cannot be a root-scoped query. One screen
+   * is mounted at a time, so the id is unambiguous. */
+  const button = root.querySelector(selector) || document.querySelector(selector);
+  if (!button) return;
+  const original = button.textContent;
+
+  button.addEventListener('click', async () => {
+    if (confirm) {
+      const ok = await confirmAction(confirm);
+      if (!ok) return;
+    }
+    button.disabled = true;
+    button.textContent = `${label}…`;
+    setStatus(root, { kind: 'hint', message: `${label} started. This takes minutes; `
+      + 'the screen updates itself when it finishes.' });
+
+    try {
+      const state = await runJob(kind, {
+        signal: ctx?.signal,
+        onState: (s) => {
+          if (s.status === 'busy') {
+            setStatus(root, { kind: 'warn', message: s.error
+              || 'Another maintenance job is running; wait for it to finish.' });
+          }
+        },
+      });
+
+      if (state.status === 'done') {
+        setStatus(root, { kind: 'ok',
+          message: `${label} finished. ${(state.summary || '').split('\n').pop() || ''}`.trim() });
+        if (onDone) await onDone();
+      } else if (state.status === 'failed') {
+        setStatus(root, { kind: 'error',
+          message: `${label} failed: ${state.error || 'see the server log'}` });
+      } else if (state.status === 'busy') {
+        /* Already reported by onState; nothing to add. */
+      }
+    } catch (error) {
+      setStatus(root, { kind: 'error',
+        message: error?.detail || String(error?.message || error) });
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  });
+}
+
 /* ----------------------------------------------------------------- forecasts */
 
 /* How far apart two data-time stamps are, in the largest unit that still reads as
@@ -359,8 +414,13 @@ export const forecasts = {
       const coverState = covered === 0 ? 'none'
         : covered < buildings.length ? 'partial' : 'full';
 
+      const isAdmin = can(ctx.user, 'admin');
+
       root.innerHTML = `
-        ${pageHead({ root, title: 'Load forecasting' })}
+        ${pageHead({ root, title: 'Load forecasting',
+          actions: isAdmin
+            ? '<button type="button" class="secondary" id="refit-btn">Refit forecasts</button>'
+            : '' })}
 
         <section class="panel">
           <header>
@@ -430,6 +490,25 @@ export const forecasts = {
             <span class="key" data-key="forecast"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 3" fill="none"/></svg>Forecast</span>
           </div>
         </section>`;
+
+      /* The refit is what makes this screen's own numbers true, and it was
+       * shell-only: the coverage panel could report that the forecasts were five
+       * months stale and offer no way to do anything about it. */
+      wireJobButton(root, ctx, {
+        selector: '#refit-btn',
+        kind: 'forecast-refit',
+        label: 'Refit',
+        confirm: {
+          title: 'Refit every forecaster?',
+          description: 'Refits all fifty buildings against the readings stored now, '
+                     + 'rewrites their forecasts and the annual figures the optimizer '
+                     + 'costs against, and re-scores the anomaly history. It takes '
+                     + 'several minutes and it is the only thing that can run while it '
+                     + 'runs. Nothing else on the platform stops working meanwhile.',
+          confirmLabel: 'Refit forecasts',
+        },
+        onDone: () => forecasts.render(root, ctx),
+      });
 
       const input = root.querySelector('#fc-building');
       wirePicker(input, options.filter((o) => o.label));
@@ -1096,66 +1175,174 @@ function showProvenance(run) {
 export const evidence = {
   title: 'Evidence',
   async render(root, ctx) {
-    const EVIDENCE_PURPOSE = 'Every claim in the paper, re-measured by the claims '
-        + 'harness against this deployment. A FAIL here means a sentence stopped '
-        + 'being true and has not been corrected yet — which is exactly what the '
-        + 'harness exists to catch.';
-    const state = { rows: [], sortKey: 'id', sortDir: 'asc' };
+    const state = { rows: [], sortKey: 'id', sortDir: 'asc', failingOnly: false };
 
     root.innerHTML = `
-      ${pageHead({ root, title: 'Evidence', description: EVIDENCE_PURPOSE })}
+      ${pageHead({ root, title: 'Evidence' })}
       ${skeletonRows(8)}`;
 
     await guard(root, async () => {
       const body0 = await api.evidence();
       state.rows = body0.claims || [];
 
+      /* A known-open row is a FAIL somebody wrote down. It is counted apart from
+       * an unacknowledged failure because the two mean very different things: one
+       * is a debt on the record, the other is a sentence that quietly stopped
+       * being true. */
+      const tally = state.rows.reduce((acc, r) => {
+        if (r.verdict === 'PASS') acc.pass += 1;
+        else if (r.verdict === 'SKIP') acc.skip += 1;
+        else if (r.known_open) acc.known += 1;
+        else acc.fail += 1;
+        return acc;
+      }, { pass: 0, skip: 0, known: 0, fail: 0 });
+
+      const measurable = state.rows.length - tally.skip;
+      const clean = tally.fail === 0;
+
+      /* Staleness is the one thing that can make every green row on this screen
+       * meaningless, so it is reported at the top rather than left to be worked
+       * out from a filename. */
+      const age = body0.measured_at
+        ? (Date.now() - Date.parse(body0.measured_at)) / 3.6e6 : null;
+      const ageLabel = age === null ? null
+        : age < 1 ? 'less than an hour ago'
+        : age < 48 ? `${Math.round(age)} hours ago`
+        : `${Math.round(age / 24)} days ago`;
+      const stale = age !== null && age > 48;
+
       const verdictChip = (r) => {
         if (r.verdict === 'PASS') return `<span class="sev pass">${mark('check', { size: 11 })}Pass</span>`;
-        if (r.verdict === 'SKIP') return '<span class="muted">Skipped</span>';
+        if (r.verdict === 'SKIP') return `<span class="muted">${mark('dash', { size: 11 })}Not measured</span>`;
         return r.known_open
           ? `<span class="sev high">${mark('dash', { size: 11 })}Known-open</span>`
           : `<span class="sev critical">${mark('cross', { size: 11 })}Fail</span>`;
       };
 
+      /* The statement leads. `F8-b` is the harness's handle on a claim and means
+       * nothing to somebody reading this for the first time, so it goes last and
+       * quiet - the sentence is what a reader is here to check. */
       const columns = [
-        { key: 'id', label: 'Claim', sortable: true, cls: 'mono',
-          render: (r) => `<strong>${escapeHtml(r.id)}</strong>` },
-        { key: 'statement', label: 'What the paper says',
+        { key: 'statement', label: 'What the paper claims', sortable: true, cls: 'wrap',
           render: (r) => escapeHtml(r.statement) },
-        { key: '_verdict', label: 'Verdict', sortable: true,
-          render: verdictChip },
-        { key: 'measured', label: 'Measured now',
-          render: (r) => escapeHtml(r.measured) },
-        { key: 'detail', label: '', cls: 'mono muted',
-          render: (r) => (r.detail ? escapeHtml(r.detail) : '') },
+        { key: '_verdict', label: 'Verdict', sortable: true, render: verdictChip },
+        { key: 'measured', label: 'Measured against this deployment', cls: 'wrap',
+          render: (r) => (r.measured ? escapeHtml(r.measured) : '<span class="muted">&mdash;</span>') },
+        { key: 'id', label: 'Ref', sortable: true, cls: 'mono muted',
+          render: (r) => escapeHtml(r.id) },
       ];
 
+      const isAdmin = can(ctx.user, 'admin');
+
       root.innerHTML = `
-        ${pageHead({ root, title: 'Evidence', description: EVIDENCE_PURPOSE })}
+        ${pageHead({ root, title: 'Evidence',
+          actions: isAdmin
+            ? '<button type="button" class="secondary" id="claims-btn">Re-measure claims</button>'
+            : '' })}
+
         <section class="panel">
           <header>
-            <h3>Claims</h3>
-            <span class="scope">${state.rows.length} measured claims</span>
+            <h3>Claims harness</h3>
+            <span class="scope">${ageLabel
+              ? `last measured ${escapeHtml(ageLabel)}` : 'never measured here'}</span>
           </header>
+
+          <div class="posture-verdict ${clean ? 'good' : 'bad'}">
+            <span class="verdict-shield">${icon(clean ? 'integrity' : 'warning')}</span>
+            <span class="verdict-text">
+              <span class="verdict-word">${state.rows.length
+                ? `${tally.pass} of ${measurable} claims hold`
+                : 'Nothing measured yet'}</span>
+              <span class="verdict-gloss">${state.rows.length
+                ? 'Every sentence the paper asserts, re-run against this deployment '
+                  + 'rather than quoted from a document. '
+                  + (tally.fail
+                    ? `${tally.fail} stopped being true and ${tally.fail === 1
+                        ? 'has' : 'have'} not been corrected.`
+                    : tally.known
+                      ? `${tally.known} known-open ${tally.known === 1 ? 'item is' : 'items are'} `
+                        + 'recorded as outstanding work, not hidden.'
+                      : 'Nothing is outstanding.')
+                : 'The harness has not been run against this deployment.'}</span>
+            </span>
+            <span class="tally">
+              <span class="sev pass">${mark('check', { size: 11 })}${tally.pass}</span>
+              ${tally.known ? `<span class="sev high">${mark('dash', { size: 11 })}${tally.known}</span>` : ''}
+              ${tally.fail ? `<span class="sev critical">${mark('cross', { size: 11 })}${tally.fail}</span>` : ''}
+              ${tally.skip ? `<span class="muted small">${tally.skip} not measured</span>` : ''}
+            </span>
+          </div>
+
+          ${stale ? `
+          <div class="note-panel warn" role="note">
+            ${icon('warning')}
+            <p>These verdicts were measured <strong>${escapeHtml(ageLabel)}</strong>. Every
+            row can read Pass while describing a deployment that has since changed, so
+            re-run the harness before anybody reads this as current.</p>
+          </div>` : ''}
+
+          <div class="toolbar evidence-tools">
+            <button type="button" class="seg-btn deny-toggle" id="evidence-failing"
+                    aria-pressed="false">Unresolved only</button>
+            <button type="button" class="secondary small" id="evidence-export">Export CSV</button>
+          </div>
+
           <div id="evidence-body"></div>
-          <p class="caption" id="evidence-note">${body0.note
-            ? escapeHtml(body0.note) : ''}</p>
+          ${body0.note ? `<p class="caption">${escapeHtml(body0.note)}</p>` : ''}
         </section>`;
 
       const paint = () => {
         const host = root.querySelector('#evidence-body');
-        host.innerHTML = state.rows.length
-          ? dataTable({ columns, rows: state.rows,
+        const rows = state.failingOnly
+          ? state.rows.filter((r) => r.verdict !== 'PASS' && r.verdict !== 'SKIP')
+          : state.rows;
+        host.innerHTML = rows.length
+          ? dataTable({ columns,
+              rows: rows.map((r) => ({ ...r,
+                _cls: (r.verdict !== 'PASS' && r.verdict !== 'SKIP' && !r.known_open)
+                  ? 'denied-row' : '' })),
               sortKey: state.sortKey, sortDir: state.sortDir })
           : emptyState({
-              title: 'No measurements yet',
-              body: 'The claims harness has not been run on this deployment.',
-              hint: 'Run: python -m gemp.evaluate',
+              title: state.failingOnly ? 'Nothing unresolved' : 'No measurements yet',
+              body: state.failingOnly
+                ? 'Every claim the harness could measure is holding.'
+                : 'The claims harness has not been run on this deployment.',
             });
         wireSort(host, state, paint);
       };
       paint();
+
+      /* The verdicts are only worth what their date is worth, so the screen that
+       * reports them is the screen that can re-run them. */
+      wireJobButton(root, ctx, {
+        selector: '#claims-btn',
+        kind: 'evidence',
+        label: 'Re-measuring claims',
+        confirm: {
+          title: 'Re-measure every claim?',
+          description: 'Runs the claims harness against this deployment and rewrites '
+                     + 'the table below with whatever it finds — including any claim '
+                     + 'that has stopped being true. It takes a few minutes.',
+          confirmLabel: 'Re-measure',
+        },
+        onDone: () => evidence.render(root, ctx),
+      });
+
+      root.querySelector('#evidence-failing').addEventListener('click', (event) => {
+        state.failingOnly = !state.failingOnly;
+        event.currentTarget.setAttribute('aria-pressed', String(state.failingOnly));
+        paint();
+      });
+
+      root.querySelector('#evidence-export').addEventListener('click', () => {
+        if (!state.rows.length) return;
+        downloadCsv(`gemp-claims-${new Date().toISOString().slice(0, 10)}.csv`,
+          state.rows.map((r) => ({
+            id: r.id, verdict: r.verdict, known_open: r.known_open ? 'yes' : '',
+            statement: r.statement, measured: r.measured, detail: r.detail || '',
+          })));
+      });
+
       wireRefresh(root, () => evidence.render(root, ctx));
     });
   },

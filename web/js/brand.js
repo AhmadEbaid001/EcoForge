@@ -26,7 +26,277 @@ const PATHS = '<path class="wm-accent" d="M659.725 1003.86C663.322 993.469 667.4
  *
  * There is no cropped variant any more. It existed for a 64px collapsed rail;
  * the rail is 5.25rem at every width now and the full wordmark fits. */
+/* The sign-in scene.
+ *
+ * Drawn, not fetched. The Content-Security-Policy is `default-src 'self'` and F13
+ * requires the demonstration to survive an unplugged cable, so a rendered
+ * illustration from a CDN is not available even if it were wanted - and an
+ * inlined bitmap would neither re-colour with the appearance nor stay sharp on a
+ * projector. This is geometry, so it does both.
+ *
+ * What it draws is the product's own subject: a district of public buildings seen
+ * in isometric, some of them fitted with rooftop solar, a couple of turbines on
+ * the skyline. The buildings that carry a retrofit are picked out in the brand
+ * mint, which is the same two-state language the allocation map uses for funded
+ * and not funded.
+ *
+ * It carries no data and never changes. The heights, the street gaps and which
+ * roofs get panels all come from a fixed table, identical on every load and for
+ * every visitor. A sign-in screen must not describe a portfolio to somebody who
+ * has not signed in, and a scene that looked like real figures would be doing
+ * exactly that.
+ *
+ * `aria-hidden`: the sentence beside it carries the meaning.
+ */
+
+/* Half-width and half-depth of one ground tile. 34:19 is close to a true 2:1
+ * isometric once the stroke is allowed for. */
+const TILE_W = 34;
+const TILE_H = 19;
+
+/* The district. `0` is a street, any other number is a building of that height in
+ * scene units. `s` marks the roofs that carry solar. Fixed, so the mark is a mark
+ * rather than a slot machine. */
+const BLOCKS = [
+  [58, 40, 74, 0, 66, 46, 34],
+  [36, 82, 50, 0, 44, 92, 58],
+  [70, 44, 0, 0, 0, 38, 76],
+  [0, 0, 0, 54, 0, 0, 0],
+  [64, 38, 0, 0, 0, 70, 42],
+  [46, 88, 56, 0, 78, 50, 66],
+  [34, 52, 68, 0, 40, 60, 44],
+];
+const SOLAR = new Set([
+  '0,0', '0,2', '0,5', '1,1', '1,5', '2,0', '2,6',
+  '4,0', '4,5', '5,1', '5,4', '5,6', '6,2', '6,5',
+]);
+
+function isoBox(gx, gy, h, solar) {
+  const cx = (gx - gy) * TILE_W;
+  const cy = (gx + gy) * TILE_H;
+  const top = `${cx},${cy - h} ${cx + TILE_W},${cy + TILE_H - h} `
+            + `${cx},${cy + 2 * TILE_H - h} ${cx - TILE_W},${cy + TILE_H - h}`;
+  const left = `${cx - TILE_W},${cy + TILE_H - h} ${cx},${cy + 2 * TILE_H - h} `
+             + `${cx},${cy + 2 * TILE_H} ${cx - TILE_W},${cy + TILE_H}`;
+  const right = `${cx},${cy + 2 * TILE_H - h} ${cx + TILE_W},${cy + TILE_H - h} `
+              + `${cx + TILE_W},${cy + TILE_H} ${cx},${cy + 2 * TILE_H}`;
+
+  /* The panel is a smaller rhombus lying on the roof, with two rafters across it
+   * so it reads as an array rather than a coloured lid. */
+  let panel = '';
+  if (solar) {
+    const k = 0.62;
+    const px = cx;
+    const py = cy + TILE_H - h;
+    panel = `<polygon class="iso-solar" points="${px},${py - TILE_H * k} `
+          + `${px + TILE_W * k},${py} ${px},${py + TILE_H * k} ${px - TILE_W * k},${py}"/>`
+          + `<path class="iso-solar-rib" d="M${px - TILE_W * k * 0.5},${py - TILE_H * k * 0.5}`
+          + `L${px + TILE_W * k * 0.5},${py + TILE_H * k * 0.5}`
+          + `M${px - TILE_W * k * 0.5},${py + TILE_H * k * 0.5}`
+          + `L${px + TILE_W * k * 0.5},${py - TILE_H * k * 0.5}"/>`;
+  }
+
+  return `<polygon class="iso-left" points="${left}"/>`
+       + `<polygon class="iso-right" points="${right}"/>`
+       + `<polygon class="iso-top${solar ? ' lit' : ''}" points="${top}"/>`
+       + panel;
+}
+
+function turbine(cx, cy, scale) {
+  const H = 96 * scale;
+  const R = 30 * scale;
+  const pad = R + 6;
+
+  /* The rotor lives in its own nested <svg> centred on the hub.
+
+   * A CSS rotation needs a transform-origin, and the only way to give one to a
+   * shape sitting at an arbitrary point of a shared coordinate system is an
+   * inline `style` - which this project's Content-Security-Policy drops. A
+   * nested viewBox whose origin IS the hub makes `transform-origin: center`
+   * mean the right thing, with no inline anything. */
+  const blades = [0, 120, 240].map((a) => {
+    const rad = (a - 90) * Math.PI / 180;
+    return `<line class="iso-blade" x1="0" y1="0"
+      x2="${(R * Math.cos(rad)).toFixed(1)}" y2="${(R * Math.sin(rad)).toFixed(1)}"/>`;
+  }).join('');
+
+  return `<line class="iso-mast" x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - H}"/>`
+    + `<svg class="iso-rotor-box" x="${(cx - pad).toFixed(1)}" y="${(cy - H - pad).toFixed(1)}"
+         width="${(pad * 2).toFixed(1)}" height="${(pad * 2).toFixed(1)}"
+         viewBox="${-pad} ${-pad} ${pad * 2} ${pad * 2}" overflow="visible">
+        <g class="iso-rotor">${blades}</g>
+        <circle class="iso-hub" cx="0" cy="0" r="${(3 * scale).toFixed(1)}"/>
+      </svg>`;
+}
+
+export function signInArtwork() {
+  const n = BLOCKS.length;
+  const drawn = [];
+  for (let gy = 0; gy < n; gy += 1) {
+    for (let gx = 0; gx < BLOCKS[gy].length; gx += 1) {
+      const h = BLOCKS[gy][gx];
+      if (!h) continue;
+      /* Painter's algorithm: further from the camera first, so a near block
+       * overlaps the one behind it rather than the other way round. */
+      drawn.push({ order: gx + gy, svg: isoBox(gx, gy, h, SOLAR.has(`${gy},${gx}`)) });
+    }
+  }
+  drawn.sort((a, b) => a.order - b.order);
+
+  /* The ground the district stands on, one tile larger on every side. */
+  const half = (n - 1) / 2;
+  const gw = (n + 1) * TILE_W;
+  const gh = (n + 1) * TILE_H;
+  const gcx = 0;
+  const gcy = (n - 1) * TILE_H;
+  const plate = `<polygon class="iso-plate" points="${gcx},${gcy - gh + TILE_H} `
+              + `${gcx + gw},${gcy + TILE_H} ${gcx},${gcy + gh + TILE_H} ${gcx - gw},${gcy + TILE_H}"/>`;
+
+  return `<svg class="scene-svg" viewBox="-250 -120 500 430"
+       preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
+    <defs>
+      <radialGradient id="scene-glow" cx="50%" cy="38%" r="62%">
+        <stop offset="0%" class="scene-glow-in"/>
+        <stop offset="100%" class="scene-glow-out"/>
+      </radialGradient>
+    </defs>
+    <rect x="-250" y="-120" width="500" height="430" fill="url(#scene-glow)"/>
+    <g class="iso-scene">
+      ${plate}
+      ${turbine(-158, 62, 1)}
+      ${turbine(-112, 30, 0.72)}
+      ${drawn.map((d) => d.svg).join('')}
+    </g>
+  </svg>`;
+}
+
 export function wordmark(title = 'GEMP') {
   return `<svg class="wordmark-svg" viewBox="${VIEWBOX}" role="img"
     aria-label="${title}" focusable="false">${PATHS}</svg>`;
+}
+
+
+/* A small drawn figure for each stage of the landing page.
+ *
+ * Four diagrams rather than four icons: an icon says "there is a topic here",
+ * and a diagram says what the topic IS. They share a 132x92 box, one stroke
+ * weight and one accent, so four of them down a page read as a set rather than
+ * as clip art. Drawn for the same reason everything else here is - the CSP
+ * fetches nothing, and geometry re-colours with the appearance where a bitmap
+ * would not.
+ */
+const FIGURES = {
+  /* Blocks joined by links, the last one carrying the break the chain walk
+     reports. */
+  measures: `
+    <g class="fig-stroke">
+      ${[0, 1, 2, 3].map((i) => `<rect x="${6 + i * 32}" y="34" width="22" height="24" rx="3"/>`).join('')}
+      ${[0, 1, 2].map((i) => `<path d="M${28 + i * 32} 46h6"/>`).join('')}
+    </g>
+    <g class="fig-accent">
+      ${[0, 1, 2].map((i) => `<path d="M${11 + i * 32} 46l4 4 7 -8"/>`).join('')}
+    </g>
+    <path class="fig-warn" d="M105 40l6 10h-12Z"/>
+    <path class="fig-muted" d="M6 70h120"/>`,
+
+  /* Two lines over the same hours: what the meter recorded, and what the model
+     expected. */
+  forecasts: `
+    <path class="fig-muted" d="M8 68h116M8 20v48"/>
+    <path class="fig-stroke fig-line"
+      d="M10 58 L26 40 L42 46 L58 24 L74 36 L90 22 L106 34 L122 26"/>
+    <path class="fig-accent fig-line fig-dash"
+      d="M10 55 L26 43 L42 44 L58 28 L74 33 L90 26 L106 31 L122 29"/>`,
+
+  /* A budget line, and the bars that fit under it. */
+  decides: `
+    <path class="fig-muted" d="M8 70h116"/>
+    <g class="fig-stroke">
+      ${[38, 22, 52, 30, 44, 26, 48].map((h, i) =>
+        `<rect x="${10 + i * 17}" y="${70 - h}" width="11" height="${h}" rx="2"/>`).join('')}
+    </g>
+    <g class="fig-accent-fill">
+      ${[[0, 38], [2, 52], [4, 44], [6, 48]].map(([i, h]) =>
+        `<rect x="${10 + i * 17}" y="${70 - h}" width="11" height="${h}" rx="2"/>`).join('')}
+    </g>
+    <path class="fig-warn fig-dash" d="M6 26h122"/>`,
+
+  /* A sheet with a hash across it and a seal. */
+  accounts: `
+    <rect class="fig-stroke" x="24" y="12" width="70" height="64" rx="4"/>
+    <g class="fig-muted">
+      <path d="M34 28h40M34 38h50M34 48h34"/>
+    </g>
+    <path class="fig-accent fig-mono" d="M34 60h30"/>
+    <circle class="fig-accent-fill" cx="100" cy="62" r="13"/>
+    <path class="fig-seal" d="M94 62l4.5 4.5L107 57"/>`,
+};
+
+/* Four more, for "how it is built". Same box, same stroke weight, same accent as
+   the stage figures - the page has one drawing language, not two. */
+const BUILT = {
+  /* A browser and a server talking to each other, and the cloud between them
+     struck out: nothing on this platform is fetched from anywhere. */
+  offline: `
+    <rect class="fig-stroke" x="8" y="26" width="42" height="32" rx="4"/>
+    <path class="fig-muted" d="M8 36h42"/>
+    <rect class="fig-stroke" x="82" y="26" width="42" height="32" rx="4"/>
+    <path class="fig-muted" d="M90 36h26M90 44h18"/>
+    <path class="fig-accent" d="M50 42h32"/>
+    <g class="fig-cloud">
+      <path class="fig-muted" d="M52 14a9 9 0 0 1 17-3 8 8 0 0 1 11 8 7 7 0 0 1-7 7H58a7 7 0 0 1-6-12z"/>
+      <path class="fig-strike" d="M48 6l38 30"/>
+    </g>
+    <path class="fig-muted" d="M8 72h116"/>`,
+
+  /* Three rungs, and the refused row that is kept rather than dropped. */
+  roles: `
+    <g class="fig-stroke">
+      <rect x="10" y="14" width="60" height="15" rx="4"/>
+      <rect x="10" y="36" width="76" height="15" rx="4"/>
+      <rect x="10" y="58" width="92" height="15" rx="4"/>
+    </g>
+    <g class="fig-accent-fill">
+      <circle cx="20" cy="21.5" r="4"/><circle cx="20" cy="43.5" r="4"/>
+      <circle cx="20" cy="65.5" r="4"/>
+    </g>
+    <path class="fig-warn" d="M100 36l10 10M110 36l-10 10"/>
+    <path class="fig-muted" d="M96 58h28"/>`,
+
+  /* The same inputs twice, and the same answer twice. */
+  reproducible: `
+    <g class="fig-stroke">
+      <rect x="8" y="18" width="40" height="24" rx="4"/>
+      <rect x="8" y="52" width="40" height="24" rx="4"/>
+    </g>
+    <g class="fig-mono fig-muted">
+      <path d="M16 30h24M16 64h24"/>
+    </g>
+    <path class="fig-accent" d="M48 30h20M48 64h20"/>
+    <g class="fig-accent">
+      <path d="M74 26h16M74 34h16"/>
+      <path d="M74 60h16M74 68h16"/>
+    </g>
+    <path class="fig-accent fig-eq" d="M100 40h18M100 50h18"/>`,
+
+  /* One option chosen, and the ones that lost still on the page. */
+  arguable: `
+    <g class="fig-stroke">
+      ${[0, 1, 2, 3].map((i) => `<rect x="20" y="${12 + i * 18}" width="92" height="13" rx="3"/>`).join('')}
+    </g>
+    <path class="fig-accent-fill fig-chosen" d="M20 12h92v13H20z"/>
+    <path class="fig-accent" d="M26 18.5l3.5 3.5 6 -7"/>
+    <g class="fig-muted">
+      <path d="M28 36.5h60M28 54.5h48M28 72.5h66"/>
+    </g>`,
+};
+
+export function builtFigure(kind) {
+  return `<svg class="stage-fig" viewBox="0 0 132 92" role="img" aria-hidden="true"
+       focusable="false">${BUILT[kind] || ''}</svg>`;
+}
+
+export function stageFigure(kind) {
+  return `<svg class="stage-fig" viewBox="0 0 132 92" role="img" aria-hidden="true"
+       focusable="false">${FIGURES[kind] || ''}</svg>`;
 }

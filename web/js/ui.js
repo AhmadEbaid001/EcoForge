@@ -21,6 +21,8 @@
 
 'use strict';
 
+import { api } from './api.js';
+
 import { escapeHtml, icon } from './charts.js';
 
 /* --------------------------------------------------------------- page header */
@@ -421,6 +423,49 @@ export function pickerValue(input, options) {
   const hit = options.find((o) => o.label.toLowerCase() === typed)
     || options.find((o) => o.label.toLowerCase().startsWith(typed));
   return hit ? hit.value : null;
+}
+
+/* ---------------------------------------------------------------- jobs */
+
+/* Starts a maintenance job and watches it to the end.
+
+ * These take minutes, so the button cannot simply await a response: the server
+ * answers 202 immediately and the work carries on behind it. This polls until
+ * the job reports done or failed, and reports every state through `onState` so
+ * the screen can say what is happening rather than going quiet for eight
+ * minutes - which is indistinguishable from being broken.
+ *
+ * Polling stops when the view is torn down: `signal` is the view lifetime, so
+ * navigating away does not leave a timer firing against a dead screen.
+ */
+export async function runJob(kind, { onState, signal } = {}) {
+  const say = (state) => { if (onState) onState(state); };
+
+  let state;
+  try {
+    state = await api.jobStart(kind);
+  } catch (error) {
+    /* 409 means somebody else's job holds the slot. That is not a failure of
+     * this request and should not read like one. */
+    if (error?.status === 409) {
+      say({ status: 'busy', error: error.detail });
+      return { status: 'busy', error: error.detail };
+    }
+    throw error;
+  }
+  say(state);
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  /* Every two seconds. The jobs run for minutes; a tighter poll would only add
+   * requests to a server that is busy doing the thing being polled for. */
+  while (!signal?.aborted) {
+    await wait(2000);
+    if (signal?.aborted) break;
+    state = await api.jobStatus(kind);
+    say(state);
+    if (state.status === 'done' || state.status === 'failed') return state;
+  }
+  return state;
 }
 
 /* -------------------------------------------------------------------- dialog */

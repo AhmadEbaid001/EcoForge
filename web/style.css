@@ -95,6 +95,25 @@
   --logoInk:     #003663;
   --logoMint:    #85e199;
 
+  /* The sign-in screen. The card floats on a field of the logo navy; the scene
+     beside the form is a cool tint of it, and the district on that scene is drawn
+     in three tones of near-white so the mint reads as the one decided thing,
+     exactly as it does on the allocation map. */
+  --login-field:     #003663;
+  --login-scene-bg:  linear-gradient(165deg, #eef2f7 0%, #e4ebf3 60%, #dbe6f0 100%);
+  --login-glow:      rgba(0, 54, 99, .10);
+  --login-scrim:     #e6edf5;
+  --iso-plate:       rgba(0, 54, 99, .07);
+  --iso-top:         #ffffff;
+  --iso-left:        #cdd8e6;
+  --iso-right:       #e3eaf3;
+  --iso-lit:         #b9edc6;
+  --iso-mast:        #9fb1c6;
+  --login-onfield-face: rgba(255, 255, 255, .12);
+  --login-onfield-line: rgba(255, 255, 255, .30);
+  --login-onfield-ink:  #eef3f8;
+  --login-onfield-on:   #85e199;
+
   --shadow: 0 1px 1px rgba(13, 26, 38, .04), 0 10px 28px -12px rgba(13, 26, 38, .16);
   --scrim:  rgba(13, 26, 38, .45);
   --overlay: rgba(255, 255, 255, .9);
@@ -212,6 +231,21 @@
     --logoInk:     #e8edf2;
     --logoMint:    #85e199;
 
+    --login-field:     #04121d;
+    --login-scene-bg:  linear-gradient(165deg, #0d1c29 0%, #102232 60%, #13293b 100%);
+    --login-glow:      rgba(133, 225, 153, .09);
+    --login-scrim:     #0f2130;
+    --iso-plate:       rgba(232, 237, 242, .05);
+    --iso-top:         #35485a;
+    --iso-left:        #1b2a38;
+    --iso-right:       #26374a;
+    --iso-lit:         #2f6b48;
+    --iso-mast:        #46586b;
+    --login-onfield-face: rgba(255, 255, 255, .08);
+    --login-onfield-line: rgba(255, 255, 255, .22);
+    --login-onfield-ink:  #dbe4ec;
+    --login-onfield-on:   #85e199;
+
     --shadow: 0 1px 1px rgba(0, 0, 0, .4), 0 12px 32px -14px rgba(0, 0, 0, .85);
     --scrim:  rgba(2, 4, 6, .7);
     --overlay: rgba(17, 30, 42, .9);
@@ -261,6 +295,21 @@
 
   --logoInk:     #e8edf2;
   --logoMint:    #85e199;
+
+  --login-field:     #04121d;
+  --login-scene-bg:  linear-gradient(165deg, #0d1c29 0%, #102232 60%, #13293b 100%);
+  --login-glow:      rgba(133, 225, 153, .09);
+  --login-scrim:     #0f2130;
+  --iso-plate:       rgba(232, 237, 242, .05);
+  --iso-top:         #35485a;
+  --iso-left:        #1b2a38;
+  --iso-right:       #26374a;
+  --iso-lit:         #2f6b48;
+  --iso-mast:        #46586b;
+  --login-onfield-face: rgba(255, 255, 255, .08);
+  --login-onfield-line: rgba(255, 255, 255, .22);
+  --login-onfield-ink:  #dbe4ec;
+  --login-onfield-on:   #85e199;
 
   --shadow: 0 1px 1px rgba(0, 0, 0, .4), 0 12px 32px -14px rgba(0, 0, 0, .85);
   --scrim:  rgba(2, 4, 6, .7);
@@ -773,61 +822,91 @@ label.check {
 }
 
 /* =====================================================================
-   5. Login
+   5. Login — the one screen every user meets
+
+   One card on a field of the brand colour: the way in on the left, what this is
+   on the right. It is the only place with room to say what GEMP does to somebody
+   who has never seen it, and the only screen every user meets.
+
+   Everything on the scene side is fixed copy and drawn geometry. Nothing is
+   fetched and nothing describes the portfolio - an unauthenticated visitor is
+   told what the platform is FOR, never what it currently holds.
    ===================================================================== */
 
 .login-wrap {
   min-height: 100vh; display: flex; flex-direction: column;
   background: var(--bg);
 }
-
-/* Nothing but the two controls that decide whether the room can read the
-   screen. No product bar, no chip: this page has one job. */
-.login-bar {
-  display: flex; align-items: center; justify-content: flex-end; gap: var(--s-sm);
-  padding: var(--s-sm) var(--s-margin); flex: none;
+/* Only the sign-in screen takes the field. The booting state and the <noscript>
+   block in index.html are also `.login-wrap`, and both are one centred message. */
+.login-wrap.is-signin {
+  display: grid; place-items: center;
+  padding: var(--s-lg);
+  background: var(--login-field);
 }
-/* Sized by height and left to find its own width: the mark is 4.4:1, so pinning a
-   width is how it ends up either clipped or three pixels tall. */
+
+.login-bar {
+  position: absolute; top: 0; inset-inline-end: 0;
+  display: flex; align-items: center; gap: var(--s-sm);
+  padding: var(--s-12) var(--s-md);
+}
+/* On the brand field the two read-state controls need their own contrast; they
+   are not sitting on a panel here. */
+.login-wrap.is-signin .textscale,
+.login-wrap.is-signin .appearance {
+  border-color: var(--login-onfield-line); background: var(--login-onfield-face);
+}
+.login-wrap.is-signin .textscale button,
+.login-wrap.is-signin .appearance button {
+  background: none; color: var(--login-onfield-ink); border-color: var(--login-onfield-line);
+}
+.login-wrap.is-signin .textscale button[aria-pressed="true"],
+.login-wrap.is-signin .appearance button[aria-pressed="true"] {
+  background: var(--login-onfield-on); color: var(--accentInk);
+}
+
+/* ---- the card ---- */
+
+.login-card {
+  width: min(64rem, 100%);
+  display: grid; grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+  background: var(--panel);
+  border-radius: var(--radius-dialog); overflow: hidden;
+  box-shadow: 0 24px 70px -24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .12);
+}
+
+.login-col {
+  display: grid; align-content: center; gap: var(--s-md);
+  padding: var(--s-xl) var(--s-lg);
+  min-width: 0;
+}
+.login-lockup { display: grid; justify-items: start; }
 .brand-wordmark { margin: 0; line-height: 0; }
+.login-lockup .brand-wordmark { width: 8.5rem; }
+.login-lockup .brand-wordmark .wordmark-svg { width: 100%; height: auto; }
 .wordmark-svg { display: block; height: 100%; width: auto; }
 .wm-ink { fill: var(--logoInk); }
 .wm-accent { fill: var(--logoMint); }
 
-.login-body { flex: 1; display: grid; place-items: center; padding: var(--s-lg); }
-.login-col { width: min(26rem, 100%); display: grid; gap: var(--s-12); }
-/* The lockup: the mark at 15rem, then one sentence saying what the product
-   does. Somebody looking at this screen may never have seen the product.
-
-   Centred as a unit. The column is 26rem and the mark is 15rem, so a mark that
-   only sets its own width sits hard against the left edge of a panel it is
-   supposed to sit above. */
-.login-lockup {
-  display: grid; gap: var(--s-xs);
-  justify-items: center; text-align: center;
-}
-.login-lockup .brand-wordmark { width: 15rem; }
-.login-lockup .brand-wordmark .wordmark-svg { width: 100%; height: auto; }
-.login-lockup .lede {
-  margin: 0; font-size: var(--fs-body-md); color: var(--ink2);
-  text-wrap: pretty; max-width: 40ch;
-}
-
-.login {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius-lg); padding: var(--s-lg);
-  display: grid; gap: var(--s-md); box-shadow: var(--shadow);
-}
+.login { display: grid; gap: var(--s-md); }
 .login > * { margin: 0; }
 .login h2 {
-  font-size: var(--fs-record); font-weight: 600; letter-spacing: -.021em;
+  font-size: var(--fs-figure); font-weight: 700; letter-spacing: -.024em;
+  line-height: 1.1;
 }
 .login label {
   display: grid; gap: var(--s-xs); margin: 0;
-  font-size: var(--fs-label); font-weight: 600; color: var(--ink);
+  font-size: var(--fs-label); font-weight: 600; color: var(--ink2);
 }
-.login input { min-height: 38px; }
-.login button[type="submit"] { width: 100%; min-height: 40px; font-size: var(--fs-body-sm); }
+.login input { min-height: 44px; }
+.login button[type="submit"] {
+  width: 100%; min-height: 46px; font-size: var(--fs-body-md); font-weight: 650;
+  margin-top: var(--s-xs);
+}
+.login-note {
+  margin: 0; font-size: var(--fs-caption); color: var(--ink3);
+  text-wrap: pretty; line-height: 1.5;
+}
 
 .password-field { position: relative; display: grid; }
 .password-field input { padding-inline-end: 4rem; }
@@ -838,7 +917,7 @@ label.check {
 }
 .reveal:hover { color: var(--ink); background: var(--sunk); }
 .reveal .icon { width: 17px; height: 17px; }
-.login .hint { font-size: var(--fs-caption); color: var(--ink2); font-weight: 400; }
+.login .hint { font-size: var(--fs-caption); color: var(--ink3); font-weight: 400; }
 
 /* Reserves its row whether or not it is showing, so nothing below it moves. */
 .caps-hint {
@@ -848,11 +927,69 @@ label.check {
 .caps-hint.on { visibility: visible; }
 
 .login-foot {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s-md); flex-wrap: wrap;
-  padding: var(--s-sm) var(--s-margin);
-  border-top: 1px solid var(--line); background: var(--panel);
-  font-size: var(--fs-caption); color: var(--ink2); flex: none;
+  display: flex; align-items: center; gap: var(--s-md); flex-wrap: wrap;
+  font-size: var(--fs-caption); color: var(--ink3);
+}
+
+/* ---- the scene half ---- */
+
+.login-scene {
+  position: relative; overflow: hidden;
+  display: grid; align-content: end;
+  padding: var(--s-xl);
+  background: var(--login-scene-bg);
+  border-inline-start: 1px solid var(--line);
+}
+.login-scene-art {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  pointer-events: none;
+}
+.scene-svg { width: 100%; height: 100%; }
+.scene-glow-in  { stop-color: var(--login-glow); }
+.scene-glow-out { stop-color: transparent; }
+
+/* Three faces to a box, three tones. The district is pale so the mint reads as
+   the one thing that has been decided, exactly as it does on the map. */
+.iso-plate { fill: var(--iso-plate); }
+.iso-top   { fill: var(--iso-top); }
+.iso-left  { fill: var(--iso-left); }
+.iso-right { fill: var(--iso-right); }
+.iso-top.lit { fill: var(--iso-lit); }
+.iso-solar { fill: var(--accent); opacity: .9; }
+.iso-solar-rib { stroke: var(--iso-top); stroke-width: 1.1; fill: none; opacity: .7; }
+.iso-mast, .iso-blade {
+  stroke: var(--iso-mast); stroke-width: 2; stroke-linecap: round; fill: none;
+}
+.iso-hub { fill: var(--iso-mast); }
+
+/* A scrim between the scene and the words. Without it a lit roof can land under
+   the sentence, and the brightest thing on the panel competes with the one thing
+   that has to be read. */
+.login-scene-art::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(to top,
+    var(--login-scrim) 0%, var(--login-scrim) 30%, transparent 68%);
+}
+.login-scene-body { position: relative; display: grid; gap: var(--s-md); }
+.login-scene .lede {
+  margin: 0; font-size: var(--fs-body-lg); line-height: 1.5;
+  color: var(--ink); text-wrap: pretty; max-width: 34ch;
+}
+.login-points { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-10); }
+.login-points li {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s-10);
+  align-items: start; font-size: var(--fs-body-sm); color: var(--ink2);
+  line-height: 1.45; text-wrap: pretty;
+}
+.login-points .icon { width: 17px; height: 17px; color: var(--accent); margin-top: 1px; }
+
+/* One column below the point where the scene stops being a scene and starts
+   being a stripe. */
+@media (max-width: 60rem) {
+  .login-card { grid-template-columns: minmax(0, 1fr); width: min(26rem, 100%); }
+  .login-scene { display: none; }
+  .login-col { padding: var(--s-lg); }
+  .login-lockup { justify-items: center; }
 }
 
 /* =====================================================================
@@ -1893,6 +2030,16 @@ tbody tr.denied-row td { font-weight: 600; }
   text-wrap: pretty; max-width: 80ch;
 }
 
+/* The counts beside a verdict: how many held, how many are on the record as
+   outstanding, how many broke. */
+.posture-verdict .tally {
+  display: flex; align-items: center; gap: var(--s-12); flex-wrap: wrap;
+  margin-inline-start: auto; flex: none;
+}
+.posture-verdict .tally .sev { font-size: var(--fs-body-md); font-weight: 700; }
+
+.evidence-tools { margin-bottom: var(--s-12); }
+
 /* Each warning is a finding, so it gets a row and a mark rather than a bullet in
    a paragraph. */
 .posture-warnings {
@@ -1968,6 +2115,359 @@ tbody tr.denied-row td { font-weight: 600; }
 .glossary-wrap > summary::before { content: "+ "; color: var(--ink3); }
 .glossary-wrap[open] > summary::before { content: "2 "; }
 .glossary-wrap > summary:hover { color: var(--ink); }
+
+/* ---- the landing page ------------------------------------------------
+
+   A separate page from the sign-in card: a sticky bar with one call to action,
+   a left-set hero beside the scene, a strip of figures where a commercial site
+   would put customer logos, then alternating reading bands.
+
+   It is the only screen in the product that is TYPESET rather than laid out -
+   a measure, a scale and bands - because it is the only one somebody reads
+   rather than operates.
+   ------------------------------------------------------------------- */
+
+.landing-page { background: var(--bg); min-height: 100vh; }
+
+.lp-nav {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: var(--s-lg);
+  padding: var(--s-12) var(--pad-page);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.lp-brand { display: block; width: 6.5rem; line-height: 0; }
+.lp-brand .wordmark-svg { width: 100%; height: auto; }
+.lp-links { display: flex; gap: var(--s-lg); margin-inline-start: var(--s-md); }
+.lp-links a {
+  font-size: var(--fs-body-sm); font-weight: 600; color: var(--ink2);
+  text-decoration: none;
+}
+.lp-links a:hover { color: var(--ink); }
+.lp-nav-actions {
+  margin-inline-start: auto; display: flex; align-items: center; gap: var(--s-sm);
+}
+
+/* ---- hero ---- */
+
+.lp-hero {
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  align-items: center; gap: var(--s-xl);
+  max-width: 78rem; margin: 0 auto;
+  padding: var(--s-xl) var(--pad-page);
+}
+.lp-hero-copy { display: grid; gap: var(--s-md); justify-items: start; }
+.lp-badge {
+  margin: 0; display: inline-flex; align-items: center;
+  padding: var(--s-6) var(--s-12); border-radius: var(--radius-pill);
+  background: var(--okSoft); color: var(--ok);
+  font-size: var(--fs-caption); font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.lp-hero h1 {
+  margin: 0; font-size: clamp(2rem, 4.4vw, 3.4rem); font-weight: 700;
+  line-height: 1.08; letter-spacing: -.03em; color: var(--ink);
+  text-wrap: balance;
+}
+.lp-accent { color: var(--ok); }
+.lp-standfirst {
+  margin: 0; font-size: var(--fs-body-lg); line-height: 1.6; color: var(--ink2);
+  max-width: 46ch; text-wrap: pretty;
+}
+.lp-cta { display: flex; gap: var(--s-sm); flex-wrap: wrap; }
+.lp-cta .primary, .lp-cta .btn { min-height: 44px; padding-inline: var(--s-lg); }
+
+.lp-hero-art {
+  border-radius: var(--radius-dialog); overflow: hidden;
+  background: var(--login-scene-bg); border: 1px solid var(--line);
+  padding: var(--s-md); aspect-ratio: 4 / 3; display: grid; place-items: center;
+}
+.lp-hero-art .scene-svg { width: 100%; height: 100%; }
+
+/* ---- the figures strip ---- */
+
+.lp-proof {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1px; background: var(--line);
+  border-block: 1px solid var(--line);
+}
+.lp-proof > div {
+  background: var(--panel); padding: var(--pad-card);
+  display: grid; gap: var(--s-6); align-content: start;
+}
+.lp-proof strong {
+  font-size: var(--fs-figure); font-weight: 700; color: var(--ok);
+  letter-spacing: -.02em; line-height: 1;
+}
+.lp-proof span {
+  font-size: var(--fs-body-sm); color: var(--ink2); line-height: 1.5;
+  text-wrap: pretty;
+}
+
+/* ---- reading bands ---- */
+
+.lp-band {
+  max-width: 62rem; margin: 0 auto;
+  padding: var(--s-xl) var(--pad-page);
+  display: grid; gap: var(--s-md);
+}
+.lp-band-alt { max-width: none; background: var(--panel2); border-block: 1px solid var(--line); }
+.lp-band-alt > * { max-width: 62rem; margin-inline: auto; width: 100%; }
+.lp-h {
+  margin: 0; font-size: clamp(1.3rem, 2.2vw, 1.75rem); font-weight: 650;
+  letter-spacing: -.024em; color: var(--ink); text-wrap: balance;
+}
+.lp-sub {
+  margin: 0; font-size: var(--fs-body-md); color: var(--ink2);
+  max-width: 68ch; text-wrap: pretty;
+}
+
+/* ---- closing call ---- */
+
+.lp-close {
+  display: grid; justify-items: center; gap: var(--s-12);
+  text-align: center; padding: var(--s-xl) var(--pad-page);
+  background: var(--login-field);
+}
+.lp-close h2 {
+  margin: 0; font-size: clamp(1.4rem, 2.6vw, 2rem); font-weight: 700;
+  letter-spacing: -.024em; color: #fff; text-wrap: balance;
+}
+.lp-close p {
+  margin: 0; font-size: var(--fs-body-md); color: rgba(255, 255, 255, .78);
+  max-width: 52ch; text-wrap: pretty;
+}
+.lp-close .primary { min-height: 46px; padding-inline: var(--s-xl); }
+
+.lp-foot {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s-md); flex-wrap: wrap;
+  padding: var(--s-md) var(--pad-page);
+  font-size: var(--fs-caption); color: var(--ink3);
+}
+
+/* A button that behaves like a link, for the one place a link would be wrong:
+   it changes what this page IS rather than navigating anywhere. */
+.linkish {
+  background: none; border: 0; padding: 0; min-height: 0;
+  color: var(--ink2); font: inherit; font-size: var(--fs-caption);
+  text-decoration: underline; cursor: pointer;
+}
+.linkish:hover { color: var(--ink); }
+
+/* ---- the reading blocks ---- */
+
+/* Numbered stages. The number is the ornament, so it is the only decorative
+   thing on the page and it carries an actual value. */
+.about-stages { list-style: none; margin: 0; padding: 0; display: grid; }
+.about-stages > li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start; gap: var(--pad-card);
+  padding: var(--pad-card) 0; border-top: 1px solid var(--line);
+}
+.about-stages > li:first-child { border-top: 0; }
+.about-step {
+  font-size: var(--fs-figure); font-weight: 700; line-height: 1;
+  color: var(--ok); font-variant-numeric: tabular-nums; opacity: .6;
+}
+.about-stages > li h4 {
+  margin: 0 0 var(--s-6); font-size: var(--fs-subhead); font-weight: 650;
+  color: var(--ink); text-transform: none; letter-spacing: -.01em;
+}
+.about-stages p {
+  margin: 0; font-size: var(--fs-body-sm); line-height: 1.6; color: var(--ink2);
+  text-wrap: pretty; max-width: 62ch;
+}
+
+
+/* ---- the drawn figures ---- */
+
+/* Four diagrams sharing one box, one stroke weight and one accent, so they read
+   as a set. Everything is currentColor-free and token-driven, so they re-colour
+   with the appearance. */
+.stage-fig { width: 100%; height: auto; max-width: 9.5rem; display: block; }
+.fig-stroke { fill: none; stroke: var(--ink2); stroke-width: 2;
+              stroke-linecap: round; stroke-linejoin: round; }
+.fig-muted  { fill: none; stroke: var(--line); stroke-width: 2; stroke-linecap: round; }
+.fig-accent { fill: none; stroke: var(--ok); stroke-width: 2;
+              stroke-linecap: round; stroke-linejoin: round; }
+.fig-accent-fill { fill: var(--okSoft); stroke: var(--ok); stroke-width: 2; }
+.fig-warn   { fill: none; stroke: var(--amber); stroke-width: 2; stroke-linecap: round; }
+.fig-seal   { fill: none; stroke: var(--ok); stroke-width: 2.4;
+              stroke-linecap: round; stroke-linejoin: round; }
+.fig-dash   { stroke-dasharray: 5 4; }
+.fig-mono   { stroke-dasharray: 2 3; }
+
+.stage-fig-wrap { display: grid; place-items: center; padding-inline-start: var(--s-md); }
+
+/* ---- how it is built: four cards ---- */
+
+.built-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: var(--gap-box);
+}
+.built-card {
+  display: grid; gap: var(--s-10); align-content: start;
+  padding: var(--pad-card);
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+              border-color var(--dur) var(--ease);
+}
+.built-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--ok);
+  box-shadow: 0 18px 40px -28px rgba(0, 0, 0, .5);
+}
+.built-fig {
+  display: grid; place-items: center; padding: var(--s-sm) 0 var(--s-6);
+}
+.built-fig .stage-fig { max-width: 11rem; }
+.built-card h3 {
+  margin: 0; font-size: var(--fs-subhead); font-weight: 650; color: var(--ink);
+  letter-spacing: -.01em;
+}
+.built-card p {
+  margin: 0; font-size: var(--fs-body-sm); line-height: 1.6; color: var(--ink2);
+  text-wrap: pretty;
+}
+/* The struck-out cloud and the refused row carry the one warning colour. */
+.fig-strike { stroke: var(--crit); stroke-width: 2.4; stroke-linecap: round; fill: none; }
+.fig-eq { stroke-width: 2.6; }
+.fig-chosen { opacity: .18; }
+.built-card:hover .fig-cloud { opacity: .55; }
+.fig-cloud { transition: opacity var(--dur) var(--ease); }
+
+/* ---- what it does not claim: an inverted band ---- */
+
+/* Inverted on purpose. The limits are the section that earns the rest of the
+   page, and a reader who skims light bands will stop at a dark one. */
+.lp-band-dark {
+  max-width: none; background: var(--login-field); color: #fff;
+  padding-block: var(--s-xl);
+}
+.lp-band-dark > * { max-width: 62rem; margin-inline: auto; width: 100%; }
+.limits-head { display: grid; gap: var(--s-12); justify-items: start; }
+.lp-band-dark .lp-h { color: #fff; }
+.lp-band-dark .lp-sub { color: rgba(255, 255, 255, .74); }
+.lp-badge-quiet {
+  background: rgba(255, 255, 255, .10); color: #cfe9d6;
+}
+
+.limit-grid {
+  list-style: none; margin: var(--s-md) 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: var(--gap-box);
+}
+.limit-grid > li {
+  display: grid; gap: var(--s-6); align-content: start;
+  padding: var(--pad-card);
+  background: rgba(255, 255, 255, .055);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: var(--radius-lg);
+  border-top: 3px solid var(--amber);
+  transition: background var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.limit-grid > li:hover {
+  background: rgba(255, 255, 255, .10); transform: translateY(-2px);
+}
+.limit-n {
+  font-size: var(--fs-caption); font-weight: 700; letter-spacing: .12em;
+  color: var(--amber); font-variant-numeric: tabular-nums;
+}
+.limit-grid h3 {
+  margin: 0; font-size: var(--fs-body-md); font-weight: 650; color: #fff;
+  letter-spacing: -.01em;
+}
+.limit-grid p {
+  margin: 0; font-size: var(--fs-body-sm); line-height: 1.6;
+  color: rgba(255, 255, 255, .76); text-wrap: pretty;
+}
+
+.lp-foot { justify-content: center; }
+
+/* ---- motion -----------------------------------------------------------
+
+   Every animated element is VISIBLE by default and only hidden once the script
+   has confirmed it can bring it back (`.lp-animate` is set by that script). A
+   reader with no JavaScript sees the whole page; a reader who asked for less
+   motion is never armed in the first place.
+   --------------------------------------------------------------------- */
+
+.lp-animate .lp-rise {
+  opacity: 0; transform: translateY(14px);
+  transition: opacity .55s var(--ease), transform .55s var(--ease);
+}
+.lp-animate .lp-rise.is-in { opacity: 1; transform: none; }
+.lp-animate .lp-rise.d1 { transition-delay: .06s; }
+.lp-animate .lp-rise.d2 { transition-delay: .12s; }
+.lp-animate .lp-rise.d3 { transition-delay: .18s; }
+.lp-animate .lp-rise.d4 { transition-delay: .24s; }
+.lp-animate .lp-rise.d5 { transition-delay: .30s; }
+
+/* The hero does not wait to be scrolled to, so it plays on load. */
+.lp-animate .lp-enter { animation: lp-rise .7s var(--ease) both; }
+.lp-animate .lp-enter-art { animation-delay: .12s; }
+@keyframes lp-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The turbines turn. Slowly - this is a landing page, not a screensaver, and a
+   fast rotor beside body text is something a reader has to look away from. */
+.iso-rotor { transform-origin: center; }
+.lp-animate .iso-rotor { animation: lp-spin 14s linear infinite; }
+.lp-animate .lp-hero-art .iso-rotor:nth-of-type(1) { animation-duration: 18s; }
+@keyframes lp-spin { to { transform: rotate(360deg); } }
+
+/* A breath, not a bounce. */
+.lp-animate .lp-hero-art .scene-svg { animation: lp-float 9s ease-in-out infinite; }
+@keyframes lp-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-animate .lp-rise { opacity: 1; transform: none; transition: none; }
+  .lp-animate .lp-enter,
+  .lp-animate .iso-rotor,
+  .lp-animate .lp-hero-art .scene-svg { animation: none; }
+}
+
+/* ---- polish ---- */
+
+.lp-nav { transition: box-shadow var(--dur) var(--ease), background var(--dur) var(--ease); }
+.lp-nav.is-stuck { box-shadow: 0 1px 0 var(--line), 0 8px 24px -18px rgba(0, 0, 0, .5); }
+
+.lp-hero-art {
+  position: relative;
+  box-shadow: 0 30px 60px -40px rgba(0, 0, 0, .55);
+}
+/* A soft bloom behind the district, so the frame reads as lit rather than as a
+   grey rectangle with a drawing in it. */
+.lp-hero-art::before {
+  content: ""; position: absolute; inset: 12% 14% 26%;
+  background: radial-gradient(closest-side, var(--login-glow), transparent 72%);
+  pointer-events: none;
+}
+
+.lp-proof > div { transition: background var(--dur) var(--ease); }
+.lp-proof > div:hover { background: var(--panel2); }
+
+
+.lp-cta .primary, .lp-close .primary {
+  box-shadow: 0 10px 24px -14px var(--accent);
+}
+
+@media (max-width: 60rem) {
+  .built-grid, .limit-grid { grid-template-columns: minmax(0, 1fr); }
+  .lp-hero { grid-template-columns: minmax(0, 1fr); }
+  .lp-hero-art { display: none; }
+  .lp-links { display: none; }
+  .about-stages > li { grid-template-columns: auto minmax(0, 1fr); }
+  .stage-fig-wrap { display: none; }
+}
 
 /* =====================================================================
    11. Modals and dialogs

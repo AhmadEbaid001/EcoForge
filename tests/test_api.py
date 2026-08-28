@@ -12,6 +12,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import threading
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -299,6 +301,56 @@ def test_building_candidates_mark_the_one_a_run_chose(client):
 
 def test_unknown_building_candidates_is_404(client):
     assert client.get("/api/v1/buildings/nope/candidates").status_code == 404
+
+
+def test_an_unknown_job_kind_is_a_404_not_a_command(client):
+    """The path segment selects from a fixed table and never reaches a shell."""
+    assert client.get("/api/v1/jobs/../../etc/passwd").status_code in (404, 405)
+    assert client.post("/api/v1/jobs/rm-rf").status_code == 404
+
+
+def test_only_one_maintenance_job_runs_at_a_time(monkeypatch):
+    """Both jobs are minutes of CPU and both write.
+
+    Two refits interleaving their writes, or a claims run measuring a database
+    midway through a refit, produce numbers describing no moment that ever
+    existed. The second request is refused rather than queued - a queue would let
+    somebody hold the button down and book an hour of work.
+    """
+    from gemp.api import jobs
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def _slow(kind):
+        started.set()
+        release.wait(timeout=5)
+        with jobs._lock:
+            jobs._state[kind].update(status="done", finished_at="now")
+
+    monkeypatch.setattr(jobs, "_run", _slow)
+    for entry in jobs._state.values():
+        entry.update(status="idle")
+
+    ok, _first = jobs.start("forecast-refit", "tester")
+    assert ok
+    assert started.wait(timeout=5)
+
+    # The other kind is refused too, not just a second run of the same one.
+    blocked, blocking = jobs.start("evidence", "tester")
+    assert blocked is False
+    assert blocking["kind"] == "forecast-refit"
+
+    release.set()
+
+
+def test_job_state_is_a_copy_callers_cannot_corrupt(monkeypatch):
+    """`status` hands out a snapshot; mutating it must not change the record."""
+    from gemp.api import jobs
+
+    snapshot = jobs.status("evidence")
+    snapshot["status"] = "tampered"
+    assert jobs.status("evidence")["status"] != "tampered"
 
 
 def test_forecast_metrics_report_which_model_is_in_use(client):

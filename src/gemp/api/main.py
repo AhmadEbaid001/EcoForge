@@ -26,16 +26,16 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from gemp.api import auth_routes, dashboard_routes
+from gemp.api import auth_routes, dashboard_routes, jobs
 from gemp.api.deps import get_session
 from gemp.auth.deps import (
     ADMIN,
@@ -1244,6 +1244,48 @@ def _claims_csv_path() -> Path | None:
     return None
 
 
+@app.get("/api/v1/jobs", dependencies=[Depends(require(ADMIN))])
+def job_status_all() -> dict:
+    """What the maintenance jobs are doing, so a screen can show it."""
+    return {"jobs": jobs.all_status()}
+
+
+@app.get("/api/v1/jobs/{kind}", dependencies=[Depends(require(ADMIN))])
+def job_status(kind: str) -> dict:
+    if kind not in jobs.JOB_COMMANDS:
+        raise HTTPException(404, f"no job {kind}")
+    return jobs.status(kind)
+
+
+@app.post("/api/v1/jobs/{kind}", status_code=202,
+          dependencies=[Depends(require(ADMIN))])
+def job_start(kind: str, request: Request) -> dict:
+    """Start a maintenance job, unless one is already running.
+
+    Admin only, and one at a time across the process. Both of these jobs are
+    minutes of CPU and both write; letting them overlap produces numbers that
+    describe no moment that ever existed, and letting anybody start them on
+    request is a denial of service with a button on it.
+
+    409 rather than a queue when the slot is taken: a queue would let somebody
+    hold the button down and book an hour of work.
+    """
+    if kind not in jobs.JOB_COMMANDS:
+        raise HTTPException(404, f"no job {kind}")
+
+    principal: Principal | None = getattr(request.state, "principal", None)
+    username = principal.username if principal else "unknown"
+
+    started, state = jobs.start(kind, username)
+    if not started:
+        raise HTTPException(
+            409,
+            f"{state['label']} is already running; wait for it to finish",
+        )
+    log.info("job %s started by %s", kind, username)
+    return state
+
+
 @app.get("/api/v1/evidence/claims", dependencies=[Depends(require(VIEWER))])
 def evidence_claims() -> dict:
     """The claims harness's own output, on screen.
@@ -1256,7 +1298,7 @@ def evidence_claims() -> dict:
     path = _claims_csv_path()
     if path is None:
         return {
-            "claims": [], "source": None,
+            "claims": [], "source": None, "measured_at": None,
             "note": "No measurement found. Run: python -m gemp.evaluate",
         }
 
@@ -1273,7 +1315,21 @@ def evidence_claims() -> dict:
                 "measured": record.get("measured", ""),
                 "detail": record.get("detail", ""),
             })
-    return {"claims": rows, "source": str(path), "note": ""}
+    # When the harness last ran, from the file it wrote.
+    #
+    # A claims table with no date on it is the one failure mode this screen has:
+    # every row can read PASS while describing a system that has since changed.
+    # The verdicts are only worth anything next to the moment they were measured.
+    measured_at = datetime.fromtimestamp(
+        path.stat().st_mtime, tz=timezone.utc
+    ).isoformat()
+
+    return {
+        "claims": rows,
+        "source": str(path),
+        "measured_at": measured_at,
+        "note": "",
+    }
 
 
 @app.get("/api/v1/runs/{run_id}/boq", dependencies=[Depends(require(VIEWER))])

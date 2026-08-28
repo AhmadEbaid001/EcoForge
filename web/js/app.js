@@ -14,7 +14,7 @@
 'use strict';
 
 import { api, setPasswordChangeHandler, setUnauthenticatedHandler } from './api.js';
-import { wordmark } from './brand.js';
+import { builtFigure, signInArtwork, stageFigure, wordmark } from './brand.js';
 import { escapeHtml, hydrateCharts, icon } from './charts.js';
 import { currentLang, locale, setLangCode, t } from './i18n.js';
 import { markRead, startClock, wireReread } from './ui.js';
@@ -178,6 +178,261 @@ function wireTextScale(container) {
  * though nothing happened. */
 let attempts = 0;
 
+/* The landing page.
+ *
+ * A separate page, not a preamble to the form: somebody arriving at this URL for
+ * the first time has never heard of GEMP, and somebody arriving for the hundredth
+ * time wants the password field. The landing answers the first and carries a
+ * Sign in button for the second, which swaps to the form outright.
+ *
+ * Everything here is fixed copy and drawn geometry. Nothing is fetched. This page
+ * renders for a visitor who has not signed in, so a figure describing the
+ * deployment's own state - how many rates are cited, how many alerts are open -
+ * would be answering the questions the sign-in screen exists to gate. The numbers
+ * that ARE here are fixed by the design: fifty buildings, four methods, 720x.
+ */
+function showLanding() {
+  document.body.className = 'signed-out';
+  if (window.location.hash) {
+    window.history.replaceState(null, '', window.location.pathname);
+  }
+
+  const stage = (n, kind, title, body) => `
+    <li class="lp-rise">
+      <span class="about-step">${n}</span>
+      <div><h4 class="plain">${title}</h4><p>${body}</p></div>
+      <div class="stage-fig-wrap">${stageFigure(kind)}</div>
+    </li>`;
+
+  $('root').innerHTML = `
+    <div class="landing-page">
+      <header class="lp-nav">
+        <a class="lp-brand" href="#top" aria-label="GEMP">${wordmark('GEMP')}</a>
+        <nav class="lp-links" aria-label="Sections">
+          <a href="#what">What it does</a>
+          <a href="#built">How it is built</a>
+          <a href="#limits">What it does not claim</a>
+        </nav>
+        <div class="lp-nav-actions">
+          ${appearanceSwitch()}
+          <button type="button" class="primary" data-signin>Sign in</button>
+        </div>
+      </header>
+
+      <section class="lp-hero" id="top">
+        <div class="lp-hero-copy lp-enter">
+          <p class="lp-badge">Team Ecoforge &middot; RoboDam 2026</p>
+          <h1>A fixed budget.<br>Fifty public buildings.<br>
+            <span class="lp-accent">Evidence for every choice.</span></h1>
+          <p class="lp-standfirst">GEMP decides which public buildings in New Cairo get
+          retrofitted and with what &mdash; measuring each one rather than assuming it,
+          proving the measurements were never altered, and solving the allocation
+          exactly rather than approximately.</p>
+          <div class="lp-cta">
+            <button type="button" class="primary" data-signin>Sign in</button>
+            <a class="btn secondary" href="#what">See what it does</a>
+          </div>
+        </div>
+        <div class="lp-hero-art lp-enter lp-enter-art">${signInArtwork()}</div>
+      </section>
+
+      <!-- The proof strip. Where a commercial site puts customer logos, this puts
+           the four numbers that are true by construction. -->
+      <section class="lp-proof lp-rise-group" aria-label="At a glance">
+        <div><strong>50</strong><span>public buildings, each costed
+          from its own metered consumption</span></div>
+        <div><strong>4</strong><span>allocation methods solved side by side,
+          including the status quo</span></div>
+        <div><strong>64</strong><span>character input hash on every stored
+          allocation</span></div>
+        <div><strong>720&times;</strong><span>replay speed, so a fortnight of
+          behaviour appears in half an hour</span></div>
+      </section>
+
+      <section class="lp-band" id="what">
+        <h2 class="lp-h lp-rise">What it does</h2>
+        <ol class="about-stages">
+          ${stage('01', 'measures', 'Measures',
+            'Half-hourly meter readings arrive over MQTT and are signed as they land. '
+            + "Each building's readings form a hash chain, with a copy of the chain head "
+            + 'written outside the database volume &mdash; so deleting rows cannot '
+            + 'quietly delete the evidence that they existed. Any chain can be re-walked '
+            + 'on demand, and the platform will say where it first breaks.')}
+          ${stage('02', 'forecasts', 'Forecasts',
+            'Every building gets its own model, selected against a seasonal-naive '
+            + 'baseline. The baseline is kept and reported whenever it wins, because a '
+            + 'building whose load is stable enough that last week predicts this week is '
+            + 'telling you something worth knowing rather than failing. The annual figure '
+            + 'each retrofit is costed against comes from that model, not from a '
+            + 'floor-area rule of thumb.')}
+          ${stage('03', 'decides', 'Decides',
+            'Every building &times; measure combination is expanded into a costed '
+            + 'candidate, and the allocation is solved exactly with CP-SAT under the '
+            + 'budget and an optional per-district cap. Three baselines are solved beside '
+            + 'it &mdash; plain greedy, greedy with an upgrade pass, and an equal split of '
+            + 'the budget &mdash; so the gain is quoted against the status quo rather than '
+            + 'asserted.')}
+          ${stage('04', 'accounts', 'Accounts for it',
+            'Each stored allocation keeps a 64-character hash of the inputs that produced '
+            + 'it: same hash, same allocation, years later. It exports as a bill of '
+            + 'quantities with a rate and a citation on every line. And every claim the '
+            + 'paper makes is re-measured against the running deployment by a harness '
+            + 'whose output is a screen rather than a terminal &mdash; including the '
+            + 'claims that are currently failing.')}
+        </ol>
+      </section>
+
+      <section class="lp-band lp-band-alt" id="built">
+        <h2 class="lp-h lp-rise">How it is built</h2>
+        <div class="built-grid lp-rise-group">
+          <article class="built-card">
+            <div class="built-fig">${builtFigure('offline')}</div>
+            <h3>It works with the network unplugged</h3>
+            <p>No CDN, no web fonts, no map tiles, no charting library. The allocation
+            map is schematic SVG over local geometry and every chart is drawn by hand,
+            so a demonstration does not depend on conference wifi.</p>
+          </article>
+          <article class="built-card">
+            <div class="built-fig">${builtFigure('roles')}</div>
+            <h3>Three roles, and refusals are recorded</h3>
+            <p>Viewers read, analysts solve and acknowledge, administrators manage
+            accounts. Every authenticated action is written to an audit log
+            <em>including the ones that were denied</em>, which is the half most audit
+            logs leave out.</p>
+          </article>
+          <article class="built-card">
+            <div class="built-fig">${builtFigure('reproducible')}</div>
+            <h3>Reproducible by construction</h3>
+            <p>Candidate expansion is deterministic and the optimizer is exact, so the
+            same inputs give the same allocation on any machine. That is a measured
+            claim rather than an aspiration &mdash; the harness checks it.</p>
+          </article>
+          <article class="built-card">
+            <div class="built-fig">${builtFigure('arguable')}</div>
+            <h3>Built to be argued with</h3>
+            <p>Every recommendation shows the options that lost, not only the one that
+            won. An answer a reviewer cannot interrogate is an answer they are being
+            asked to take on trust.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="lp-band lp-band-dark" id="limits">
+        <div class="limits-head lp-rise">
+          <p class="lp-badge lp-badge-quiet">Stated in place, collected here</p>
+          <h2 class="lp-h">What it does not claim</h2>
+          <p class="lp-sub">Every screen says these where somebody could be misled by
+          not knowing them. They are gathered here so none of them is a surprise.</p>
+        </div>
+        <ul class="limit-grid lp-rise-group">
+          <li><span class="limit-n">01</span>
+            <h3>Lifetime carbon is an estimate</h3>
+            <p>A projection over the horizon in the parameters, not a measurement of
+            anything that has happened.</p></li>
+          <li><span class="limit-n">02</span>
+            <h3>Integrity is not accuracy</h3>
+            <p>A verified chain says nobody altered what the meter sent. Whether the
+            meter itself behaved is a separate question, and one the alert inbox
+            answers.</p></li>
+          <li><span class="limit-n">03</span>
+            <h3>No per-building error figure</h3>
+            <p>The platform reports which model was selected and draws both lines. It
+            does not publish a per-building error metric, so it does not invent
+            one.</p></li>
+          <li><span class="limit-n">04</span>
+            <h3>Some rates are still uncited</h3>
+            <p>Marked as such wherever they appear, including on the printed bill of
+            quantities, and they must be sourced before tender.</p></li>
+          <li><span class="limit-n">05</span>
+            <h3>The data is simulated</h3>
+            <p>Fifty real buildings, a real street network and a real catalog structure,
+            driven by a simulator rather than by fifty real meters.</p></li>
+        </ul>
+      </section>
+
+      <section class="lp-close lp-rise">
+        <h2>Sign in to open the platform.</h2>
+        <p>Accounts are issued by an administrator. There is no self-service
+        registration and no default account.</p>
+        <button type="button" class="primary" data-signin>Sign in</button>
+      </section>
+
+      <footer class="lp-foot">
+        <span>&copy; ${new Date().getFullYear()} Team Ecoforge. All rights reserved.</span>
+      </footer>
+    </div>`;
+
+  wireAppearance($('root'));
+  $('root').querySelectorAll('[data-signin]').forEach((button) => {
+    button.addEventListener('click', () => showLogin());
+  });
+
+  /* Motion is an enhancement, never a gate.
+   *
+   * Everything below starts visible in the stylesheet and is only hidden once
+   * this script has confirmed it can bring it back - so a reader with no
+   * JavaScript, or one who has asked their system for less motion, gets the
+   * whole page at once rather than a column of blank sections that never
+   * arrive. `prefers-reduced-motion` is honoured by not arming any of it. */
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const root = $('root');
+  const nav = root.querySelector('.lp-nav');
+
+  if (!still) {
+    root.classList.add('lp-animate');
+
+    /* A group staggers its own children, so the strip of four figures arrives as
+     * four things rather than as one block. */
+    root.querySelectorAll('.lp-rise-group').forEach((group) => {
+      [...group.children].forEach((child, i) => {
+        child.classList.add('lp-rise', `d${Math.min(i, 5)}`);
+      });
+    });
+  }
+
+  /* Position-checked on scroll rather than observed.
+   *
+   * An IntersectionObserver is the tidier tool and it was the first thing here,
+   * but it has one failure mode this page cannot afford: every animated element
+   * starts at `opacity: 0`, so if the callback never arrives - a tab that was
+   * never composited, a renderer that suppressed it - the visitor gets a blank
+   * page rather than a page without an effect. A rectangle check cannot fail
+   * that way, it costs one pass over twenty-one elements, and it is throttled to
+   * a frame. */
+  const rising = [...root.querySelectorAll('.lp-rise')];
+  let last = 0;
+
+  const paint = () => {
+    last = Date.now();
+    if (nav) nav.classList.toggle('is-stuck', window.scrollY > 8);
+    if (still) return;
+    for (let i = rising.length - 1; i >= 0; i -= 1) {
+      const box = rising[i].getBoundingClientRect();
+      /* Anything at or above the fold line, including what has already been
+       * scrolled past: a reader who follows a nav anchor jumps over whole
+       * sections, and those must not be left invisible behind them. */
+      if (box.top < window.innerHeight * 0.92) {
+        rising[i].classList.add('is-in');
+        rising.splice(i, 1);
+      }
+    }
+  };
+
+  /* Throttled on a clock rather than on a frame. `requestAnimationFrame` does not
+   * run while a page is not being painted - a background tab, a window behind
+   * another - so a reader returning to a tab they had parked would find the
+   * sections still hidden until they happened to scroll again. Twenty-one
+   * rectangle reads every sixtieth of a second is not worth that risk. */
+  const onScroll = () => {
+    if (Date.now() - last < 60) return;
+    paint();
+  };
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll, { passive: true });
+  paint();
+}
+
 function showLogin(message = '') {
   document.body.className = 'signed-out';
   /* Signing out from #/admin and back in as a viewer used to land on #/admin,
@@ -198,26 +453,28 @@ function showLogin(message = '') {
    * screen reports all four, to people who have signed in.
    */
   $('root').innerHTML = `
-    <div class="login-wrap">
+    <div class="login-wrap is-signin">
       <header class="login-bar">
         ${textScaleSwitch()}
         ${appearanceSwitch()}
       </header>
 
-      <div class="login-body">
+      <!-- One card on the brand field, split: the way in, and what this is.
+
+           Everything on the scene side is fixed copy and drawn geometry. Nothing
+           is fetched and nothing describes the portfolio - an unauthenticated
+           visitor is told what the platform is FOR, never what it currently
+           holds. An earlier version of this screen listed the session model and
+           the password hash; naming a hash algorithm in front of an attacker
+           helps only the attacker. -->
+      <div class="login-card">
         <div class="login-col">
-          <!-- The mark and the sentence are one lockup, centred together. Left
-               aligning a 15rem mark inside a 26rem column reads as a mark that
-               missed its mark. -->
           <div class="login-lockup">
             <p class="wordmark brand-wordmark">${wordmark('GEMP')}</p>
-            <p class="lede">Allocates a fixed budget across fifty public buildings in New
-            Cairo, and shows the evidence for every building it chose.</p>
           </div>
 
-          <form class="login panel" id="login-form">
+          <form class="login" id="login-form">
             <h2>Sign in</h2>
-
             ${message ? `<div class="error-box" role="alert">
               <p>${escapeHtml(message)}</p>
               <p class="small">The server answers the same way whether the password is
@@ -237,7 +494,7 @@ function showLogin(message = '') {
               <span class="password-field">
                 <input id="login-pass" name="password" type="password" class="mono"
                        autocomplete="current-password" required>
-                <button type="button" class="reveal" id="login-reveal"
+                <button type="button" class="lp-rise" id="login-reveal"
                         aria-pressed="false" aria-label="Show password">
                   ${icon('eye')}
                 </button>
@@ -251,20 +508,42 @@ function showLogin(message = '') {
             <button type="submit" class="primary" id="login-submit" disabled>
               Enter a username and password</button>
           </form>
+
+          <p class="login-note">There is no self-service registration, no default
+          account and no email reset. A forgotten password is reset by an
+          administrator in person.</p>
+
+          <footer class="login-foot">
+            <button type="button" class="linkish" data-to-landing>&larr; What this is</button>
+            <span>Team Ecoforge &middot; RoboDam 2026</span>
+          </footer>
         </div>
+
+        <aside class="login-scene" aria-labelledby="signin-lede">
+          <div class="login-scene-art">${signInArtwork()}</div>
+          <div class="login-scene-body">
+            <p class="lede" id="signin-lede">Allocates a fixed budget across fifty public
+            buildings in New Cairo, and shows the evidence for every building it
+            chose.</p>
+            <ul class="login-points">
+              <li>${icon('integrity')}<span>Every reading signed on arrival, and
+                re-verifiable one building at a time.</span></li>
+              <li>${icon('table')}<span>Every allocation keeps its inputs &mdash; same
+                hash, same allocation.</span></li>
+              <li>${icon('check')}<span>Every recommendation shows what lost, not only
+                what won.</span></li>
+            </ul>
+          </div>
+        </aside>
       </div>
 
-      <footer class="login-foot">
-        <span>Accounts are created by an administrator. There is no self-service
-        registration, no default account, and no email reset &mdash; a forgotten
-        password has to be reset by an administrator in person.</span>
-        <span>Team Ecoforge &middot; RoboDam2026</span>
-      </footer>
     </div>`;
 
   wireAppearance($('root'));
   wireTextScale($('root'));
   applyScale(storedScale());
+
+  $('root').querySelector('[data-to-landing]')?.addEventListener('click', () => showLanding());
 
   /* Caps Lock is the commonest reason a correct password is refused, and the
    * server deliberately will not say which reason it was - so the page has to
@@ -701,7 +980,10 @@ async function boot() {
   try {
     const session = await api.session();
     if (!session.authenticated) {
-      showLogin();
+      /* First contact is the landing page. A session that EXPIRED goes straight
+       * to the form instead - see the unauthenticated handler - because somebody
+       * who was working does not need to be told what the product is. */
+      showLanding();
       return;
     }
     state.user = session.user;
