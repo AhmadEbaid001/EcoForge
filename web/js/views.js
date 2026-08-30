@@ -196,7 +196,10 @@ export const overview = {
         <div class="stat-row">
           ${statTile(t('overview.buildings'), compact(summary.buildings),
                      t('overview.buildingsNote'))}
-          ${statTile(t('overview.readings'), compact(summary.readings),
+          ${statTile(t('overview.readings'),
+                     summary.readings_exact === false
+                       ? t('overview.aboutN', { n: compact(summary.readings) })
+                       : compact(summary.readings),
                      t('overview.readingsNote'))}
           ${statTile(t('overview.openAlerts'), compact(summary.open_anomalies),
                      t('overview.alertsNote'),
@@ -778,7 +781,7 @@ export const alerts = {
         const params = `?limit=${ROW_CAP}&only_open=${state.onlyOpen}` +
           (state.severity ? `&severity=${encodeURIComponent(state.severity)}` : '') +
           (state.building ? `&building_id=${encodeURIComponent(state.building)}` : '');
-        const [rows, summary] = await Promise.all([api.anomalyFeed(params), api.summary()]);
+        const [rows, summary] = await Promise.all([api.anomalyFeed(params), api.alertSummary()]);
         state.rows = rows;
         state.total = summary.open_anomalies;
         state.bySeverity = summary.open_by_severity || {};

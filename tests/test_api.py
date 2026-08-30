@@ -876,3 +876,40 @@ def test_candidates_carry_what_the_evidence_panel_states(client):
     lives = [o["service_life_yr"] for o in options if o["service_life_yr"] is not None]
     assert lives, "at least one option should state a service life"
     assert all(1 <= life <= 60 for life in lives), lives
+
+
+def test_the_alert_inbox_has_a_summary_that_does_not_count_readings(client):
+    """The inbox needs three numbers, not the whole overview.
+
+    It used to fetch /dashboard/summary for its total, its severity split and the
+    data clock, which meant waiting on `count(*)` over the reading hypertable -
+    measured at 6.1 seconds against staging, for a figure the inbox never shows.
+    That single query was 98% of the wait on both screens that called it.
+
+    This endpoint exists so the inbox can stop paying for it, so the contract
+    worth pinning is what it carries AND what it does not: a reading count here
+    would put the six seconds straight back.
+    """
+    body = client.get("/api/v1/dashboard/alerts/summary").json()
+
+    assert set(body) == {"open_anomalies", "open_by_severity", "data_clock"}, (
+        "the inbox reads exactly these three; anything else is work it does not use"
+    )
+    assert isinstance(body["open_anomalies"], int)
+    assert isinstance(body["open_by_severity"], dict)
+
+
+def test_the_reading_count_says_whether_it_is_exact(client):
+    """A figure that is an estimate must not be presented as a census.
+
+    On TimescaleDB the count comes from chunk statistics and runs about 450 times
+    faster, at the cost of a few percent. The overview prints "about 34M" rather
+    than "34M" when this flag is false, so the screen cannot quietly imply a
+    precision the number does not have. On SQLite - here - there is no such
+    function, so the exact count runs and the flag is true.
+    """
+    body = client.get("/api/v1/dashboard/summary").json()
+
+    assert "readings_exact" in body, "the screen needs to know which kind of number this is"
+    assert body["readings_exact"] is True, "SQLite has no estimator, so this one is exact"
+    assert isinstance(body["readings"], int)

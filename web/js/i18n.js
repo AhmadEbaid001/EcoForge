@@ -138,6 +138,7 @@ const STRINGS = {
 
     'overview.buildingsNote': 'Public buildings in New Cairo, all costed.',
     'overview.readingsNote': 'Half-hourly, and every one signed on arrival.',
+    'overview.aboutN': 'about {n}',
     'overview.alertsNote': 'Rounded — the count moves while you read it.',
     'overview.measuredNote': 'Costed on metered consumption, not a floor-area rule.',
     'overview.demandScope': '{days} days, hourly, kW summed across {n} buildings',
@@ -619,6 +620,7 @@ const STRINGS = {
 
     'overview.buildingsNote': 'مبانٍ عامة في القاهرة الجديدة، جميعها مُكلَّفة.',
     'overview.readingsNote': 'كل نصف ساعة، وكل قراءة مُوقَّعة لحظة وصولها.',
+    'overview.aboutN': 'نحو {n}',
     'overview.alertsNote': 'رقم مُقرَّب — والعدد يتغير وأنت تقرؤه.',
     'overview.measuredNote': 'التكلفة محسوبة على الاستهلاك المقيس، لا على قاعدة مساحة.',
     'overview.demandScope': '{days} يومًا، بالساعة، كيلوواط مجموعة على {n} مبنى',

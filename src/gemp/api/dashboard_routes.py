@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from gemp.api.deps import get_session
 from gemp.auth.deps import VIEWER, require
 from gemp.db import AnomalyRow, BuildingRow, OptimizationRunRow, ReadingRow
-from gemp.repository import latest_reading_ts, open_anomaly_count
+from gemp.repository import latest_reading_ts, open_anomaly_count, reading_count
 
 log = logging.getLogger("gemp.api.dashboard")
 
@@ -41,7 +41,7 @@ MAX_POINTS = 400
 def summary(session: Session = Depends(get_session)) -> dict:
     """The stat tiles: one round trip for the whole header row."""
     newest = latest_reading_ts(session)
-    readings = session.execute(select(func.count()).select_from(ReadingRow)).scalar_one()
+    readings, readings_exact = reading_count(session)
     buildings = session.execute(select(func.count()).select_from(BuildingRow)).scalar_one()
 
     measured = session.execute(
@@ -62,6 +62,9 @@ def summary(session: Session = Depends(get_session)) -> dict:
     return {
         "buildings": int(buildings),
         "readings": int(readings),
+        # The screen prints "about 34M" rather than "34M" when this is false, so
+        # a figure that is an estimate is never presented as a census.
+        "readings_exact": readings_exact,
         "data_clock": newest.isoformat() if newest else None,
         "open_anomalies": open_anomaly_count(session),
         "open_by_severity": {row[0]: int(row[1]) for row in severities},
@@ -186,6 +189,28 @@ def anomalies_daily(
             }
             for day in calendar
         ]
+    }
+
+
+@router.get("/alerts/summary")
+def alerts_summary(session: Session = Depends(get_session)) -> dict:
+    """The three fields the alert inbox needs, and nothing else.
+
+    The inbox was calling /dashboard/summary for its total, its severity split
+    and the data clock - and paying for the reading count on the way, which was
+    six seconds of work for a number it never displays. These three cost about
+    ninety milliseconds together.
+    """
+    severities = session.execute(
+        select(AnomalyRow.severity, func.count())
+        .where(AnomalyRow.acknowledged.is_(False))
+        .group_by(AnomalyRow.severity)
+    ).all()
+    newest = latest_reading_ts(session)
+    return {
+        "open_anomalies": open_anomaly_count(session),
+        "open_by_severity": {row[0]: int(row[1]) for row in severities},
+        "data_clock": newest.isoformat() if newest else None,
     }
 
 

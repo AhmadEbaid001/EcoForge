@@ -90,6 +90,10 @@ export const api = {
 
   /* --- dashboards --- */
   summary: () => request('GET', '/dashboard/summary'),
+  /* The three fields the alert inbox needs. Calling summary() for them meant
+     waiting on the reading count, which is six seconds of work for a number
+     the inbox never shows. */
+  alertSummary: () => request('GET', '/dashboard/alerts/summary'),
   load: (days) => request('GET', `/dashboard/load?days=${days}`),
   anomaliesDaily: (days) => request('GET', `/dashboard/anomalies/daily?days=${days}`),
   anomalyFeed: (params = '') => request('GET', `/dashboard/anomalies${params}`),
