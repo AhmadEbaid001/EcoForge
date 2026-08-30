@@ -43,8 +43,7 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
         <input type="range" id="budget" min="1000000" max="30000000" step="250000"
                value="10000000" aria-valuetext="10,000,000 Egyptian pounds">
         <div class="scale"><span>1,000,000</span><span>30,000,000</span></div>
-        <p class="note" id="solve-note">Every change re-solves against all fifty
-        buildings. Nothing is precomputed and the slider does not snap.</p>
+        <p class="note" id="solve-note">${t('map.budgetNote')}</p>
       </div>
 
       <fieldset class="field">
@@ -52,19 +51,19 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
         <div class="radiogroup" role="radiogroup" aria-label="${t('map.rankBy')}" id="objective">
           <button type="button" role="radio" data-value="lca_carbon" aria-checked="true">
             <span class="radio-mark" aria-hidden="true"></span>
-            <span class="radio-text"><span class="radio-label">Life-cycle carbon (kgCO&#8322;e)</span></span>
+            <span class="radio-text"><span class="radio-label">${t('obj.lca_carbon')}</span></span>
           </button>
           <button type="button" role="radio" data-value="tou_carbon" aria-checked="false">
             <span class="radio-mark" aria-hidden="true"></span>
-            <span class="radio-text"><span class="radio-label">TOU carbon — measured shape (kgCO&#8322;e)</span></span>
+            <span class="radio-text"><span class="radio-label">${t('obj.tou_carbon')}</span></span>
           </button>
           <button type="button" role="radio" data-value="raw_kwh" aria-checked="false">
             <span class="radio-mark" aria-hidden="true"></span>
-            <span class="radio-text"><span class="radio-label">First-year energy (kWh)</span></span>
+            <span class="radio-text"><span class="radio-label">${t('obj.raw_kwh')}</span></span>
           </button>
           <button type="button" role="radio" data-value="egp_saved" aria-checked="false">
             <span class="radio-mark" aria-hidden="true"></span>
-            <span class="radio-text"><span class="radio-label">First-year money (EGP)</span></span>
+            <span class="radio-text"><span class="radio-label">${t('obj.egp_saved')}</span></span>
           </button>
         </div>
       </fieldset>
@@ -79,33 +78,29 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
           <button type="button" role="radio" data-value="cpsat" aria-checked="true">
             <span class="radio-mark" aria-hidden="true"></span>
             <span class="radio-text">
-              <span class="radio-label">Exact optimization (CP-SAT)</span>
-              <span class="radio-note">Solves the knapsack exactly. The one that earns
-                its time under a district cap.</span>
+              <span class="radio-label">${t('slv.cpsat')}</span>
+              <span class="radio-note">${t('slv.cpsatNote')}</span>
             </span>
           </button>
           <button type="button" role="radio" data-value="greedy_upgrade" aria-checked="false">
             <span class="radio-mark" aria-hidden="true"></span>
             <span class="radio-text">
-              <span class="radio-label">Greedy plus an upgrade pass</span>
-              <span class="radio-note">Best benefit per pound first, then spends what is
-                left upgrading what it already picked.</span>
+              <span class="radio-label">${t('slv.greedy_upgrade')}</span>
+              <span class="radio-note">${t('slv.greedy_upgradeNote')}</span>
             </span>
           </button>
           <button type="button" role="radio" data-value="greedy" aria-checked="false">
             <span class="radio-mark" aria-hidden="true"></span>
             <span class="radio-text">
-              <span class="radio-label">Plain greedy</span>
-              <span class="radio-note">Takes the best ratio until the money runs out.
-                Saturates, and stops.</span>
+              <span class="radio-label">${t('slv.greedy')}</span>
+              <span class="radio-note">${t('slv.greedyNote')}</span>
             </span>
           </button>
           <button type="button" role="radio" data-value="equal_split" aria-checked="false">
             <span class="radio-mark" aria-hidden="true"></span>
             <span class="radio-text">
-              <span class="radio-label">Equal split &mdash; the status quo</span>
-              <span class="radio-note">An equal share to every building. Not a
-                contender; it is what the other three are argued against.</span>
+              <span class="radio-label">${t('slv.equal_split')}</span>
+              <span class="radio-note">${t('slv.equal_splitNote')}</span>
             </span>
           </button>
         </div>
@@ -114,10 +109,10 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
       <div class="field">
         <label for="cap">${t('map.districtCap')}</label>
         <span class="select-wrap"><select id="cap">
-          <option value="">No cap</option>
-          <option value="2">2 per district</option>
-          <option value="4">4 per district</option>
-          <option value="6">6 per district</option>
+          <option value="">${t('map.noCap')}</option>
+          <option value="2">${t('map.capN', { n: 2 })}</option>
+          <option value="4">${t('map.capN', { n: 4 })}</option>
+          <option value="6">${t('map.capN', { n: 6 })}</option>
         </select></span>
       </div>
 
@@ -132,12 +127,12 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
   <!-- ---------------------------------------------------------------- -->
   <section class="panel mapwrap" aria-labelledby="map-h">
     <header>
-      <h3 id="map-h">The map &middot; New Cairo</h3>
+      <h3 id="map-h">${t('map.header')}</h3>
       <div class="map-legend">
-        <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" fill="var(--accent)" stroke="var(--accentLine)" stroke-width="1.4"/><path d="M4 7.2l2 2 4-4.4" fill="none" stroke="var(--accentInk)" stroke-width="1.4"/></svg>Funded</span>
-        <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" fill="var(--bldg)" stroke="var(--lineStrong)" stroke-width="1.4"/></svg>Not funded</span>
-        <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" fill="var(--bldg)" stroke="var(--lineStrong)" stroke-width="1.4"/><path d="M7 0l3 5H4Z" fill="var(--crit)"/></svg>Open alert</span>
-        <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="2.5" y="2.5" width="9" height="9" fill="var(--bldg)" stroke="var(--ink)" stroke-width="1.6"/></svg>Selected</span>
+        <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" fill="var(--accent)" stroke="var(--accentLine)" stroke-width="1.4"/><path d="M4 7.2l2 2 4-4.4" fill="none" stroke="var(--accentInk)" stroke-width="1.4"/></svg>${t('map.funded')}</span>
+        <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" fill="var(--bldg)" stroke="var(--lineStrong)" stroke-width="1.4"/></svg>${t('map.notFunded')}</span>
+        <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" fill="var(--bldg)" stroke="var(--lineStrong)" stroke-width="1.4"/><path d="M7 0l3 5H4Z" fill="var(--crit)"/></svg>${t('map.openAlert')}</span>
+        <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="2.5" y="2.5" width="9" height="9" fill="var(--bldg)" stroke="var(--ink)" stroke-width="1.6"/></svg>${t('map.selected')}</span>
       </div>
     </header>
 
@@ -146,30 +141,30 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
            map put the answer and the picture in two different places; here the
            eye lands on both at once. -->
       <div class="results" id="summary">
-        <div class="result"><span class="v">buildings funded</span><span class="k" id="m-funded">&mdash;</span></div>
-        <div class="result"><span class="v">of budget spent</span><span class="k" id="m-spent">&mdash;</span></div>
-        <div class="result"><span class="v">kWh saved / yr</span><span class="k" id="m-kwh">&mdash;</span></div>
-        <div class="result"><span class="v">kgCO&#8322;e lifetime</span><span class="k" id="m-carbon">&mdash;</span></div>
-        <div class="result"><span class="v">solve time</span><span class="k" id="m-solve">&mdash;</span></div>
+        <div class="result"><span class="v">${t('map.mFunded')}</span><span class="k" id="m-funded">&mdash;</span></div>
+        <div class="result"><span class="v">${t('map.mSpent')}</span><span class="k" id="m-spent">&mdash;</span></div>
+        <div class="result"><span class="v">${t('map.mKwh')}</span><span class="k" id="m-kwh">&mdash;</span></div>
+        <div class="result"><span class="v">${t('map.mCarbon')}</span><span class="k" id="m-carbon">&mdash;</span></div>
+        <div class="result"><span class="v">${t('map.mSolve')}</span><span class="k" id="m-solve">&mdash;</span></div>
       </div>
 
       <svg id="map" tabindex="0" role="group" aria-describedby="map-help"
-           aria-label="Schematic map of 50 costed buildings over the New Cairo street network"></svg>
+           aria-label="${t('map.svgAria')}"></svg>
 
       <!-- Zoom was a mouse wheel and nothing else, which left the map unusable
            from a keyboard and awkward on a trackpad in front of a room. The
            buttons and the arrow keys reach the same state the wheel does. -->
-      <div class="map-zoom" role="group" aria-label="Zoom">
-        <button type="button" id="zoom-in" aria-label="Zoom in">
+      <div class="map-zoom" role="group" aria-label="${t('map.zoom')}">
+        <button type="button" id="zoom-in" aria-label="${t('map.zoomIn')}">
           <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
         </button>
-        <button type="button" id="zoom-out" aria-label="Zoom out">
+        <button type="button" id="zoom-out" aria-label="${t('map.zoomOut')}">
           <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 10h12"/></svg>
         </button>
-        <button type="button" id="zoom-reset" aria-label="Fit the whole area">
+        <button type="button" id="zoom-reset" aria-label="${t('map.zoomFit')}">
           <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 8V4h4M16 12v4h-4M16 8V4h-4M4 12v4h4"/></svg>
         </button>
-        <button type="button" id="zoom-centre" aria-label="Centre on the selected building" disabled>
+        <button type="button" id="zoom-centre" aria-label="${t('map.zoomCentre')}" disabled>
           <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M10 5v10M5 10h10"/><circle cx="10" cy="10" r="4"/></svg>
         </button>
       </div>
@@ -179,7 +174,7 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
           <span id="scale-label">&mdash;</span>
           <span class="map-scale-bar"></span>
         </span>
-        <span class="map-zoom-factor">zoom <span id="zoom-label">1.0&times;</span></span>
+        <span class="map-zoom-factor">${t('map.zoomFactor')} <span id="zoom-label">1.0&times;</span></span>
       </div>
     </div>
 
@@ -187,37 +182,33 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
          hovering, and a keyboard binding nobody is told about is a keyboard
          binding nobody uses. -->
     <footer class="map-foot" id="map-help">
-      <span>Keyboard: arrows pan, <kbd>+</kbd> / <kbd>&minus;</kbd> zoom,
-        <kbd>0</kbd> fits, Tab steps building to building.</span>
-      <span class="map-foot-note">Squares are sized by annual kWh below 3&times; zoom,
-        then become true OpenStreetMap footprints.</span>
+      <span>${t('map.keyboard')}</span>
+      <span class="map-foot-note">${t('map.footNote')}</span>
     </footer>
   </section>
 
   <!-- ---------------------------------------------------------------- -->
   <section class="panel detail" aria-labelledby="sel-h">
     <header>
-      <h3 id="sel-h">Selected building</h3>
-      <button type="button" class="secondary" id="sel-clear" hidden>Clear selection</button>
+      <h3 id="sel-h">${t('map.selectedBuilding')}</h3>
+      <button type="button" class="secondary" id="sel-clear" hidden>${t('map.clearSelection')}</button>
     </header>
 
     <!-- Fifty entries is too many to scroll and too few to page, so it filters
          across code, name and district and says so. -->
     <div class="picker-wrap">
-      <label for="pick">Find a building &mdash; 50 of them, so type to filter</label>
+      <label for="pick">${t('map.findLabel')}</label>
       <div class="combobox">
         <input id="pick" type="text" role="combobox" aria-expanded="false"
                aria-controls="picklist" aria-autocomplete="list" autocomplete="off"
-               placeholder="Code, name or district">
-        <ul id="picklist" role="listbox" aria-label="Buildings" hidden></ul>
+               placeholder="${t('map.findPlaceholder')}">
+        <ul id="picklist" role="listbox" aria-label="${t('map.buildings')}" hidden></ul>
       </div>
     </div>
 
     <div class="empty-state" id="detail-empty">
-      <h4>Nothing selected yet</h4>
-      <p>Pick a building on the map, or use the filter above. This panel then shows its
-         six costed facts and every retrofit option the optimizer weighed for it &mdash;
-         ranked, with the rejected ones still visible.</p>
+      <h4>${t('map.emptyTitle')}</h4>
+      <p>${t('map.emptyBody')}</p>
     </div>
     <div id="detail-body" hidden></div>
   </section>`;
@@ -226,21 +217,24 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
  * what lets Escape work without a document-level listener - the key event
  * bubbles from inside the modal - and it is also what stops a keyboard user
  * being left behind on the button that opened it. */
-const MODAL_HTML = String.raw`<div id="narrative-modal" class="modal" hidden>
+/* A function, like MAP_HTML beside it. As a module-level constant this froze
+   whatever language the module was first evaluated in, so the two dialogs kept
+   speaking Arabic after the rest of the screen had switched back. */
+const MODAL_HTML = () => String.raw`<div id="narrative-modal" class="modal" hidden>
   <div class="modal-inner wide" tabindex="-1" role="dialog" aria-modal="true"
-       aria-label="The best measure is building-specific">
-    <button class="close" id="narrative-close" type="button" aria-label="Close">&times;</button>
-    <h2>The best measure is building-specific</h2>
-    <div id="narrative-body">Loading&hellip;</div>
+       aria-label="${t('map.narrativeTitle')}">
+    <button class="close" id="narrative-close" type="button" aria-label="${t('ui.close')}">&times;</button>
+    <h2>${t('map.narrativeTitle')}</h2>
+    <div id="narrative-body">${t('map.loading')}</div>
   </div>
 </div>
 
 <div id="compare-modal" class="modal" hidden>
   <div class="modal-inner" tabindex="-1" role="dialog" aria-modal="true"
-       aria-label="Same portfolio, same budget, four methods">
-    <button class="close" id="compare-close" type="button" aria-label="Close">&times;</button>
-    <h2>Same portfolio, same budget, four methods</h2>
-    <div id="compare-body">Press Compare to solve.</div>
+       aria-label="${t('map.compareTitle')}">
+    <button class="close" id="compare-close" type="button" aria-label="${t('ui.close')}">&times;</button>
+    <h2>${t('map.compareTitle')}</h2>
+    <div id="compare-body">${t('map.pressCompare')}</div>
   </div>
 </div>`;
 
@@ -269,7 +263,7 @@ export const mapView = {
 
     root.innerHTML = `
       ${pageHead({ root, title: t('map.title') })}
-      <div class="map-layout">${MAP_HTML()}</div>${MODAL_HTML}`;
+      <div class="map-layout">${MAP_HTML()}</div>${MODAL_HTML()}`;
 
     if (!canSolve) makeReadOnly(root);
     await main(ctx?.signal);
@@ -827,7 +821,12 @@ async function solve() {
     showSummary(state.run);
     render();
     if (state.selected) selectBuilding(state.selected);
-    setStatus(`${state.run.status.toLowerCase()} · ${Math.round(state.run.solve_ms)} ms`, 'ok');
+    /* The solver's own status word is an enum, so it is looked up rather than
+       lower-cased and printed. An unknown one falls through to itself. */
+    setStatus(t('solve.done', {
+      status: t(`solve.${String(state.run.status).toLowerCase()}`),
+      ms: Math.round(state.run.solve_ms),
+    }), 'ok');
   } catch (err) {
     setStatus(err.message, 'bad');
   }
@@ -1093,18 +1092,23 @@ async function compare() {
 /* The same words the controls above use, for the panel a viewer sees in their
  * place. A stored run that says `cpsat` and a control that says "Exact
  * optimization (CP-SAT)" are the same thing, and only one of them is English. */
-const SOLVER_LABEL = {
-  cpsat: 'exact optimization (CP-SAT)',
-  greedy_upgrade: 'greedy plus an upgrade pass',
-  greedy: 'plain greedy',
-  equal_split: 'equal split — the status quo',
-};
+/* Looked up through a function, not a frozen object: `t()` has to run at render
+   time or the labels keep whatever language the module was first evaluated in.
+   Both tables also gained tou_carbon, which the objective list has offered for a
+   while and these never named. */
+const SOLVER_LABEL = () => ({
+  cpsat: t('slv.cpsat'),
+  greedy_upgrade: t('slv.greedy_upgrade'),
+  greedy: t('slv.greedy'),
+  equal_split: t('slv.equal_split'),
+});
 
-const OBJECTIVE_LABEL = {
-  lca_carbon: 'life-cycle carbon',
-  raw_kwh: 'first-year energy',
-  egp_saved: 'first-year money',
-};
+const OBJECTIVE_LABEL = () => ({
+  lca_carbon: t('obj.lca_carbon'),
+  tou_carbon: t('obj.tou_carbon'),
+  raw_kwh: t('obj.raw_kwh'),
+  egp_saved: t('obj.egp_saved'),
+});
 
 const IV_NAMES = {
   led_lighting_v1: 'LED lighting',
@@ -1431,8 +1435,8 @@ function showRunFacts(run) {
   facts.innerHTML = `
     <div><dt>Decided</dt><dd>${escapeHtml(when)}</dd></div>
     <div><dt>Budget</dt><dd>${compact(run.budget_egp)} EGP</dd></div>
-    <div><dt>Ranked by</dt><dd>${escapeHtml(OBJECTIVE_LABEL[run.objective] || run.objective)}</dd></div>
-    <div><dt>Method</dt><dd>${escapeHtml(SOLVER_LABEL[run.solver] || run.solver)}</dd></div>
+    <div><dt>${t('map.rankedBy')}</dt><dd>${escapeHtml(OBJECTIVE_LABEL()[run.objective] || run.objective)}</dd></div>
+    <div><dt>${t('map.method2')}</dt><dd>${escapeHtml(SOLVER_LABEL()[run.solver] || run.solver)}</dd></div>
     <div><dt>District cap</dt><dd>${cap ? `${cap} per district` : 'none'}</dd></div>
     ${run.inputs_hash ? `<div class="wide"><dt>Input hash</dt>
       <dd class="hash-block">${escapeHtml(run.inputs_hash)}</dd></div>` : ''}`;

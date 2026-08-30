@@ -21,6 +21,7 @@
 
 'use strict';
 
+import { locale, t } from './i18n.js';
 import { api } from './api.js';
 
 import { escapeHtml, icon } from './charts.js';
@@ -110,16 +111,16 @@ function tickClock() {
   const seconds = Math.round((Date.now() - clock.readAt) / 1000);
   const stale = seconds > STALE_AFTER_S;
 
-  $('clock-text').textContent = `Read at ${new Date(clock.readAt).toLocaleTimeString('en-GB')}`
+  $('clock-text').textContent = t('ui.readAt', { time: new Date(clock.readAt).toLocaleTimeString(locale()) })
     + ` · ${seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`}`;
-  $('clock-tag').textContent = stale ? 'stale' : 'fresh';
+  $('clock-tag').textContent = stale ? t('ui.stale') : t('ui.fresh');
   box.classList.toggle('stale', stale);
   /* The data clock proper - the simulated timestamp the readings carry - is a
    * different quantity from when the browser read them, and only one of the two
    * earns a place in the header at 0.75rem. The other is here. */
   box.title = clock.dataClock
     ? `Data time of this read: ${String(clock.dataClock).replace('T', ' ').slice(0, 19)}`
-    : 'Data time, not wall-clock time: the simulator runs at 720x real time';
+    : t('ui.dataTime');
 
   const host = $('strips');
   if (!host) return;
@@ -206,7 +207,7 @@ export function setStatus(root, { kind = 'ok', message, actionLabel = '', action
       ${actionLabel
         ? `<button type="button" class="undo" ${actionAttr}>${escapeHtml(actionLabel)}</button>`
         : ''}
-      <button type="button" class="secondary" data-dismiss>Dismiss</button>
+      <button type="button" class="secondary" data-dismiss>${t('ui.dismiss')}</button>
     </span>`;
   strip.querySelector('[data-dismiss]').addEventListener('click', () => strip.remove());
   host.append(strip);
@@ -225,10 +226,10 @@ export const skeletonTiles = (n = 4) =>
     '<span class="skeleton skeleton-line"></span></div>'.repeat(n)}</div>`;
 
 export const skeletonChart = () =>
-  `<div class="skeleton skeleton-chart" aria-busy="true" aria-label="Loading chart"></div>`;
+  `<div class="skeleton skeleton-chart" aria-busy="true" aria-label="${t('ui.loadingChart')}"></div>`;
 
 export const skeletonRows = (n = 8) =>
-  `<div class="skeleton-table" aria-busy="true" aria-label="Loading table">${
+  `<div class="skeleton-table" aria-busy="true" aria-label="${t('ui.loadingTable')}">${
     '<span class="skeleton skeleton-row"></span>'.repeat(n)}</div>`;
 
 /* --------------------------------------------------------------- empty state */
@@ -276,7 +277,7 @@ export function dataTable({ columns, rows, sortKey, sortDir = 'desc', selectable
              <span class="th-arrow" aria-hidden="true">${
                c.key === sortKey ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span></button>`
         : escapeHtml(c.label))
-      : '<span class="sr-only">Actions</span>';
+      : `<span class="sr-only">${t('ui.actions')}</span>`;
     return `<th class="${c.num ? 'num' : ''}${c.cls ? ` ${c.cls}` : ''}" aria-sort="${aria}">${label}</th>`;
   }).join('');
 
@@ -284,14 +285,14 @@ export function dataTable({ columns, rows, sortKey, sortDir = 'desc', selectable
     <tr${row._id !== undefined ? ` data-row="${escapeHtml(row._id)}"` : ''}${
       row._cls ? ` class="${escapeHtml(row._cls)}"` : ''}>
       ${selectable ? `<td class="col-select"><input type="checkbox" data-select="${escapeHtml(row._id)}"
-        aria-label="${escapeHtml(rowLabel ? rowLabel(row) : 'Select this row')}"></td>` : ''}
+        aria-label="${escapeHtml(rowLabel ? rowLabel(row) : t('ui.selectRow'))}"></td>` : ''}
       ${columns.filter((c) => c.key !== '_select').map((c) =>
         `<td class="${c.num ? 'num' : ''}${c.cls ? ` ${c.cls}` : ''}">${c.render(row)}</td>`).join('')}
     </tr>`).join('');
 
   return `<div class="table-wrap"><table>
     <thead><tr>${selectable
-      ? '<th class="col-select"><input type="checkbox" data-select-all aria-label="Select every row shown"></th>'
+      ? `<th class="col-select"><input type="checkbox" data-select-all aria-label="${t('ui.selectAll')}"></th>`
       : ''}${head}</tr></thead>
     <tbody>${body}</tbody></table></div>`;
 }
@@ -356,7 +357,7 @@ export function picker({ id, label, options, value }) {
              aria-describedby="${id}-help">
       <ul id="${id}-list" role="listbox" aria-label="${escapeHtml(label)}" hidden></ul>
     </div>
-    <span class="sr-only" id="${id}-help">Type to filter, or pick from the list.</span>`;
+    <span class="sr-only" id="${id}-help">${t('ui.pickerHelp')}</span>`;
 }
 
 /* Opens on focus with every option showing, which is the behaviour the datalist
@@ -492,7 +493,7 @@ export function openDialog({ title, description = '', fields = [], submitLabel,
     host.innerHTML = `
       <div class="modal-inner narrow ${tone}" role="dialog" aria-modal="true"
            aria-label="${escapeHtml(title)}">
-        <button class="close" type="button" data-close aria-label="Cancel">&times;</button>
+        <button class="close" type="button" data-close aria-label="${t('ui.cancel')}">&times;</button>
         <h2>${escapeHtml(title)}</h2>
         ${description ? `<p class="dialog-lede">${escapeHtml(description)}</p>` : ''}
         <form class="form" data-form novalidate>
@@ -512,7 +513,7 @@ export function openDialog({ title, description = '', fields = [], submitLabel,
             <!-- Typing the count is the protection, not a second click. The
                  number is the thing the reader has to have actually looked at,
                  and it is the one detail a mis-click cannot supply. -->
-            <label for="dlg-confirm">Type <strong>${escapeHtml(confirmText)}</strong> to confirm
+            <label for="dlg-confirm">${t('ui.typeToConfirm', { word: escapeHtml(confirmText) })}
               <input id="dlg-confirm" name="__confirm" type="text" autocomplete="off"
                      inputmode="numeric" spellcheck="false">
               ${confirmHint ? `<span class="hint">${escapeHtml(confirmHint)}</span>` : ''}
@@ -521,9 +522,9 @@ export function openDialog({ title, description = '', fields = [], submitLabel,
           <div class="form-actions">
             <button type="submit" class="${submitKind}"${confirmText ? ' disabled' : ''}
               >${escapeHtml(submitLabel)}</button>
-            <button type="button" class="ghost" data-close>Cancel</button>
+            <button type="button" class="ghost" data-close>${t('ui.cancel')}</button>
             ${fields.some((f) => f.type === 'password')
-              ? '<button type="button" class="ghost small" data-generate>Suggest a password</button>'
+              ? `<button type="button" class="ghost small" data-generate>${t('ui.suggestPassword')}</button>`
               : ''}
           </div>
         </form>

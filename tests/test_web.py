@@ -334,7 +334,9 @@ def test_there_is_a_way_past_the_navigation():
     assert "display: none" not in rule.group(1), (
         "a display:none element cannot receive focus, so the link would exist for nobody"
     )
-    assert re.search(r"\.skip-link:focus\s*\{[^}]*left", css), (
+    # `inset-inline-start` rather than `left`: the link belongs at the edge where
+    # reading starts, which is the right-hand one in Arabic.
+    assert re.search(r"\.skip-link:focus\s*\{[^}]*(inset-inline-start|left)", css), (
         "it has to come back on screen when focused"
     )
 
@@ -374,21 +376,21 @@ def test_every_translation_key_the_ui_uses_exists_in_every_language():
     languages = {lang: table(lang) for lang in ("en", "ar")}
 
     used: set[str] = set()
+    # Prefixes the UI builds a key from at run time - t(`sev.${severity}`) and
+    # friends. Every catalogue key under one of these counts as used, because the
+    # value that completes it comes from the API and cannot be read from source.
+    dynamic: set[str] = set()
+
     for path in (WEB / "js").glob("*.js"):
         text = path.read_text(encoding="utf-8")
-        used |= {
-            key
-            for key in re.findall(r"[^a-zA-Z]t\('([^']+)'\)", text)
-            if re.match(r"^(nav|shell|overview|map)\.", key)
-        }
-        # The rail builds its keys from ORDER: t(`nav.${key}`).
-        if "t(`nav.${key}`)" in text:
-            order = re.search(r"const ORDER = \[(.*?)\];", text, re.S)
-            if order:
-                used |= {
-                    "nav." + k
-                    for k in re.findall(r"'([^']+)'", order.group(1))
-                }
+        # `t('key')` and `t('key', { ... })` alike. The namespace is deliberately
+        # NOT filtered: this test used to know about four of them, which is why it
+        # called every key of the other twenty "dead" the moment the interface
+        # was translated past the demonstration path.
+        used |= set(re.findall(r"[^a-zA-Z]t\('([^']+)'\s*[,)]", text))
+        # `t(`sev.${k}`)` and `t(`range.d${days}`)` alike: the literal part
+        # between the namespace and the hole is not always empty.
+        dynamic |= set(re.findall(r"[^a-zA-Z]t\(`([a-zA-Z]+)\.[^`$]*\$\{", text))
 
     assert used, "no translation keys found - has t() been renamed?"
 
@@ -399,5 +401,9 @@ def test_every_translation_key_the_ui_uses_exists_in_every_language():
             f"as raw keys: {missing}"
         )
 
-    dead = sorted(languages["en"] - used)
+    covered = used | {
+        key for key in languages["en"]
+        if key.split(".", 1)[0] in dynamic
+    }
+    dead = sorted(languages["en"] - covered)
     assert not dead, f"translated but never used: {dead}"

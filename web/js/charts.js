@@ -19,7 +19,7 @@
 
 'use strict';
 
-import { locale } from './i18n.js';
+import { locale, t } from './i18n.js';
 
 export const escapeHtml = (value) =>
   String(value).replace(/[&<>"']/g, (c) =>
@@ -115,7 +115,9 @@ export function mark(name, { size = 14 } = {}) {
 export function sevChip(severity) {
   const key = String(severity || '').toLowerCase();
   if (!MARKS[key]) return escapeHtml(severity || '—');
-  const label = key.charAt(0).toUpperCase() + key.slice(1);
+  /* The word, not a capitalised copy of the API's enum: `critical` is a value in
+     a database column and حرج is what a reader is owed on the screen. */
+  const label = t(`sev.${key}`);
   return `<span class="sev ${key}">${mark(key, { size: 11 })}${label}</span>`;
 }
 
@@ -661,10 +663,10 @@ export function lineChart(series, options = {}) {
     const maps = withData.map((s) => new Map(s.points.map((p) => [Date.parse(p[0]), p[1]])));
     const { rows, stride } = thin(times);
     table = tableView(
-      'Table',
-      ['Time', ...withData.map((s) => s.label + (options.unit ? ` (${options.unit})` : ''))],
+      t('chart.table'),
+      [t('chart.time'), ...withData.map((s) => s.label + (options.unit ? ` (${options.unit})` : ''))],
       rows.map((t) => [fmtStamp(t), ...maps.map((m) => m.has(t) ? exact(m.get(t)) : '—')]),
-      stride > 1 ? `Every ${stride}th of ${times.length} readings.` : '',
+      stride > 1 ? t('chart.stride', { stride, total: times.length }) : '',
     );
   }
   return registerChart((width) => drawLine(series, { ...options, width }), table);
@@ -779,9 +781,18 @@ function drawLine(series, { width = DEFAULT_WIDTH, height = 240, unit = '' } = {
 /* -------------------------------------------------------------- stacked bars */
 
 /* Stacked bars per day. days = [{date, ...counts}], keys names the stack order. */
+/* Severity keys get their word from the catalogue; anything else is a series
+   name the caller chose and is printed as given. Translating unconditionally
+   would render `sev.share` on a chart whose key happens to be `share`. The
+   legend and the chart's own data table both go through here, so the two cannot
+   drift apart. */
+const SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
+const sevLabel = (k) => (SEVERITIES.has(k) ? t(`sev.${k}`) : k);
+
 export function stackedBars(days, keys, options = {}) {
   const table = days.length
-    ? tableView('Table', ['Day', ...keys, 'Total'], days.map((d) => [
+    ? tableView(t('chart.table'),
+        [t('chart.day'), ...keys.map(sevLabel), t('chart.total')], days.map((d) => [
         d.date, ...keys.map((k) => exact(d[k] || 0)),
         exact(keys.reduce((sum, k) => sum + (d[k] || 0), 0)),
       ]))
@@ -865,11 +876,12 @@ function drawBars(days, keys, { width = DEFAULT_WIDTH, height = 200, id = 'x' } 
   const legend = `<div class="chart-legend">${keys.map((k, i) => {
     const shape = MARKS[k] ? mark(k, { size: 11 }) : '';
     return `<span class="key b${i}${shape ? ' shaped' : ''}">${shape}${
-      escapeHtml(k)}</span>`;
+      escapeHtml(sevLabel(k))}</span>`;
   }).join('')}</div>`;
 
   const html = `${legend}<svg class="chart" viewBox="0 0 ${width} ${height}" tabindex="0"
-    role="img" aria-label="alerts per day, ${escapeHtml(String(days[0].date))} to ${escapeHtml(String(days[days.length - 1].date))}">
+    role="img" aria-label="${escapeHtml(t('chart.alertsAria', {
+      from: String(days[0].date), to: String(days[days.length - 1].date) }))}">
     ${textureDefs(id)}${grid}${bars}${dateTicks}
   </svg>`;
 
@@ -891,7 +903,7 @@ function drawBars(days, keys, { width = DEFAULT_WIDTH, height = 200, id = 'x' } 
 export function proportionBar(entries) {
   const total = entries.reduce((sum, e) => sum + e.value, 0);
   const table = total
-    ? tableView('Table', ['Group', 'Count', 'Share'], entries.map((e) => [
+    ? tableView(t('chart.table'), [t('chart.group'), t('chart.count'), t('chart.share')], entries.map((e) => [
         e.label, exact(e.value), `${((e.value / total) * 100).toFixed(1)}%`,
       ]))
     : '';

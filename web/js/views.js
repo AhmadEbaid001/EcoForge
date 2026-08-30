@@ -19,7 +19,7 @@
 
 import { api, ApiError } from './api.js';
 import { wordmark } from './brand.js';
-import { t } from './i18n.js';
+import { locale, t } from './i18n.js';
 import {
   chainFigure, compact, escapeHtml, icon, lineChart, mark, proportionBar, sevChip,
   stackedBars, statTile,
@@ -75,24 +75,23 @@ const buildingOptions = (buildings) =>
  * one in the room knows today's date in data time. "Last 30 days" is a question a
  * reader can ask; "2027-08-11 to 2027-09-10" is one they would have to work out.
  */
-const RANGES = [
-  { days: 7, label: '7 days' },
-  { days: 14, label: '14 days' },
-  { days: 30, label: '30 days' },
-  { days: 90, label: '90 days' },
-];
+/* The label is read at render time, not fixed at module load, so the control
+   follows the language like everything else. In Arabic the count and its noun
+   agree differently at 7 and at 30, so each one is its own string rather than a
+   number glued to a word. */
+const RANGES = [7, 14, 30, 90];
 
 function rangeControl(selected) {
-  const buttons = RANGES.map((r) =>
-    `<button type="button" class="seg-btn" data-days="${r.days}"
-       aria-pressed="${r.days === selected}">${escapeHtml(r.label)}</button>`).join('');
+  const buttons = RANGES.map((days) =>
+    `<button type="button" class="seg-btn" data-days="${days}"
+       aria-pressed="${days === selected}">${escapeHtml(t(`range.d${days}`))}</button>`).join('');
   /* No visible "Window" label. Four day ranges sitting beside the data clock in
    * the page header are read as a window without being told, and the word cost
    * 71px of a header that has to hold the clock, the language, the text size and
    * the appearance controls on one line down to 1280. The group keeps its
    * accessible name - dropping the caption must not drop the label. */
   return `<div class="chart-filters">
-    <div class="segmented" role="group" aria-label="Window">${buttons}</div>
+    <div class="segmented" role="group" aria-label="${t('range.window')}">${buttons}</div>
   </div>`;
 }
 
@@ -129,21 +128,26 @@ function halfOverHalf(values) {
  * were reaching the screen inside sentences, which reads as a leak rather than
  * as a fact. The map's controls already name all seven of these, and these are
  * the same names - one vocabulary, whichever screen you are on. */
-const SOLVER_LABEL = {
-  cpsat: 'exact optimization (CP-SAT)',
-  greedy_upgrade: 'greedy plus an upgrade pass',
-  greedy: 'plain greedy',
-  equal_split: 'equal split — the status quo',
-};
+/* Looked up through a function, not a frozen object: `t()` has to run at render
+   time or the labels keep whatever language the module was first evaluated in.
+   Both tables also gained tou_carbon, which the objective list has offered for a
+   while and these never named. */
+const SOLVER_LABEL = () => ({
+  cpsat: t('slv.cpsat'),
+  greedy_upgrade: t('slv.greedy_upgrade'),
+  greedy: t('slv.greedy'),
+  equal_split: t('slv.equal_split'),
+});
 
-const OBJECTIVE_LABEL = {
-  lca_carbon: 'life-cycle carbon',
-  raw_kwh: 'first-year energy',
-  egp_saved: 'first-year money',
-};
+const OBJECTIVE_LABEL = () => ({
+  lca_carbon: t('obj.lca_carbon'),
+  tou_carbon: t('obj.tou_carbon'),
+  raw_kwh: t('obj.raw_kwh'),
+  egp_saved: t('obj.egp_saved'),
+});
 
-const solverLabel = (id) => SOLVER_LABEL[id] || String(id || '—');
-const objectiveLabel = (id) => OBJECTIVE_LABEL[id] || String(id || '—');
+const solverLabel = (id) => SOLVER_LABEL()[id] || String(id || '—');
+const objectiveLabel = (id) => OBJECTIVE_LABEL()[id] || String(id || '—');
 
 /* Worst first, everywhere. The API hands back a plain object whose key order is
  * whatever the GROUP BY produced, and an ordinal scale printed in arbitrary order
@@ -191,11 +195,11 @@ export const overview = {
       const panels = (loadData, dailyData) => `
         <div class="stat-row">
           ${statTile(t('overview.buildings'), compact(summary.buildings),
-                     'Public buildings in New Cairo, all costed.')}
+                     t('overview.buildingsNote'))}
           ${statTile(t('overview.readings'), compact(summary.readings),
-                     'Half-hourly, and every one signed on arrival.')}
+                     t('overview.readingsNote'))}
           ${statTile(t('overview.openAlerts'), compact(summary.open_anomalies),
-                     'Rounded — the count moves while you read it.',
+                     t('overview.alertsNote'),
                      { spark: dailyTotals(dailyData.days),
                        trend: halfOverHalf(dailyTotals(dailyData.days)),
                        chips: SEVERITY_ORDER
@@ -203,24 +207,23 @@ export const overview = {
                          .map((k) => `<span class="stat-chip ${k}">${
                            sevChip(k)} ${compact(summary.open_by_severity[k])}</span>`)
                          .join('') })}
-          ${statTile(t('overview.measured'), `${fromForecast} of ${summary.buildings}`,
-                     'Costed on metered consumption, not a floor-area rule.')}
+          ${statTile(t('overview.measured'),
+                     t('overview.ofTotal', { n: fromForecast, total: summary.buildings }),
+                     t('overview.measuredNote'))}
         </div>
 
         <div class="two-col">
           <section class="panel">
             <header>
               <h3>${t('overview.demandPanel')}</h3>
-              <span class="scope">${state.days} days, hourly, kW summed across
-                ${summary.buildings} buildings</span>
+              <span class="scope">${t('overview.demandScope', {
+                days: state.days, n: summary.buildings })}</span>
             </header>
-            ${lineChart([{ label: 'Portfolio demand', points: loadData.points }], { unit: 'kW' })}
+            ${lineChart([{ label: t('overview.demandSeries'), points: loadData.points }], { unit: 'kW' })}
             <div class="panel-foot">
-              <p class="caption">Point at the chart, or focus it and use the arrow keys.
-              Every window here is measured in data time, which the simulator advances at
-              720&times; wall clock.</p>
+              <p class="caption">${t('overview.demandCaption')}</p>
               <div class="panel-actions">
-                <a class="btn secondary" href="#/forecasts">Open forecasting</a>
+                <a class="btn secondary" href="#/forecasts">${t('overview.openForecasting')}</a>
               </div>
             </div>
           </section>
@@ -228,14 +231,13 @@ export const overview = {
           <section class="panel">
             <header>
               <h3>${t('overview.alertsPanel')}</h3>
-              <span class="scope">${state.days} days, stacked by severity</span>
+              <span class="scope">${t('overview.alertsScope', { days: state.days })}</span>
             </header>
             ${stackedBars(dailyData.days, ['critical', 'high', 'medium'], { height: 240 })}
             <div class="panel-foot">
-              <p class="caption">Readings that deviated from what the forecaster expected.
-              The inbox lists them worst first.</p>
+              <p class="caption">${t('overview.alertsCaption')}</p>
               <div class="panel-actions">
-                <a class="btn secondary" href="#/alerts">Open the alert inbox</a>
+                <a class="btn secondary" href="#/alerts">${t('overview.openInbox')}</a>
               </div>
             </div>
           </section>
@@ -259,22 +261,25 @@ export const overview = {
           </header>
           ${run ? `
             <div class="stat-row compact">
-              ${statTile(t('overview.budget'), compact(run.budget_egp) + ' EGP')}
-              ${statTile(t('overview.funded'), run.buildings_funded + ' buildings')}
-              ${statTile(t('overview.spent'), compact(run.total_cost_egp) + ' EGP')}
+              ${statTile(t('overview.budget'), `${compact(run.budget_egp)} ${t('unit.egp')}`)}
+              ${statTile(t('overview.funded'),
+                  t('overview.buildingsUnit', { n: run.buildings_funded }))}
+              ${statTile(t('overview.spent'), `${compact(run.total_cost_egp)} ${t('unit.egp')}`)}
               ${statTile(t('overview.shareSpent'), run.budget_egp
                   ? `${((run.total_cost_egp / run.budget_egp) * 100).toFixed(0)}%` : '—')}
-              ${statTile(t('overview.lifetimeBenefit'), compact(run.total_benefit_kgco2e) + ' kgCO₂e')}
+              ${statTile(t('overview.lifetimeBenefit'),
+                  `${compact(run.total_benefit_kgco2e)} ${t('unit.kgco2e')}`)}
               ${statTile(t('overview.districtCap'), run.max_funded_per_district
-                  ? `${run.max_funded_per_district} per district` : 'none')}
+                  ? t('rn.perDistrict', { n: run.max_funded_per_district }) : t('rn.none'))}
             </div>
             <div class="panel-foot">
-              <p class="caption">Solved by <strong>${escapeHtml(solverLabel(run.solver))}</strong>,
-              ranked by <strong>${escapeHtml(objectiveLabel(run.objective))}</strong>, at data time
-              ${fmtDateTime(run.created_at)}. The lifetime carbon figure is an estimate,
-              not a measurement.</p>
+              <p class="caption">${t('overview.solvedBy', {
+                solver: escapeHtml(solverLabel(run.solver)),
+                objective: escapeHtml(objectiveLabel(run.objective)),
+                when: fmtDateTime(run.created_at),
+              })}</p>
               <div class="panel-actions">
-                <a class="btn primary" href="#/map">Open it on the map</a>
+                <a class="btn primary" href="#/map">${t('overview.openOnMap')}</a>
               </div>
             </div>`
             : emptyState({
@@ -370,17 +375,17 @@ function ageBetween(fromIso, toIso) {
   if (!fromIso || !toIso) return null;
   const hours = (Date.parse(toIso) - Date.parse(fromIso)) / 3.6e6;
   if (!Number.isFinite(hours)) return null;
-  if (hours < 48) return `${Math.max(0, Math.round(hours))} hours`;
+  if (hours < 48) return t('age.hours', { n: Math.max(0, Math.round(hours)) });
   const days = hours / 24;
-  if (days < 60) return `${Math.round(days)} days`;
-  return `${(days / 30.44).toFixed(1)} months`;
+  if (days < 60) return t('age.days', { n: Math.round(days) });
+  return t('age.months', { n: (days / 30.44).toFixed(1) });
 }
 
 export const forecasts = {
   title: 'Forecasts',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({ root, title: 'Load forecasting' })}
+      ${pageHead({ root, title: t('fx.title') })}
       ${skeletonChart()}`;
 
     await guard(root, async () => {
@@ -417,39 +422,38 @@ export const forecasts = {
       const isAdmin = can(ctx.user, 'admin');
 
       root.innerHTML = `
-        ${pageHead({ root, title: 'Load forecasting',
+        ${pageHead({ root, title: t('fx.title'),
           actions: isAdmin
-            ? '<button type="button" class="secondary" id="refit-btn">Refit forecasts</button>'
+            ? `<button type="button" class="secondary" id="refit-btn">${t('fx.refit')}</button>`
             : '' })}
 
         <section class="panel">
           <header>
-            <h3>Forecast coverage</h3>
-            <span class="scope">${buildings.length} buildings, in data time</span>
+            <h3>${t('fx.coverage')}</h3>
+            <span class="scope">${t('fx.scope', { n: buildings.length })}</span>
           </header>
 
           <div class="stat-row compact">
-            ${statTile('Costed from', unanimous ? unanimous.model_version
-                       : `${models.length} models`,
-                       unanimous ? `All ${unanimous.buildings} buildings.`
-                                 : 'Split across the portfolio.')}
-            ${statTile('Reaching the last 14 days', `${covered} of ${buildings.length}`,
-                       coverState === 'full' ? 'Every building has a comparable line.'
-                       : coverState === 'none' ? 'No building has one.'
-                       : 'The rest have nothing to compare against.')}
-            ${statTile('Forecast age', staleBy || '—',
-                       'Behind the newest meter reading.')}
+            ${statTile(t('fx.costedFrom'), unanimous ? unanimous.model_version
+                       : t('fx.modelCount', { n: models.length }),
+                       unanimous ? t('fx.allBuildings', { n: unanimous.buildings })
+                                 : t('fx.split'))}
+            ${statTile(t('fx.reaching'),
+                       t('fx.ofTotal', { covered, total: buildings.length }),
+                       coverState === 'full' ? t('fx.coverFull')
+                       : coverState === 'none' ? t('fx.coverNone')
+                       : t('fx.coverPartial'))}
+            ${statTile(t('fx.age'), staleBy || '—', t('fx.ageNote'))}
           </div>
 
           ${coverState === 'full' ? '' : `
           <div class="note-panel ${coverState === 'none' ? 'bad' : 'warn'}" role="note">
             ${icon('warning')}
-            <p>The stored forecasts end <strong>${escapeHtml(staleBy || 'some time')}</strong>
-            before the newest reading, so ${coverState === 'none'
-              ? 'no building has a forecast inside the two weeks the panel below draws'
-              : `only ${covered} of ${buildings.length} buildings have one inside the two `
-                + 'weeks the panel below draws'}. The chart is not broken &mdash; there is
-            nothing recent to draw. Re-running the nightly refit regenerates them.</p>
+            <p>${t('fx.staleBody', {
+              age: escapeHtml(staleBy || t('fx.someTime')),
+              detail: coverState === 'none' ? t('fx.staleNone')
+                : t('fx.stalePartial', { covered, total: buildings.length }),
+            })}</p>
           </div>`}
 
           ${unanimous ? '' : proportionBar(models.map((m) => ({
@@ -457,37 +461,25 @@ export const forecasts = {
           })))}
 
           <p class="caption">${unanimous
-            ? `Every building is costed from <strong>${escapeHtml(unanimous.model_version)}</strong>.
-               A single winner is a finding, not a default: the selector keeps a
-               seasonal-naive baseline and reports it whenever it wins, so a portfolio
-               reading like this one is saying the learned model beat that baseline
-               everywhere it was measured.`
-            : `Where the seasonal-naive baseline wins, that is
-               <strong>information, not a shortfall</strong>. Those buildings have a load
-               shape stable enough that last week predicts this week, and a heavier model
-               would only add variance to the figure the optimizer costs against. It is
-               why the baseline is kept and reported rather than quietly replaced.`}</p>
+            ? t('fx.unanimous', { model: escapeHtml(unanimous.model_version) })
+            : t('fx.mixed')}</p>
         </section>
 
         <section class="panel">
           <header>
-            <h3>Actual against forecast</h3>
-            <span class="scope" id="fc-scope">no building selected</span>
+            <h3>${t('fx.chartPanel')}</h3>
+            <span class="scope" id="fc-scope">${t('fx.noBuilding')}</span>
             <div class="toolbar">
-              ${picker({ id: 'fc-building', label: 'Building', options, value: state.building })}
+              ${picker({ id: 'fc-building', label: t('fx.building'), options, value: state.building })}
             </div>
           </header>
           <div id="fc-chart">${emptyState({
-            title: 'Pick a building',
-            body: 'This panel then draws two weeks of hourly metered readings against '
-                + 'what the model expected for the same hours — the metered line solid, '
-                + 'the forecast dashed. Comparing them by eye is the point: a single '
-                + 'error figure would say the model is good without letting anyone see '
-                + 'where it is wrong.',
+            title: t('fx.pickTitle'),
+            body: t('fx.pickBody'),
           })}</div>
           <div class="stroke-legend" id="fc-legend" hidden>
-            <span class="key"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--ink)" stroke-width="1.8" fill="none"/></svg>Metered actual</span>
-            <span class="key" data-key="forecast"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 3" fill="none"/></svg>Forecast</span>
+            <span class="key"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--ink)" stroke-width="1.8" fill="none"/></svg>${t('fx.legendActual')}</span>
+            <span class="key" data-key="forecast"><svg viewBox="0 0 34 8" width="34" height="8" aria-hidden="true"><path d="M0 4h34" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="5 3" fill="none"/></svg>${t('fx.legendForecast')}</span>
           </div>
         </section>`;
 
@@ -497,15 +489,11 @@ export const forecasts = {
       wireJobButton(root, ctx, {
         selector: '#refit-btn',
         kind: 'forecast-refit',
-        label: 'Refit',
+        label: t('fx.refitShort'),
         confirm: {
-          title: 'Refit every forecaster?',
-          description: 'Refits all fifty buildings against the readings stored now, '
-                     + 'rewrites their forecasts and the annual figures the optimizer '
-                     + 'costs against, and re-scores the anomaly history. It takes '
-                     + 'several minutes and it is the only thing that can run while it '
-                     + 'runs. Nothing else on the platform stops working meanwhile.',
-          confirmLabel: 'Refit forecasts',
+          title: t('fx.refitTitle'),
+          description: t('fx.refitBody'),
+          confirmLabel: t('fx.refit'),
         },
         onDone: () => forecasts.render(root, ctx),
       });
@@ -520,12 +508,10 @@ export const forecasts = {
         const hasForecast = (data.forecast || []).length > 0;
 
         target.innerHTML = lineChart([
-          { label: 'Actual', points: data.actual },
-          { label: 'Forecast', points: data.forecast },
+          { label: t('fx.seriesActual'), points: data.actual },
+          { label: t('fx.seriesForecast'), points: data.forecast },
         ], { unit: 'kW' }) + (hasForecast ? '' : `
-          <p class="note warn">No forecast is stored for this building inside this
-          window, so only the metered line is drawn. The panel above says how far
-          behind the stored forecasts are.</p>`);
+          <p class="note warn">${t('fx.noneStored')}</p>`);
 
         /* The legend named a dashed forecast line whether or not one had been
          * drawn, which on a building with no recent forecast is the screen
@@ -538,8 +524,8 @@ export const forecasts = {
          * than floating as "a forecast". */
         root.querySelector('#fc-scope').textContent = b
           ? `${b.name} · ${b.code} · ${b.district} · ${
-              data.model_version || 'no model recorded'} · costed at ${
-              compact(b.annual_kwh)} kWh/yr`
+              data.model_version || t('fx.noModel')} · ${
+              t('fx.costedAt', { kwh: compact(b.annual_kwh) })}`
           : '';
       };
 
@@ -575,14 +561,14 @@ export const alerts = {
     const analyst = can(ctx.user, 'analyst');
 
     root.innerHTML = `
-      ${pageHead({ root, title: 'Alert inbox' })}
+      ${pageHead({ root, title: t('al.title') })}
       ${skeletonRows(8)}`;
 
     await guard(root, async () => {
       const [buildings, firstSummary] = await Promise.all([
         api.get('/buildings'), api.summary(),
       ]);
-      const options = [{ value: '', label: 'All buildings' }, ...buildingOptions(buildings)];
+      const options = [{ value: '', label: t('al.allBuildings') }, ...buildingOptions(buildings)];
       const summaryTotal = firstSummary.open_anomalies;
       /* An id that names no building is a filter that would silently return
        * nothing, so it is dropped rather than honoured. */
@@ -593,8 +579,7 @@ export const alerts = {
        * about thirty thousand rows; acknowledging one used to refill it from the
        * pool with nothing on screen saying where the others were. */
       const countLine = (shown) => {
-        if (!state.onlyOpen) return `The ${shown} largest deviations, open and closed.`;
-        const scope = `${state.severity ? `${state.severity} ` : ''}alert`;
+        if (!state.onlyOpen) return t('al.countAllClosed', { shown });
         /* Fewer rows than the cap means the filter returned everything it had, so
          * these ARE all of them. Only a full page is a slice of something larger.
          * Without this the screen told a reader looking at the two alerts on one
@@ -602,17 +587,16 @@ export const alerts = {
          * narrow a filter that was already as narrow as it goes. */
         if (shown < ROW_CAP) {
           return state.building || state.severity
-            ? `All ${shown} open ${scope}s matching this filter.`
-            : `All ${shown} open ${scope}s.`;
+            ? t('al.countAllFiltered', { shown })
+            : t('al.countAll', { shown });
         }
         const total = state.severity && !state.building
           ? state.bySeverity[state.severity]
           : (state.building ? null : state.total);
         if (total === null || total === undefined) {
-          return `The first ${shown} — narrow the filter to reach the rest.`;
+          return t('al.countFirst', { shown });
         }
-        return `The ${shown} largest of ${compact(total)} open ${scope}s — narrow a filter `
-          + 'to reach the rest.';
+        return t('al.countSlice', { shown, total: compact(total) });
       };
 
       /* The reference's column set, with this system's fields in place of the
@@ -621,14 +605,14 @@ export const alerts = {
        * produce is a robust z against the forecaster's expectation, and
        * expected-versus-observed is the same comparison its column made. */
       const columns = [
-        { key: 'building_code', label: 'Building', sortable: true,
+        { key: 'building_code', label: t('col.building'), sortable: true,
           render: (r) => `<b>${escapeHtml(r.building_code)}</b>` },
-        { key: 'ts', label: 'Detected (data time)', sortable: true,
+        { key: 'ts', label: t('col.detected'), sortable: true,
           render: (r) => `<span class="tabular">${fmtDateTime(r.ts)}</span>` },
         /* Observed goes bold only past a 50% deviation. Bolding it on every row
          * makes the weight mean "this is the observed column" instead of "look
          * at this one". */
-        { key: 'expected_kw', label: 'Expected vs observed (kW)', num: true, sortable: true,
+        { key: 'expected_kw', label: t('al.colExpected'), num: true, sortable: true,
           render: (r) => {
             const far = r.expected_kw
               ? Math.abs(r.observed_kw - r.expected_kw) / Math.abs(r.expected_kw) > 0.5
@@ -636,24 +620,24 @@ export const alerts = {
             return `${compact(r.expected_kw)} / ${far
               ? `<b>${compact(r.observed_kw)}</b>` : compact(r.observed_kw)}`;
           } },
-        { key: 'robust_z', label: 'Deviation z', num: true, sortable: true,
+        { key: 'robust_z', label: t('al.colZ'), num: true, sortable: true,
           value: (r) => (r.robust_z === null ? null : Math.abs(r.robust_z)),
           render: (r) => (r.robust_z === null ? '—'
             : `<span class="sev-figure ${escapeHtml(r.severity)}">${
                 r.robust_z > 0 ? '+' : ''}${r.robust_z.toFixed(1)}</span>`) },
-        { key: 'severity', label: 'Severity', sortable: true,
+        { key: 'severity', label: t('al.colSeverity'), sortable: true,
           render: (r) => sevChip(r.severity) },
-        { key: 'acknowledged', label: 'Status', sortable: true,
+        { key: 'acknowledged', label: t('al.colStatus'), sortable: true,
           render: (r) => (r.acknowledged
-            ? '<span class="chip closed">Closed</span>'
-            : '<span class="chip open">Open</span>') },
+            ? `<span class="chip closed">${t('al.closed')}</span>`
+            : `<span class="chip open">${t('al.open')}</span>`) },
       ];
       if (analyst) {
         columns.push({
           key: '_actions', label: '', cls: 'row-actions',
           render: (r) => (r.acknowledged ? '' : `<button class="ghost small" data-ack="${r.id}"
-            aria-label="Acknowledge the ${escapeHtml(r.severity)} alert on
-            ${escapeHtml(r.building_code)}">Acknowledge</button>`),
+            aria-label="${escapeHtml(t('al.ackAria', {
+              severity: r.severity, code: r.building_code }))}">${t('al.acknowledge')}</button>`),
         });
       }
 
@@ -661,10 +645,10 @@ export const alerts = {
         const body = root.querySelector('#alert-body');
         if (!state.rows.length) {
           body.innerHTML = emptyState({
-            title: state.onlyOpen ? 'Nothing open here' : 'Nothing matches this filter',
+            title: state.onlyOpen ? t('al.emptyOpenTitle') : t('al.emptyFilterTitle'),
             body: state.severity || state.building
-              ? 'No alerts match the current filter. Widen it to see the rest of the inbox.'
-              : 'The inbox is empty. Every deviation the detector raised has been acknowledged.',
+              ? t('al.emptyFiltered')
+              : t('al.emptyAll'),
           });
           root.querySelector('#alert-foot').innerHTML = '';
           return;
@@ -675,12 +659,12 @@ export const alerts = {
           sortKey: state.sortKey, sortDir: state.sortDir, selectable: analyst,
           /* Every checkbox used to announce "Select this row" - a hundred times,
            * identically. What it selects is the alert, so it says which one. */
-          rowLabel: (r) => `Select the ${r.severity} alert at ${r.building_code}, `
-                         + `${fmtDateTime(r.ts)}`,
+          rowLabel: (r) => t('al.selectAria', {
+            severity: r.severity, code: r.building_code, when: fmtDateTime(r.ts) }),
         });
         root.querySelector('#alert-foot').innerHTML =
           `<span>${escapeHtml(countLine(state.rows.length))}</span>
-           <span class="muted">Sorting reorders these rows. Deviation z has no units.</span>`;
+           <span class="muted">${t('al.footNote')}</span>`;
 
         wireSort(body, state, paint);
 
@@ -691,7 +675,7 @@ export const alerts = {
             await guard(root, async () => {
               await api.acknowledgeOne(id);
               await load();
-              offerUndo([id], 'Closed 1 alert.');
+              offerUndo([id], t('al.closed1'));
             });
           });
         });
@@ -729,9 +713,9 @@ export const alerts = {
         const total = state.severity && !state.building
           ? state.bySeverity[state.severity] : (filtered ? null : state.total);
         if (!filtered) {
-          return total ? `Close all ${compact(total)} open alerts…` : 'Close all open alerts…';
+          return total ? t('al.closeAllN', { n: compact(total) }) : t('al.closeAll');
         }
-        return total ? `Close all ${compact(total)} matching alerts…` : 'Close all matching alerts…';
+        return total ? t('al.closeMatchingN', { n: compact(total) }) : t('al.closeMatching');
       };
 
       /* The bar stays. A control that appears only once a condition is met
@@ -742,11 +726,11 @@ export const alerts = {
         const n = state.selected.size;
         bar.hidden = false;
         bar.innerHTML = `
-          <span>${n ? `<strong>${n}</strong> selected` : 'Nothing selected'}</span>
+          <span>${n ? t('al.nSelected', { n: `<strong>${n}</strong>` }) : t('al.nothingSelected')}</span>
           <span class="bulk-actions">
             <button type="button" class="primary" data-ack-selected${n ? '' : ' disabled'}>${
-              n ? `Acknowledge ${n} selected` : 'Tick a row to acknowledge it'}</button>
-            ${n ? '<button type="button" class="secondary" data-clear-selection>Clear selection</button>' : ''}
+              n ? t('al.ackN', { n }) : t('al.tickARow')}</button>
+            ${n ? `<button type="button" class="secondary" data-clear-selection>${t('al.clearSelection')}</button>` : ''}
             <button type="button" class="destructive" id="alert-ack-bulk">${
               escapeHtml(bulkLabel())}</button>
           </span>`;
@@ -763,7 +747,8 @@ export const alerts = {
             await api.acknowledge({ ids });
             state.selected = new Set();
             await load();
-            offerUndo(ids, `Closed ${ids.length} alert${ids.length === 1 ? '' : 's'}.`);
+            offerUndo(ids, ids.length === 1 ? t('al.closed1')
+              : t('al.closedN', { n: ids.length }));
           });
         });
       };
@@ -773,15 +758,16 @@ export const alerts = {
       const offerUndo = (ids, message) => {
         setStatus(root, {
           kind: 'ok',
-          message: `${message} by ${ctx.user.username} at ${new Date().toLocaleTimeString('en-GB')}.`,
-          actionLabel: `Undo — put ${ids.length} back to open`,
+          message: t('al.byAt', { message, user: ctx.user.username,
+            time: new Date().toLocaleTimeString(locale()) }),
+          actionLabel: t('al.undo', { n: ids.length }),
           actionAttr: 'data-undo',
         });
         root.querySelector('[data-undo]')?.addEventListener('click', async () => {
           await guard(root, async () => {
             await api.acknowledge({ ids, acknowledged: false });
             await load();
-            setStatus(root, { kind: 'hint', message: `Reopened ${ids.length} alert${ids.length === 1 ? '' : 's'}.` });
+            setStatus(root, { kind: 'hint', message: t('al.reopened', { n: ids.length }) });
           });
         });
       };
@@ -805,12 +791,12 @@ export const alerts = {
        * stated permanently rather than discovered: a hundred rows out of thirty
        * thousand looks like the whole inbox unless the screen says otherwise. */
       root.innerHTML = `
-        ${pageHead({ root, title: 'Alert inbox' })}
+        ${pageHead({ root, title: t('al.title') })}
 
         <div class="panel toolbar-panel">
           <div class="toolbar">
             <div class="group">
-              <span class="inline-label" id="sev-label">Severity</span>
+              <span class="inline-label" id="sev-label">${t('al.colSeverity')}</span>
               <!-- Three, and there is no "low". The detector does not produce
                    one, so offering the filter would be offering a filter that
                    always returns nothing. -->
@@ -822,22 +808,19 @@ export const alerts = {
             </div>
             <span class="rule"></span>
             <div class="group">
-              ${picker({ id: 'alert-building', label: 'Building', options,
+              ${picker({ id: 'alert-building', label: t('al.filterBuilding'), options,
                          value: state.building })}
             </div>
             <span class="rule"></span>
-            <label class="check"><input type="checkbox" id="alert-open" checked> Open only</label>
-            <button type="button" class="secondary" id="alert-clear">Clear filters</button>
+            <label class="check"><input type="checkbox" id="alert-open" checked> ${t('al.openOnly')}</label>
+            <button type="button" class="secondary" id="alert-clear">${t('al.clearFilters')}</button>
           </div>
         </div>
 
         ${analyst ? '<div id="alert-actions" class="action-bar"></div>' : `
         <div class="note-panel" role="note">
           ${icon('lock')}
-          <p>Alerts are read-only for your role. Acknowledging one is an analyst action
-          and is recorded against the username that did it, so it cannot be done on
-          someone else's behalf. Ask an analyst, or an administrator to change your
-          role — either change is written to the audit log.</p>
+          <p>${t('al.readOnly')}</p>
         </div>`}
 
         <section class="panel flex">
@@ -866,7 +849,7 @@ export const alerts = {
         state.onlyOpen = true;
         state.selected = new Set();
         root.querySelectorAll('[data-sev]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
-        root.querySelector('#alert-building').value = 'All buildings';
+        root.querySelector('#alert-building').value = t('al.allBuildings');
         root.querySelector('#alert-open').checked = true;
         clearStatus(root);
         guard(root, load);
@@ -922,12 +905,12 @@ export const alerts = {
             description: (filtered
                 ? `This closes every open alert matching ${scope}`
                 : 'This closes every open alert in the portfolio')
-              + (count ? ` — ${count.toLocaleString('en-US')} of them` : '')
+              + (count ? ` — ${count.toLocaleString(locale())} of them` : '')
               + ', not only the rows on screen. It will be recorded as '
               + `${ctx.user.username}. It cannot be undone from this screen, because the `
               + 'ids of the rows off screen were never loaded. Acknowledging instead is '
               + 'reversible, and reaches the rows you can see.',
-            confirmLabel: count ? `Close ${count.toLocaleString('en-US')} alerts` : 'Close them all',
+            confirmLabel: count ? `Close ${count.toLocaleString(locale())} alerts` : 'Close them all',
             confirmText: count ? String(count) : '',
             confirmHint: count ? 'The exact number, digits only.' : '',
           });
@@ -983,14 +966,14 @@ export const runs = {
     const state = { rows: [], sortKey: 'created_at', sortDir: 'desc', hashFull: false };
 
     root.innerHTML = `
-      ${pageHead({ root, title: 'Stored allocations' })}
+      ${pageHead({ root, title: t('rn.title') })}
       ${skeletonRows(6)}`;
 
     await guard(root, async () => {
       state.rows = await api.runs();
 
       const columns = [
-        { key: 'created_at', label: 'When', sortable: true,
+        { key: 'created_at', label: t('ad.colWhen'), sortable: true,
           render: (r) => `<span class="mono">${fmtDateTime(r.created_at)}</span>` },
         { key: 'budget_egp', label: 'Budget EGP', num: true, sortable: true,
           render: (r) => compact(r.budget_egp) },
@@ -1005,20 +988,20 @@ export const runs = {
             : escapeHtml(solverLabel(r.solver))) },
         { key: 'buildings_funded', label: 'Funded', num: true, sortable: true,
           render: (r) => r.buildings_funded },
-        { key: 'total_cost_egp', label: 'Spent EGP', num: true, sortable: true,
+        { key: 'total_cost_egp', label: t('rn.colSpent'), num: true, sortable: true,
           render: (r) => compact(r.total_cost_egp) },
-        { key: 'total_benefit_kgco2e', label: 'Lifetime kgCO₂e', num: true, sortable: true,
+        { key: 'total_benefit_kgco2e', label: t('rn.colLifetime'), num: true, sortable: true,
           render: (r) => compact(r.total_benefit_kgco2e) },
-        { key: 'inputs_hash', label: 'Input hash', cls: 'mono',
+        { key: 'inputs_hash', label: t('rn.colHash'), cls: 'mono',
           render: (r) => (state.hashFull
             ? `<span class="hash-all">${escapeHtml(r.inputs_hash)}</span>`
             : `<span class="hash" title="${escapeHtml(r.inputs_hash)}">${
                 escapeHtml(String(r.inputs_hash).slice(0, 10))}&hellip;</span>`) },
         { key: '_provenance', label: '', cls: 'row-actions',
           render: (r) => `<button type="button" class="secondary small"
-            data-prov="${escapeHtml(r.run_id)}">Provenance</button>
+            data-prov="${escapeHtml(r.run_id)}">${t('rn.provenance')}</button>
             <button type="button" class="secondary small"
-            data-boq="${escapeHtml(r.run_id)}">BOQ</button>` },
+            data-boq="${escapeHtml(r.run_id)}">${t('rn.boq')}</button>` },
       ];
 
       const paint = () => {
@@ -1026,9 +1009,8 @@ export const runs = {
         body.innerHTML = state.rows.length
           ? dataTable({ columns, rows: state.rows, sortKey: state.sortKey, sortDir: state.sortDir })
           : emptyState({
-              title: 'No allocations stored yet',
-              body: 'Run the optimizer from the Map tab. Every solve is stored here with the '
-                  + 'hash of the inputs that produced it.',
+              title: t('rn.emptyTitle'),
+              body: t('rn.emptyBody'),
             });
         wireSort(body, state, paint);
         body.querySelectorAll('[data-prov]').forEach((button) => {
@@ -1043,14 +1025,14 @@ export const runs = {
       };
 
       root.innerHTML = `
-        ${pageHead({ root, title: 'Stored allocations' })}
+        ${pageHead({ root, title: t('rn.title') })}
         <section class="panel">
           <header>
-            <h3>Runs</h3>
-            <span class="scope">${state.rows.length} stored, newest first</span>
-            <div class="segmented" role="group" aria-label="Input hash length" id="hash-mode">
-              <button type="button" class="seg-btn" data-hash="short" aria-pressed="true">First 10</button>
-              <button type="button" class="seg-btn" data-hash="full" aria-pressed="false">All 64</button>
+            <h3>${t('rn.runs')}</h3>
+            <span class="scope">${t('rn.scope', { n: state.rows.length })}</span>
+            <div class="segmented" role="group" aria-label="${t('rn.hashGroup')}" id="hash-mode">
+              <button type="button" class="seg-btn" data-hash="short" aria-pressed="true">${t('rn.first10')}</button>
+              <button type="button" class="seg-btn" data-hash="full" aria-pressed="false">${t('rn.all64')}</button>
             </div>
           </header>
           <div id="runs-body"></div>
@@ -1059,13 +1041,7 @@ export const runs = {
 
       const hashNote = () => {
         root.querySelector('#hash-note').innerHTML = state.hashFull
-          ? 'Showing all 64 characters, which is the only form you can actually check '
-            + 'one run against another with — at the cost of a table that scrolls '
-            + 'sideways. Lifetime kgCO&#8322;e is an estimate, not a measurement.'
-          : 'Showing the first 10 characters, which fits and is enough to tell two runs '
-            + 'apart by eye — but not enough to <em>prove</em> two runs are the same. '
-            + 'Switch to all 64, or open Provenance, for that. Lifetime kgCO&#8322;e is '
-            + 'an estimate, not a measurement.';
+          ? t('rn.noteFull') : t('rn.noteShort');
       };
 
       root.querySelectorAll('[data-hash]').forEach((button) => {
@@ -1105,36 +1081,32 @@ function showProvenance(run) {
 
   host.innerHTML = `
     <div class="modal-inner narrow" role="dialog" aria-modal="true" tabindex="-1"
-         aria-label="Provenance of this allocation">
-      <button class="close" type="button" data-close aria-label="Close">&times;</button>
-      <h2>Provenance</h2>
+         aria-label="${t('rn.provAria')}">
+      <button class="close" type="button" data-close aria-label="${t('ui.close')}">&times;</button>
+      <h2>${t('rn.provenance')}</h2>
       <div class="prov-body">
         <dl class="facts">
-          <div><dt>Stored at (data time)</dt><dd>${escapeHtml(fmtDateTime(run.created_at))}</dd></div>
-          <div><dt>Budget</dt><dd>${compact(run.budget_egp)} EGP</dd></div>
-          <div><dt>Objective</dt><dd>${escapeHtml(objectiveLabel(run.objective))}</dd></div>
-          <div><dt>Method</dt><dd>${escapeHtml(solverLabel(run.solver))}</dd></div>
-          <div><dt>District cap</dt><dd>${run.max_funded_per_district
-            ? `${run.max_funded_per_district} per district` : 'none'}</dd></div>
-          <div><dt>Buildings funded</dt><dd>${run.buildings_funded}</dd></div>
-          <div><dt>Spent</dt><dd>${compact(run.total_cost_egp)} EGP</dd></div>
-          <div><dt>Lifetime benefit</dt><dd>${compact(run.total_benefit_kgco2e)} kgCO&#8322;e</dd></div>
-          <div><dt>Solve time</dt><dd>${Math.round(run.solve_ms)} ms</dd></div>
-          <div><dt>Status</dt><dd>${escapeHtml(run.status)}</dd></div>
+          <div><dt>${t('rn.storedAt')}</dt><dd>${escapeHtml(fmtDateTime(run.created_at))}</dd></div>
+          <div><dt>${t('rn.budget')}</dt><dd>${compact(run.budget_egp)} ${t('unit.egp')}</dd></div>
+          <div><dt>${t('rn.objective')}</dt><dd>${escapeHtml(objectiveLabel(run.objective))}</dd></div>
+          <div><dt>${t('rn.method')}</dt><dd>${escapeHtml(solverLabel(run.solver))}</dd></div>
+          <div><dt>${t('rn.districtCap')}</dt><dd>${run.max_funded_per_district
+            ? t('rn.perDistrict', { n: run.max_funded_per_district }) : t('rn.none')}</dd></div>
+          <div><dt>${t('rn.funded')}</dt><dd>${run.buildings_funded}</dd></div>
+          <div><dt>${t('rn.spent')}</dt><dd>${compact(run.total_cost_egp)} ${t('unit.egp')}</dd></div>
+          <div><dt>${t('rn.benefit')}</dt><dd>${compact(run.total_benefit_kgco2e)} ${t('unit.kgco2e')}</dd></div>
+          <div><dt>${t('rn.solveTime')}</dt><dd>${Math.round(run.solve_ms)} ${t('unit.ms')}</dd></div>
+          <div><dt>${t('rn.status')}</dt><dd>${escapeHtml(run.status)}</dd></div>
         </dl>
 
-        <h3 class="section-label">Input hash</h3>
+        <h3 class="section-label">${t('rn.inputHash')}</h3>
         <p class="hash-block" id="prov-hash">${escapeHtml(run.inputs_hash)}</p>
         <div class="form-actions">
-          <button type="button" class="secondary" data-copy>Copy the hash</button>
+          <button type="button" class="secondary" data-copy>${t('rn.copyHash')}</button>
           <span class="hint" id="prov-copied" role="status"></span>
         </div>
 
-        <p class="caption">This hash covers the fifty building records, their
-        consumption figures, the budget, the objective, the district cap and the
-        method. The same hash means the same allocation. A different hash means an
-        input moved, and the two runs are not comparable &mdash; whatever their
-        totals happen to look like.</p>
+        <p class="caption">${t('rn.hashCaption')}</p>
       </div>
     </div>`;
 
@@ -1148,11 +1120,11 @@ function showProvenance(run) {
     const said = host.querySelector('#prov-copied');
     try {
       await navigator.clipboard.writeText(run.inputs_hash);
-      said.textContent = 'Copied all 64 characters.';
+      said.textContent = t('rn.copied');
     } catch {
       /* Clipboard access can be refused, and a button that silently does
        * nothing is worse than one that says so. The hash is selectable above. */
-      said.textContent = 'The browser refused clipboard access — select the hash above.';
+      said.textContent = t('rn.copyRefused');
     }
   });
 
@@ -1173,12 +1145,12 @@ function showProvenance(run) {
  * the known-open row that is supposed to be red.
  */
 export const evidence = {
-  title: 'Evidence',
+  title: t('ev.title'),
   async render(root, ctx) {
     const state = { rows: [], sortKey: 'id', sortDir: 'asc', failingOnly: false };
 
     root.innerHTML = `
-      ${pageHead({ root, title: 'Evidence' })}
+      ${pageHead({ root, title: t('ev.title') })}
       ${skeletonRows(8)}`;
 
     await guard(root, async () => {
@@ -1206,85 +1178,79 @@ export const evidence = {
       const age = body0.measured_at
         ? (Date.now() - Date.parse(body0.measured_at)) / 3.6e6 : null;
       const ageLabel = age === null ? null
-        : age < 1 ? 'less than an hour ago'
-        : age < 48 ? `${Math.round(age)} hours ago`
-        : `${Math.round(age / 24)} days ago`;
+        : age < 1 ? t('ev.ageHour')
+        : age < 48 ? t('ev.ageHours', { n: Math.round(age) })
+        : t('ev.ageDays', { n: Math.round(age / 24) });
       const stale = age !== null && age > 48;
 
       const verdictChip = (r) => {
-        if (r.verdict === 'PASS') return `<span class="sev pass">${mark('check', { size: 11 })}Pass</span>`;
-        if (r.verdict === 'SKIP') return `<span class="muted">${mark('dash', { size: 11 })}Not measured</span>`;
+        if (r.verdict === 'PASS') return `<span class="sev pass">${mark('check', { size: 11 })}${t('ev.pass')}</span>`;
+        if (r.verdict === 'SKIP') return `<span class="muted">${mark('dash', { size: 11 })}${t('ev.notMeasured')}</span>`;
         return r.known_open
-          ? `<span class="sev high">${mark('dash', { size: 11 })}Known-open</span>`
-          : `<span class="sev critical">${mark('cross', { size: 11 })}Fail</span>`;
+          ? `<span class="sev high">${mark('dash', { size: 11 })}${t('ev.knownOpen')}</span>`
+          : `<span class="sev critical">${mark('cross', { size: 11 })}${t('ev.fail')}</span>`;
       };
 
       /* The statement leads. `F8-b` is the harness's handle on a claim and means
        * nothing to somebody reading this for the first time, so it goes last and
        * quiet - the sentence is what a reader is here to check. */
       const columns = [
-        { key: 'statement', label: 'What the paper claims', sortable: true, cls: 'wrap',
+        { key: 'statement', label: t('ev.colStatement'), sortable: true, cls: 'wrap',
           render: (r) => escapeHtml(r.statement) },
-        { key: '_verdict', label: 'Verdict', sortable: true, render: verdictChip },
-        { key: 'measured', label: 'Measured against this deployment', cls: 'wrap',
+        { key: '_verdict', label: t('ev.colVerdict'), sortable: true, render: verdictChip },
+        { key: 'measured', label: t('ev.colMeasured'), cls: 'wrap',
           render: (r) => (r.measured ? escapeHtml(r.measured) : '<span class="muted">&mdash;</span>') },
-        { key: 'id', label: 'Ref', sortable: true, cls: 'mono muted',
+        { key: 'id', label: t('ev.colRef'), sortable: true, cls: 'mono muted',
           render: (r) => escapeHtml(r.id) },
       ];
 
       const isAdmin = can(ctx.user, 'admin');
 
       root.innerHTML = `
-        ${pageHead({ root, title: 'Evidence',
+        ${pageHead({ root, title: t('ev.title'),
           actions: isAdmin
-            ? '<button type="button" class="secondary" id="claims-btn">Re-measure claims</button>'
+            ? `<button type="button" class="secondary" id="claims-btn">${t('ev.remeasure')}</button>`
             : '' })}
 
         <section class="panel">
           <header>
-            <h3>Claims harness</h3>
+            <h3>${t('ev.harness')}</h3>
             <span class="scope">${ageLabel
-              ? `last measured ${escapeHtml(ageLabel)}` : 'never measured here'}</span>
+              ? t('ev.lastMeasured', { age: escapeHtml(ageLabel) })
+              : t('ev.neverMeasured')}</span>
           </header>
 
           <div class="posture-verdict ${clean ? 'good' : 'bad'}">
             <span class="verdict-shield">${icon(clean ? 'integrity' : 'warning')}</span>
             <span class="verdict-text">
               <span class="verdict-word">${state.rows.length
-                ? `${tally.pass} of ${measurable} claims hold`
-                : 'Nothing measured yet'}</span>
+                ? t('ev.hold', { pass: tally.pass, total: measurable })
+                : t('ev.nothingYet')}</span>
               <span class="verdict-gloss">${state.rows.length
-                ? 'Every sentence the paper asserts, re-run against this deployment '
-                  + 'rather than quoted from a document. '
-                  + (tally.fail
-                    ? `${tally.fail} stopped being true and ${tally.fail === 1
-                        ? 'has' : 'have'} not been corrected.`
-                    : tally.known
-                      ? `${tally.known} known-open ${tally.known === 1 ? 'item is' : 'items are'} `
-                        + 'recorded as outstanding work, not hidden.'
-                      : 'Nothing is outstanding.')
-                : 'The harness has not been run against this deployment.'}</span>
+                ? t('ev.glossLead')
+                  + (tally.fail ? t('ev.glossFail', { n: tally.fail })
+                    : tally.known ? t('ev.glossKnown', { n: tally.known })
+                    : t('ev.glossClean'))
+                : t('ev.glossNever')}</span>
             </span>
             <span class="tally">
               <span class="sev pass">${mark('check', { size: 11 })}${tally.pass}</span>
               ${tally.known ? `<span class="sev high">${mark('dash', { size: 11 })}${tally.known}</span>` : ''}
               ${tally.fail ? `<span class="sev critical">${mark('cross', { size: 11 })}${tally.fail}</span>` : ''}
-              ${tally.skip ? `<span class="muted small">${tally.skip} not measured</span>` : ''}
+              ${tally.skip ? `<span class="muted small">${t('ev.notMeasuredN', { n: tally.skip })}</span>` : ''}
             </span>
           </div>
 
           ${stale ? `
           <div class="note-panel warn" role="note">
             ${icon('warning')}
-            <p>These verdicts were measured <strong>${escapeHtml(ageLabel)}</strong>. Every
-            row can read Pass while describing a deployment that has since changed, so
-            re-run the harness before anybody reads this as current.</p>
+            <p>${t('ev.staleNote', { age: escapeHtml(ageLabel) })}</p>
           </div>` : ''}
 
           <div class="toolbar evidence-tools">
             <button type="button" class="seg-btn deny-toggle" id="evidence-failing"
-                    aria-pressed="false">Unresolved only</button>
-            <button type="button" class="secondary small" id="evidence-export">Export CSV</button>
+                    aria-pressed="false">${t('ev.unresolvedOnly')}</button>
+            <button type="button" class="secondary small" id="evidence-export">${t('ev.exportCsv')}</button>
           </div>
 
           <div id="evidence-body"></div>
@@ -1303,10 +1269,8 @@ export const evidence = {
                   ? 'denied-row' : '' })),
               sortKey: state.sortKey, sortDir: state.sortDir })
           : emptyState({
-              title: state.failingOnly ? 'Nothing unresolved' : 'No measurements yet',
-              body: state.failingOnly
-                ? 'Every claim the harness could measure is holding.'
-                : 'The claims harness has not been run on this deployment.',
+              title: state.failingOnly ? t('ev.emptyUnresolvedTitle') : t('ev.emptyNoneTitle'),
+              body: state.failingOnly ? t('ev.emptyHolding') : t('ev.emptyNever'),
             });
         wireSort(host, state, paint);
       };
@@ -1317,13 +1281,11 @@ export const evidence = {
       wireJobButton(root, ctx, {
         selector: '#claims-btn',
         kind: 'evidence',
-        label: 'Re-measuring claims',
+        label: t('ev.jobLabel'),
         confirm: {
-          title: 'Re-measure every claim?',
-          description: 'Runs the claims harness against this deployment and rewrites '
-                     + 'the table below with whatever it finds — including any claim '
-                     + 'that has stopped being true. It takes a few minutes.',
-          confirmLabel: 'Re-measure',
+          title: t('ev.jobTitle'),
+          description: t('ev.jobBody'),
+          confirmLabel: t('ev.jobConfirm'),
         },
         onDone: () => evidence.render(root, ctx),
       });
@@ -1383,27 +1345,27 @@ async function showBoq(runId) {
   };
 
   const columns = [
-    { key: 'building_code', label: 'Building', sortable: true,
+    { key: 'building_code', label: t('col.building'), sortable: true,
       render: (r) => `${escapeHtml(r.building_code)} <span class="muted">${
         escapeHtml(r.building_name)}</span>` },
-    { key: 'measure', label: 'Measure', sortable: true, render: (r) => escapeHtml(r.measure) },
-    { key: 'quantity', label: 'Quantity', num: true, sortable: true,
+    { key: 'measure', label: t('boq.colMeasure'), sortable: true, render: (r) => escapeHtml(r.measure) },
+    { key: 'quantity', label: t('boq.colQuantity'), num: true, sortable: true,
       render: (r) => `${compact(r.quantity)} ${escapeHtml(r.basis)}` },
-    { key: 'unit_rate', label: 'Unit rate', render: (r) => escapeHtml(r.unit_rate) },
-    { key: 'line_total_egp', label: 'Line total EGP', num: true, sortable: true,
+    { key: 'unit_rate', label: t('boq.colRate'), render: (r) => escapeHtml(r.unit_rate) },
+    { key: 'line_total_egp', label: t('boq.colTotal'), num: true, sortable: true,
       render: (r) => compact(r.line_total_egp) },
     { key: '_cite', label: '',
       render: (r) => (r.citation
-        ? `<span class="sev high" title="${escapeHtml(r.citation)}">rate uncited</span>`
+        ? `<span class="sev high" title="${escapeHtml(r.citation)}">${t('boq.uncited')}</span>`
         : '') },
   ];
   const state = { rows: boq.lines, sortKey: 'building_code', sortDir: 'asc' };
 
   host.innerHTML = `
     <div class="modal-inner wide" role="dialog" aria-modal="true" tabindex="-1"
-         aria-label="Bill of quantities">
-      <button class="close" type="button" data-close aria-label="Close">&times;</button>
-      <h2>Bill of quantities</h2>
+         aria-label="${t('boq.title')}">
+      <button class="close" type="button" data-close aria-label="${t('ui.close')}">&times;</button>
+      <h2>${t('boq.title')}</h2>
 
       <!-- The printed sheet's masthead. Hidden on screen, because on screen the
            dialog already has a heading and the app already has a wordmark; on
@@ -1413,33 +1375,32 @@ async function showBoq(runId) {
       <div class="print-sheet-head" aria-hidden="true">
         <div class="print-brand">${wordmark('GEMP')}</div>
         <div class="print-title">
-          <h1>Bill of quantities</h1>
-          <p>Green Energy Monitoring Platform &middot; New Cairo retrofit portfolio</p>
+          <h1>${t('boq.title')}</h1>
+          <p>${t('boq.subtitle')}</p>
         </div>
         <dl class="print-meta">
-          <div><dt>Run</dt><dd class="mono">${escapeHtml(String(runId))}</dd></div>
-          <div><dt>Issued</dt><dd>${escapeHtml(new Date().toLocaleString('en-GB'))}</dd></div>
-          <div><dt>Lines</dt><dd>${boq.lines.length}</dd></div>
-          <div><dt>Total</dt><dd><strong>${compact(boq.total_egp)} EGP</strong></dd></div>
-          <div class="wide"><dt>Input hash</dt>
+          <div><dt>${t('boq.run')}</dt><dd class="mono">${escapeHtml(String(runId))}</dd></div>
+          <div><dt>${t('boq.issued')}</dt><dd>${escapeHtml(new Date().toLocaleString(locale()))}</dd></div>
+          <div><dt>${t('boq.lines')}</dt><dd>${boq.lines.length}</dd></div>
+          <div><dt>${t('boq.total')}</dt><dd><strong>${compact(boq.total_egp)} ${t('unit.egp')}</strong></dd></div>
+          <div class="wide"><dt>${t('boq.inputHash')}</dt>
             <dd class="mono">${escapeHtml(String(boq.inputs_hash))}</dd></div>
         </dl>
       </div>
 
-      <p class="caption">Run <span class="mono">${escapeHtml(String(runId).slice(0, 10))}
-        &hellip;</span> &middot; ${boq.lines.length} lines &middot; total
-        ${compact(boq.total_egp)} EGP &middot; input hash
-        <span class="mono">${escapeHtml(String(boq.inputs_hash).slice(0, 10))}&hellip;</span></p>
+      <p class="caption">${t('boq.caption', {
+        run: escapeHtml(String(runId).slice(0, 10)),
+        lines: boq.lines.length,
+        total: compact(boq.total_egp),
+        egp: t('unit.egp'),
+        hash: escapeHtml(String(boq.inputs_hash).slice(0, 10)),
+      })}</p>
       <div id="boq-body"></div>
-      <p class="print-foot" aria-hidden="true">Every rate in this bill is drawn from the
-      platform's costing catalog against the inputs identified by the hash above. Rates
-      marked &ldquo;rate uncited&rdquo; carry an open TODO in that catalog and must be
-      sourced before tender.</p>
+      <p class="print-foot" aria-hidden="true">${t('boq.printFoot')}</p>
       <div class="form-actions">
-        <button type="button" class="primary" data-download>Download CSV</button>
-        <button type="button" class="secondary" data-print>Print brief</button>
-        <span class="hint">Rates marked "uncited" still carry a TODO in the catalog
-          and must be sourced before tender.</span>
+        <button type="button" class="primary" data-download>${t('boq.download')}</button>
+        <button type="button" class="secondary" data-print>${t('boq.print')}</button>
+        <span class="hint">${t('boq.hint')}</span>
       </div>
     </div>`;
 
@@ -1488,7 +1449,7 @@ export const integrity = {
   title: 'Integrity',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({ root, title: 'Reading integrity' })}
+      ${pageHead({ root, title: t('in.title') })}
       ${skeletonRows(4)}`;
 
     await guard(root, async () => {
@@ -1501,17 +1462,16 @@ export const integrity = {
       const state = { building: '', phase: 'idle' };
 
       root.innerHTML = `
-        ${pageHead({ root, title: 'Reading integrity' })}
+        ${pageHead({ root, title: t('in.title') })}
 
         <div class="two-col aside-first">
           <section class="panel">
-            <header><h3>Verify a building</h3></header>
+            <header><h3>${t('in.verifyPanel')}</h3></header>
             <div class="verify-panel">
-              ${picker({ id: 'int-building', label: 'Building', options, value: '' })}
+              ${picker({ id: 'int-building', label: t('col.building'), options, value: '' })}
               <button type="button" class="primary" data-verify disabled>
-                Pick a building first</button>
-              <p class="note">The walk reads and never writes. Nothing on this screen can
-              alter a reading, a signature or the anchor file.</p>
+                ${t('in.pickFirst')}</button>
+              <p class="note">${t('in.readsOnly')}</p>
 
               <!-- Three words this screen cannot avoid using, defined before it
                    uses them. A verdict in vocabulary the reader does not share
@@ -1519,17 +1479,11 @@ export const integrity = {
                    should not have to scroll past it on every visit, so it opens
                    rather than occupying the column. -->
               <details class="glossary-wrap">
-                <summary>What these three checks mean</summary>
+                <summary>${t('in.glossarySummary')}</summary>
               <dl class="glossary">
-                <div><dt>Chain walk</dt><dd>Re-reading every stored reading for the
-                  building in order and checking that each one still hashes to the value
-                  the next one recorded for it.</dd></div>
-                <div><dt>Anchor file</dt><dd>A copy of the chain head written outside the
-                  database volume, so deleting rows from the database cannot quietly
-                  delete the evidence that they existed.</dd></div>
-                <div><dt>Anchor agrees with database</dt><dd>The head in that file and the
-                  head the database currently reports are the same value &mdash; nobody
-                  rebuilt the chain and updated only one of the two.</dd></div>
+                <div><dt>${t('in.gChainWalk')}</dt><dd>${t('in.gChainWalkBody')}</dd></div>
+                <div><dt>${t('in.gAnchor')}</dt><dd>${t('in.gAnchorBody')}</dd></div>
+                <div><dt>${t('in.gAgree')}</dt><dd>${t('in.gAgreeBody')}</dd></div>
               </dl>
               </details>
             </div>
@@ -1537,8 +1491,8 @@ export const integrity = {
 
           <section class="panel">
             <header>
-              <h3>Result</h3>
-              <span class="scope" id="int-scope">nothing verified yet</span>
+              <h3>${t('in.result')}</h3>
+              <span class="scope" id="int-scope">${t('in.nothingVerified')}</span>
             </header>
             <div id="int-body" class="result-panel"></div>
           </section>
@@ -1550,10 +1504,8 @@ export const integrity = {
 
       const idle = () => {
         root.querySelector('#int-body').innerHTML = emptyState({
-          title: 'Nothing verified yet',
-          body: 'Pick a building and press verify. The walk re-reads every stored reading '
-              + 'for it in order, checks the signature chain, and compares the result '
-              + 'against the anchor file held outside the database volume.',
+          title: t('in.idleTitle'),
+          body: t('in.idleBody'),
         });
       };
 
@@ -1564,10 +1516,9 @@ export const integrity = {
          * arrives, so nothing below it jumps when the walk finishes. */
         body.innerHTML = `
           <div class="running" aria-busy="true" aria-live="polite">
-            <p>Walking the reading chain for <strong>${escapeHtml(b ? b.code : '')}</strong>&hellip;</p>
+            <p>${t('in.walking', { code: escapeHtml(b ? b.code : '') })}</p>
             <div class="progress"><span class="progress-bar"></span></div>
-            <p class="note">Reading only. This can take a moment: it is every stored
-            reading for the building, in order.</p>
+            <p class="note">${t('in.walkingNote')}</p>
           </div>`;
 
         const report = await api.verifyChain(state.building);
@@ -1582,27 +1533,24 @@ export const integrity = {
               <span class="check-name">${name}</span>
               <span class="check-note">${note}</span>
             </span>
-            <span class="check-verdict">${pass === null ? 'Not anchored' : pass ? 'Pass' : 'Fail'}</span>
+            <span class="check-verdict">${pass === null ? t('in.notAnchored')
+              : pass ? t('in.pass') : t('in.fail')}</span>
           </div>`;
 
         body.innerHTML = `
           <div class="verdict ${ok ? 'good' : 'bad'}">
             <span class="verdict-shield">${icon(ok ? 'integrity' : 'warning')}</span>
             <span class="verdict-text">
-              <span class="verdict-word">${ok ? 'Intact' : 'Broken'}</span>
-              <span class="verdict-gloss">${ok
-                ? 'Every stored reading for this building is the one that was signed when '
-                  + 'it arrived. Nobody has changed them.'
-                : 'The stored readings for this building can no longer be proved to be the '
-                  + 'ones that were signed when they arrived.'}</span>
+              <span class="verdict-word">${ok ? t('in.intact') : t('in.broken')}</span>
+              <span class="verdict-gloss">${ok ? t('in.intactGloss') : t('in.brokenGloss')}</span>
             </span>
-            <span class="verdict-rows"><strong>${compact(report.rows)}</strong> rows checked</span>
+            <span class="verdict-rows">${t('in.rowsChecked', { n: compact(report.rows) })}</span>
           </div>
 
           <section class="chain-panel" aria-labelledby="chain-fig-h">
             <div class="chain-head">
-              <h4 id="chain-fig-h" class="plain">The chain, end to end</h4>
-              <span class="scope">sequence 1 to ${compact(report.rows)}</span>
+              <h4 id="chain-fig-h" class="plain">${t('in.chainTitle')}</h4>
+              <span class="scope">${t('in.chainScope', { n: compact(report.rows) })}</span>
             </div>
             ${chainFigure({
               rows: report.rows,
@@ -1611,62 +1559,46 @@ export const integrity = {
               ok,
             })}
             <p class="caption">${report.break
-              ? `Every link up to <strong>${compact(Math.max(0, report.break.seq - 1))}</strong>
-                 was re-computed and matched. From <strong>${compact(report.break.seq)}</strong>
-                 onward nothing can be proved either way — the readings are still there,
-                 the proof is not.`
-              : `Every one of <strong>${compact(report.rows)}</strong> links was
-                 re-computed from the stored reading and matched the value the next one
-                 recorded for it.`}</p>
+              ? t('in.chainBroken', {
+                  upto: compact(Math.max(0, report.break.seq - 1)),
+                  seq: compact(report.break.seq) })
+              : t('in.chainWhole', { n: compact(report.rows) })}</p>
           </section>
 
           <div class="checks">
-            ${check(report.chain_ok, 'Chain walk verifies',
-                    'Every reading still hashes to the value the next one recorded for it.')}
-            ${check(report.checkpoint_ok, 'External anchor file matches',
+            ${check(report.chain_ok, t('in.checkChain'), t('in.checkChainNote'))}
+            ${check(report.checkpoint_ok, t('in.checkAnchor'),
                     report.checkpoint_ok === null
-                      ? 'No anchor has been written for this building yet, so a deleted '
-                        + 'tail could not be detected.'
-                      : `The head written outside the database volume matches the chain${
-                          report.checkpoint_seq ? ` at sequence ${compact(report.checkpoint_seq)}` : ''}.`)}
-            ${check(report.anchor_matches_database, 'Anchor and database agree',
-                    'The two copies of the chain head are the same value, so the chain was '
-                    + 'not rebuilt with only one of them updated.')}
+                      ? t('in.checkAnchorNone')
+                      : t('in.checkAnchorOk', {
+                          at: report.checkpoint_seq
+                            ? t('in.atSequence', { n: compact(report.checkpoint_seq) }) : '' }))}
+            ${check(report.anchor_matches_database, t('in.checkAgree'), t('in.checkAgreeNote'))}
           </div>
 
           ${report.break ? `
             <div class="break-panel" role="alert">
-              <h4 class="plain">Where it first failed</h4>
+              <h4 class="plain">${t('in.breakTitle')}</h4>
               <dl class="facts">
-                <div><dt>First failing sequence</dt><dd>${report.break.seq}</dd></div>
-                <div><dt>Verified up to</dt><dd>${compact(Math.max(0, report.break.seq - 1))}</dd></div>
-                <div><dt>Rows after the break</dt><dd>${compact(Math.max(0, report.rows - report.break.seq))}</dd></div>
-                <div><dt>Building</dt><dd>${escapeHtml(b ? b.code : '')}</dd></div>
+                <div><dt>${t('in.breakSeq')}</dt><dd>${report.break.seq}</dd></div>
+                <div><dt>${t('in.breakUpto')}</dt><dd>${compact(Math.max(0, report.break.seq - 1))}</dd></div>
+                <div><dt>${t('in.breakAfter')}</dt><dd>${compact(Math.max(0, report.rows - report.break.seq))}</dd></div>
+                <div><dt>${t('col.building')}</dt><dd>${escapeHtml(b ? b.code : '')}</dd></div>
               </dl>
-              <p>There are two things that produce this, and the platform cannot tell you
-              which: a reading was altered after it was signed, or the chain was rebuilt
-              from this point onward. Either way the break is at the sequence above.</p>
-              <p>The readings are still on disk and are still shown everywhere else in
-              this platform. What they have lost is not their value but their proof —
-              they can no longer be shown to be unaltered. <strong>There is deliberately
-              no button here that fixes this.</strong> A platform that can silently repair
-              a chain can also silently erase the thing the break is telling you.</p>
+              <p>${t('in.breakBody1')}</p>
+              <p>${t('in.breakBody2')}</p>
             </div>` : ''}
 
           ${report.hint ? `<p class="note">${escapeHtml(report.hint)}</p>` : ''}
 
           <div class="form-actions">
-            <button type="button" class="secondary" data-verify-again>Verify again</button>
+            <button type="button" class="secondary" data-verify-again>${t('in.verifyAgain')}</button>
             <a class="btn secondary" href="#/alerts?building=${
-              encodeURIComponent(state.building)}">See ${escapeHtml(b ? b.code : 'this building')}&rsquo;s alerts</a>
+              encodeURIComponent(state.building)}">${t('in.seeAlerts', {
+                code: escapeHtml(b ? b.code : t('in.thisBuilding')) })}</a>
           </div>
 
-          <p class="caption">${ok
-            ? 'This says nothing about whether the meter was accurate. It says only that '
-              + 'nobody changed what the meter sent. Whether the meter itself behaved is '
-              + 'the alert inbox&rsquo;s question.'
-            : 'Whether the meter itself behaved is a separate question, and one the alert '
-              + 'inbox answers.'}</p>`;
+          <p class="caption">${ok ? t('in.captionOk') : t('in.captionBad')}</p>`;
 
         body.querySelector('[data-verify-again]').addEventListener('click',
           () => guard(root, draw));
@@ -1675,7 +1607,7 @@ export const integrity = {
       const sync = () => {
         const b = byId.get(state.building);
         button.disabled = !state.building;
-        button.textContent = b ? `Verify ${b.code}` : 'Pick a building first';
+        button.textContent = b ? t('in.verifyCode', { code: b.code }) : t('in.pickFirst');
       };
 
       input.addEventListener('change', () => {
@@ -1706,7 +1638,7 @@ function passwordProblem({ password, confirm }) {
 }
 
 export const admin = {
-  title: 'Administration',
+  title: t('ad.title'),
   /* `requiredRole` is what dims this item in the rail, and the rail keeps it for
    * everyone: an item that vanishes teaches nobody what they cannot see. The
    * view itself decides what to render, and for a non-admin that is an
@@ -1715,7 +1647,7 @@ export const admin = {
   async render(root, ctx) {
     if (!can(ctx.user, 'admin')) {
       root.innerHTML = `
-        ${pageHead({ root, title: 'Administration' })}
+        ${pageHead({ root, title: t('ad.title') })}
         <div class="note-panel" role="note">
           ${icon('lock')}
           <p><strong>Administration needs the admin role, and yours is
@@ -1743,7 +1675,7 @@ export const admin = {
     }
 
     root.innerHTML = `
-      ${pageHead({ root, title: 'Administration' })}
+      ${pageHead({ root, title: t('ad.title') })}
       ${skeletonRows(6)}`;
 
     await guard(root, async () => {
@@ -1752,36 +1684,40 @@ export const admin = {
       ]);
 
       const auditColumns = [
-        { key: 'ts', label: 'When', sortable: true,
+        { key: 'ts', label: t('ad.colWhen'), sortable: true,
           render: (r) => `<span class="mono">${fmtDateTime(r.ts)}</span>` },
-        { key: 'username', label: 'User', sortable: true,
+        { key: 'username', label: t('ad.colUser'), sortable: true,
           render: (r) => escapeHtml(r.username || '—') },
-        { key: 'action', label: 'Action', sortable: true, cls: 'mono',
+        { key: 'action', label: t('ad.colAction'), sortable: true, cls: 'mono',
           render: (r) => escapeHtml(r.action) },
-        { key: 'target', label: 'Target', render: (r) => escapeHtml(r.target || '—') },
-        { key: 'outcome', label: 'Outcome', sortable: true,
+        { key: 'target', label: t('ad.colTarget'), render: (r) => escapeHtml(r.target || '—') },
+        { key: 'outcome', label: t('ad.colOutcome'), sortable: true,
           /* Denied stands out: the row is critical-soft, the word is bold and it
            * carries the cross. A refused action is the one line in an audit log
            * anybody scans for. */
           render: (r) => (r.outcome === 'denied'
-            ? `<span class="sev critical">${mark('cross', { size: 11 })}Denied</span>`
-            : `<span class="muted">${escapeHtml(r.outcome)}</span>`) },
-        { key: 'ip', label: 'Address', cls: 'mono', render: (r) => escapeHtml(r.ip || '—') },
+            ? `<span class="sev critical">${mark('cross', { size: 11 })}${t('ad.denied')}</span>`
+            /* The outcome is an enum from the audit table, so it is looked up
+               rather than printed; an unrecognised one prints itself. */
+            : `<span class="muted">${escapeHtml(
+                r.outcome === 'allowed' ? t('ad.allowed') : String(r.outcome ?? '—'))}</span>`) },
+        { key: 'ip', label: t('ad.colAddress'), cls: 'mono', render: (r) => escapeHtml(r.ip || '—') },
       ];
       const auditState = { sortKey: 'ts', sortDir: 'desc', deniedOnly: false };
       const warnings = posture.warnings || [];
 
       root.innerHTML = `
         ${pageHead({ root,
-          title: 'Administration',
-          actions: '<button id="recompute-btn" type="button" class="secondary">'
-                   + 'Recompute candidates</button>'
-                   + '<button id="user-add" type="button" class="primary">Add account</button>',
+          title: t('ad.title'),
+          actions: `<button id="recompute-btn" type="button" class="secondary">${
+                     t('ad.recompute')}</button>`
+                   + `<button id="user-add" type="button" class="primary">${
+                     t('ad.addAccount')}</button>`,
         })}
 
         <section class="panel">
-          <header><h3>Security posture</h3>
-            <span class="scope">what this deployment is exposed to right now</span></header>
+          <header><h3>${t('ad.posture')}</h3>
+            <span class="scope">${t('ad.postureScope')}</span></header>
 
           <!-- The endpoint computes a list of warnings precisely so that somebody
                can see them - "a security control nobody can see the state of is a
@@ -1792,14 +1728,10 @@ export const admin = {
             <span class="verdict-shield">${icon(warnings.length ? 'warning' : 'integrity')}</span>
             <span class="verdict-text">
               <span class="verdict-word">${warnings.length
-                ? `${warnings.length} thing${warnings.length === 1 ? '' : 's'} to fix`
-                : 'Nothing outstanding'}</span>
+                ? t('ad.toFix', { n: warnings.length })
+                : t('ad.nothingOutstanding')}</span>
               <span class="verdict-gloss">${warnings.length
-                ? 'Each one below changes what somebody who is not supposed to be here '
-                  + 'could do. None of them is cosmetic.'
-                : 'Every configuration check this deployment reports on is in the state '
-                  + 'it should be. It is not a claim that the deployment is secure — it '
-                  + 'is a claim that nothing it knows how to check is wrong.'}</span>
+                ? t('ad.postureBad') : t('ad.postureGood')}</span>
             </span>
           </div>
 
@@ -1813,59 +1745,56 @@ export const admin = {
                an attacker on the same network can do without a password. -->
           ${posture.cookie_secure ? '' : `
           <div class="posture-alert" role="alert">
-            <h4 class="plain">The session cookie is being sent without the Secure flag.</h4>
-            <p>Without it the browser will send the session cookie over plain HTTP as well
-            as HTTPS. Anyone able to watch the network between a signed-in browser and
-            this server — the same wifi, the same switch, anything in between — can read
-            that cookie and use it to act as that person, without ever needing their
-            password. Turn it on before this is reachable over a network you do not
-            control.</p>
+            <h4 class="plain">${t('ad.cookieTitle')}</h4>
+            <p>${t('ad.cookieBody')}</p>
           </div>`}
 
           <dl class="facts">
-            <div><dt>Session cookie Secure flag</dt>
+            <div><dt>${t('ad.cookieFlag')}</dt>
             <dd>${posture.cookie_secure
-              ? `<span class="sev medium">${mark('check', { size: 11 })}On</span>`
-              : `<span class="sev critical">${mark('cross', { size: 11 })}Off</span>`}</dd></div>
-            <div><dt>Idle timeout</dt><dd>${posture.session_idle_timeout_hours} hours</dd></div>
-            <div><dt>Absolute session lifetime</dt><dd>${posture.session_absolute_lifetime_days} days</dd></div>
-            <div><dt>Minimum password length</dt><dd>${posture.password_min_length} characters</dd></div>
-            <div><dt>Password hash cost</dt><dd>${posture.password_hash_cost === undefined
+              ? `<span class="sev medium">${mark('check', { size: 11 })}${t('ad.on')}</span>`
+              : `<span class="sev critical">${mark('cross', { size: 11 })}${t('ad.off')}</span>`}</dd></div>
+            <div><dt>${t('ad.idleTimeout')}</dt><dd>${t('ad.hours', { n: posture.session_idle_timeout_hours })}</dd></div>
+            <div><dt>${t('ad.absoluteLifetime')}</dt><dd>${t('ad.days', { n: posture.session_absolute_lifetime_days })}</dd></div>
+            <div><dt>${t('ad.minPassword')}</dt><dd>${t('ad.characters', { n: posture.password_min_length })}</dd></div>
+            <div><dt>${t('ad.hashCost')}</dt><dd>${posture.password_hash_cost === undefined
               ? '—' : `2^${Math.round(Math.log2(posture.password_hash_cost))} (n=${
                   compact(posture.password_hash_cost)})`}</dd></div>
-            <div><dt>Hashes below that cost</dt><dd>${posture.password_hashes_below_current_cost
+            <div><dt>${t('ad.hashesBelow')}</dt><dd>${posture.password_hashes_below_current_cost
               ? `<span class="sev high">${mark('dash', { size: 11 })}${
-                  posture.password_hashes_below_current_cost} account${
-                  posture.password_hashes_below_current_cost === 1 ? '' : 's'}</span>`
-              : `<span class="sev medium">${mark('check', { size: 11 })}none</span>`}</dd></div>
-            <div><dt>Audit rows that failed to write</dt><dd>${posture.audit_write_failures
+                  t('ad.accountsN', { n: posture.password_hashes_below_current_cost })}</span>`
+              : `<span class="sev medium">${mark('check', { size: 11 })}${t('rn.none')}</span>`}</dd></div>
+            <div><dt>${t('ad.auditFailures')}</dt><dd>${posture.audit_write_failures
               ? `<span class="sev critical">${mark('cross', { size: 11 })}${
                   posture.audit_write_failures}</span>`
-              : `<span class="sev medium">${mark('check', { size: 11 })}none</span>`}</dd></div>
-            <div><dt>Accounts</dt><dd>${posture.users}${
+              : `<span class="sev medium">${mark('check', { size: 11 })}${t('rn.none')}</span>`}</dd></div>
+            <div><dt>${t('ad.accounts')}</dt><dd>${t('ad.usersSummary', {
+              total: (posture.users && posture.users.total) ?? users.length,
+              admins: (posture.users && posture.users.admins) ?? '—' })}${
               users.filter((u) => !u.is_active).length
-                ? `, ${users.filter((u) => !u.is_active).length} disabled` : ', none disabled'}</dd></div>
+                ? t('ad.someDisabled', { n: users.filter((u) => !u.is_active).length })
+                : t('ad.noneDisabled')}</dd></div>
           </dl>
 
-          ${posture.recent_failed_logins.length ? `<h4 class="section-label">Recent failed sign-ins</h4>
+          ${posture.recent_failed_logins.length ? `<h4 class="section-label">${t('ad.recentFailed')}</h4>
             <div class="table-wrap"><table>
-              <thead><tr><th>When</th><th>Username tried</th><th>Address</th></tr></thead>
+              <thead><tr><th>${t('ad.failedWhen')}</th><th>${t('ad.failedUsername')}</th><th>${t('ad.colAddress')}</th></tr></thead>
               <tbody>${posture.recent_failed_logins.map((f) => `<tr>
                 <td class="mono">${fmtDateTime(f.ts)}</td><td>${escapeHtml(f.username)}</td>
                 <td class="mono">${escapeHtml(f.ip)}</td></tr>`).join('')}</tbody>
             </table></div>
-            <p class="caption">A username appearing here does <strong>not</strong> mean the
-            account exists. Sign-in answers the same way for a wrong password, an unknown
-            account and a disabled one — that is deliberate, and it means this list cannot
-            tell you which of the three each row was either.</p>`
-            : '<p class="caption">No failed sign-ins recorded.</p>'}
+            <p class="caption">${t('ad.failedCaption')}</p>`
+            : `<p class="caption">${t('ad.noFailed')}</p>`}
         </section>
 
         <section class="panel">
-          <header><h3>Accounts</h3><span class="muted small">${users.length} total</span></header>
+          <header><h3>${t('ad.accounts')}</h3><span class="muted small">${
+            t('ad.accountsTotal', { n: users.length })}</span></header>
           <div class="table-wrap"><table>
-            <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th>
-              <th>Last login</th><th class="row-actions"><span class="sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th>${t('ad.colUsername')}</th><th>${t('ad.colName')}</th><th>${
+              t('ad.colRole')}</th><th>${t('ad.colStatus')}</th>
+              <th>${t('ad.colLastLogin')}</th><th class="row-actions"><span class="sr-only">${
+              t('ui.actions')}</span></th></tr></thead>
             <!-- The two cells an admin cannot use on their own row show a lock
                  and the reason, not a greyed-out control. A disabled select
                  invites a click and explains nothing; the words do both. -->
@@ -1873,50 +1802,47 @@ export const admin = {
               const self = u.id === ctx.user.id || u.username === ctx.user.username;
               return `<tr>
               <td class="mono">${escapeHtml(u.username)}${
-                self ? '<span class="badge">you</span>' : ''}</td>
+                self ? `<span class="badge">${t('ad.you')}</span>` : ''}</td>
               <td>${escapeHtml(u.display_name)}</td>
               <td>${self && u.role === 'admin'
-                ? `<span class="locked-cell">${mark('cross', { size: 11 })}admin — your own</span>`
+                ? `<span class="locked-cell">${mark('cross', { size: 11 })}${t('ad.ownAdmin')}</span>`
                 : selectWrap(`<select class="inline" data-role="${escapeHtml(u.id)}"
                         data-current="${escapeHtml(u.role)}"
                         data-username="${escapeHtml(u.username)}"
-                        aria-label="Role for ${escapeHtml(u.username)}">
+                        aria-label="${escapeHtml(t('ad.roleAria', { name: u.username }))}">
                   ${['viewer', 'analyst', 'admin'].map((r) =>
-                    `<option value="${r}"${r === u.role ? ' selected' : ''}>${r}</option>`).join('')}
+                    `<option value="${r}"${r === u.role ? ' selected' : ''}>${t(`role.${r}`)}</option>`).join('')}
                 </select>`)}
               </td>
               <td>${u.must_change_password
-                ? `<span class="state-cell warn">${mark('dash', { size: 11 })}Must set password</span>`
+                ? `<span class="state-cell warn">${mark('dash', { size: 11 })}${t('ad.mustSetPassword')}</span>`
                 : u.is_active
-                  ? `<span class="state-cell ok">${mark('check', { size: 11 })}Active</span>`
-                  : `<span class="state-cell bad">${mark('cross', { size: 11 })}Disabled</span>`}</td>
+                  ? `<span class="state-cell ok">${mark('check', { size: 11 })}${t('ad.active')}</span>`
+                  : `<span class="state-cell bad">${mark('cross', { size: 11 })}${t('ad.disabled')}</span>`}</td>
               <td class="mono">${fmtDateTime(u.last_login_at)}</td>
               <td class="row-actions">
                 ${self
-                  ? `<span class="locked-cell">${mark('cross', { size: 11 })}cannot disable your own account</span>`
+                  ? `<span class="locked-cell">${mark('cross', { size: 11 })}${t('ad.cannotDisableSelf')}</span>`
                   : `<button class="secondary small" type="button" data-toggle="${escapeHtml(u.id)}"
                   data-active="${u.is_active}" data-username="${escapeHtml(u.username)}"
-                  aria-label="${u.is_active ? 'Disable' : 'Enable'} ${escapeHtml(u.username)}"
-                  >${u.is_active ? 'Disable' : 'Enable'}</button>`}
+                  aria-label="${u.is_active ? t('ad.disable') : t('ad.enable')} ${escapeHtml(u.username)}"
+                  >${u.is_active ? t('ad.disable') : t('ad.enable')}</button>`}
                 <button class="secondary small" type="button" data-reset="${escapeHtml(u.id)}"
                   data-username="${escapeHtml(u.username)}"
-                  aria-label="Reset the password for ${escapeHtml(u.username)}">Reset password</button>
+                  aria-label="${escapeHtml(t('ad.resetAria', { name: u.username }))}">${t('ad.resetPassword')}</button>
               </td>
             </tr>`; }).join('')}</tbody>
           </table></div>
-          <p class="caption">An admin cannot remove their own admin role or disable
-          their own account: leaving a deployment with no administrator is recoverable
-          only with shell access to the database.</p>
+          <p class="caption">${t('ad.usersCaption')}</p>
         </section>
 
         <section class="panel">
           <header>
-            <h3>Audit log</h3>
-            <span class="scope">the 50 most recent events — this is the whole log the API
-              returns, not a page of it</span>
+            <h3>${t('ad.auditLog')}</h3>
+            <span class="scope">${t('ad.auditScope')}</span>
             <button type="button" class="seg-btn deny-toggle" id="denied-only"
-                    aria-pressed="false">Denied only</button>
-            <button type="button" class="secondary small" id="audit-export">Export CSV</button>
+                    aria-pressed="false">${t('ad.deniedOnly')}</button>
+            <button type="button" class="secondary small" id="audit-export">${t('ad.exportCsv')}</button>
           </header>
           <div id="audit-body"></div>
         </section>`;
@@ -1942,10 +1868,8 @@ export const admin = {
                           _cls: r.outcome === 'denied' ? 'denied-row' : '' })),
                         sortKey: auditState.sortKey, sortDir: auditState.sortDir })
           : emptyState({
-              title: auditState.deniedOnly ? 'Nothing was refused' : 'Nothing recorded yet',
-              body: auditState.deniedOnly
-                ? 'No action in the 50 most recent events was denied.'
-                : 'Every authenticated action appears here as it happens.' });
+              title: auditState.deniedOnly ? t('ad.auditEmptyDeniedTitle') : t('ad.auditEmptyTitle'),
+              body: auditState.deniedOnly ? t('ad.auditEmptyDenied') : t('ad.auditEmpty') });
         wireSort(body, auditState, paintAudit);
       };
       paintAudit();
@@ -2120,21 +2044,21 @@ function browserName(agent) {
     : /Chrome\//.test(ua) ? 'Chrome'
     : /Firefox\//.test(ua) ? 'Firefox'
     : /Safari\//.test(ua) ? 'Safari'
-    : 'Unknown browser';
+    : t('ua.unknown');
   const platform = /Windows/.test(ua) ? 'Windows'
     : /Macintosh|Mac OS/.test(ua) ? 'macOS'
     : /Android/.test(ua) ? 'Android'
     : /iPhone|iPad/.test(ua) ? 'iOS'
     : /Linux/.test(ua) ? 'Linux'
     : '';
-  return platform ? `${engine} on ${platform}` : engine;
+  return platform ? t('ua.on', { engine, platform }) : engine;
 }
 
 export const account = {
   title: 'Account',
   async render(root, ctx) {
     root.innerHTML = `
-      ${pageHead({ root, title: 'Your account' })}
+      ${pageHead({ root, title: t('ac.title') })}
       ${skeletonRows(4)}`;
 
     await guard(root, async () => {
@@ -2144,42 +2068,40 @@ export const account = {
       const elsewhere = sessions.filter((x) => !x.current && x.ip && hereIp && x.ip !== hereIp);
 
       root.innerHTML = `
-        ${pageHead({ root, title: 'Your account' })}
+        ${pageHead({ root, title: t('ac.title') })}
 
         <div class="two-col aside-first">
           <section class="panel">
-            <header><h3>Change password</h3></header>
+            <header><h3>${t('ac.changePassword')}</h3></header>
 
             <!-- Said before the fields, not after the submit. Changing the
                  password is also the only way to end another session in this
                  platform, so somebody may be here to do exactly that - and
                  somebody else may not have realised it happens at all. -->
             <div class="posture-alert" role="note">
-              <h4 class="plain">Changing your password signs out every other session.</h4>
-              <p>${others === 0
-                ? 'There are no others right now, so this will only affect the browser '
-                  + 'you are using.'
-                : `There ${others === 1 ? 'is 1 other' : `are ${others} others`} right now. `
-                  + `${others === 1 ? 'It' : 'They'} will stop working immediately.`}</p>
+              <h4 class="plain">${t('ac.signsOutOthers')}</h4>
+              <p>${others === 0 ? t('ac.noOthers')
+                : others === 1 ? t('ac.oneOther')
+                : t('ac.manyOthers', { n: others })}</p>
             </div>
 
             <form id="pw-form" class="form">
-              <label for="pw-current">Current password
+              <label for="pw-current">${t('ac.currentPassword')}
                 <span class="password-field">
                   <input type="password" id="pw-current" class="mono"
                          autocomplete="current-password" required>
                   <button type="button" class="reveal" data-reveal="pw-current"
-                          aria-pressed="false" aria-label="Show the current password">
+                          aria-pressed="false" aria-label="${t('ac.showCurrent')}">
                     ${icon('eye')}</button>
                 </span></label>
 
-              <label for="pw-new">New password
+              <label for="pw-new">${t('ac.newPassword')}
                 <input type="password" id="pw-new" class="mono" autocomplete="new-password"
                        minlength="${MIN_PASSWORD}" required>
                 <span class="meter" id="pw-meter" aria-hidden="true"><span></span></span>
-                <span class="hint" id="pw-hint">At least ${MIN_PASSWORD} characters.</span></label>
+                <span class="hint" id="pw-hint">${t('ac.atLeast', { n: MIN_PASSWORD })}</span></label>
 
-              <label for="pw-confirm">Repeat the new password
+              <label for="pw-confirm">${t('ac.repeatNew')}
                 <input type="password" id="pw-confirm" class="mono"
                        autocomplete="new-password" required>
                 <span class="hint" id="pw-match"></span></label>
@@ -2187,50 +2109,45 @@ export const account = {
               <div id="pw-result"></div>
               <div class="form-actions">
                 <button type="submit" class="primary" id="pw-submit" disabled>
-                  Fill in every field</button>
+                  ${t('ac.fillEveryField')}</button>
               </div>
-              <p class="caption">The three fields are named so a password manager can fill
-              them and save the new one.</p>
+              <p class="caption">${t('ac.managerNote')}</p>
             </form>
           </section>
 
           <section class="panel">
             <header>
-              <h3>Where this account is signed in</h3>
-              <span class="scope">${sessions.length} active</span>
+              <h3>${t('ac.signedInWhere')}</h3>
+              <span class="scope">${t('ac.activeN', { n: sessions.length })}</span>
             </header>
             ${sessions.length ? `<div class="table-wrap"><table>
-              <thead><tr><th>Started</th><th>Last seen</th><th>Address</th><th>Browser</th></tr></thead>
+              <thead><tr><th>${t('ac.colStarted')}</th><th>${t('ac.colLastSeen')}</th><th>${
+                t('ad.colAddress')}</th><th>${t('ac.colBrowser')}</th></tr></thead>
               <tbody>${sessions.map((s) => `<tr${s.current ? ' class="chosen"' : ''}>
                 <td class="mono">${fmtDateTime(s.created_at)}${s.current
-                  ? `<span class="state-cell ok">${mark('check', { size: 11 })}this one</span>` : ''}</td>
+                  ? `<span class="state-cell ok">${mark('check', { size: 11 })}${t('ac.thisOne')}</span>` : ''}</td>
                 <td class="mono">${fmtDateTime(s.last_seen_at)}</td>
                 <td class="mono">${escapeHtml(s.ip || '—')}${
                   !s.current && s.ip && hereIp && s.ip !== hereIp
                     ? `<span class="state-cell warn">${mark('dash', { size: 11 })
-                       }different address</span>` : ''}</td>
+                       }${t('ac.differentAddress')}</span>` : ''}</td>
                 <td class="muted small wrap" title="${escapeHtml(s.user_agent || '')}"
                   >${escapeHtml(browserName(s.user_agent))}</td>
               </tr>`).join('')}</tbody>
             </table></div>` : emptyState({
-              title: 'Only this session',
-              body: 'This account is signed in here and nowhere else. Others appear when '
-                  + 'you sign in from another browser or machine, and drop off by '
-                  + 'themselves after the 8-hour idle limit or the 7-day absolute one.' })}
+              title: t('ac.onlyThisTitle'),
+              body: t('ac.onlyThisBody') })}
             ${elsewhere.length ? `
             <div class="posture-alert" role="note">
               <h4 class="plain">${elsewhere.length === 1
-                ? 'One other session is on a different address from this one.'
-                : `${elsewhere.length} other sessions are on different addresses from this one.`}</h4>
-              <p>That is normal if you also sign in from somewhere else &mdash; another
-              machine, another network. It is not normal if you do not recognise
-              ${elsewhere.length === 1 ? 'it' : 'them'}, and the only thing that ends
-              ${elsewhere.length === 1 ? 'it' : 'them'} is changing your password.</p>
+                ? t('ac.oneElsewhere')
+                : t('ac.manyElsewhere', { n: elsewhere.length })}</h4>
+              <p>${t('ac.elsewhereBody', {
+                them: elsewhere.length === 1 ? t('ac.itOne') : t('ac.itMany'),
+                them2: elsewhere.length === 1 ? t('ac.itOne') : t('ac.itMany'),
+              })}</p>
             </div>` : ''}
-            <p class="caption">A session you do not recognise is a reason to change your
-            password <strong>now</strong>, because that is what ends the others. There is
-            no per-session sign-out in this platform, and this screen will not pretend
-            there is.</p>
+            <p class="caption">${t('ac.closingCaption')}</p>
           </section>
         </div>`;
 
@@ -2265,7 +2182,7 @@ export const account = {
         meter.style.setProperty('--fill',
           `${Math.min(100, (value.length / MIN_PASSWORD) * 100)}%`);
         hint.textContent = !value
-          ? `At least ${MIN_PASSWORD} characters.`
+          ? t('ac.atLeast', { n: MIN_PASSWORD })
           : long
             ? `${value.length} characters — long enough.`
             : `${value.length} of ${MIN_PASSWORD} characters.`;
@@ -2282,11 +2199,11 @@ export const account = {
         const same = value !== '' && value === current.value;
         const ready = current.value && long && again.value === value && !same;
         submit.disabled = !ready;
-        submit.textContent = ready ? 'Change password and sign out other sessions'
-          : !current.value ? 'Enter your current password'
-          : !long ? 'The new password is too short'
-          : same ? 'The new password must differ from the current one'
-          : 'The two new passwords must match';
+        submit.textContent = ready ? t('ac.submitReady')
+          : !current.value ? t('ac.needCurrent')
+          : !long ? t('ac.tooShort')
+          : same ? t('ac.mustDiffer')
+          : t('ac.mustMatch');
       };
       [current, fresh, again].forEach((field) => field.addEventListener('input', check));
       check();
@@ -2310,7 +2227,7 @@ export const account = {
           setStatus(root, {
             kind: 'ok',
             message: `Password changed by ${ctx.user.username} at `
-                   + `${new Date().toLocaleTimeString('en-GB')}. `
+                   + `${new Date().toLocaleTimeString(locale())}. `
                    + `${others ? `${others} other session${others === 1 ? '' : 's'} signed out.`
                               : 'No other sessions were open.'}`,
           });

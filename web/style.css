@@ -615,7 +615,9 @@ main {
   font-weight: 600;
   text-decoration: none;
 }
-.skip-link:focus { left: var(--s-sm); }
+/* Logical, not physical: in Arabic the skip link belongs at the right-hand
+   edge, which is where reading starts. */
+.skip-link:focus { inset-inline-start: var(--s-sm); }
 
 /* The skip target takes focus programmatically; it must not then draw a ring
    around the entire content column. */
@@ -781,7 +783,7 @@ select.inline { width: auto; min-width: 9rem; }
 .select-wrap::after {
   content: ""; position: absolute; inset-inline-end: 11px; top: 50%;
   width: 6px; height: 6px; margin-top: -5px;
-  border-right: 1.6px solid var(--ink2); border-bottom: 1.6px solid var(--ink2);
+  border-inline-end: 1.6px solid var(--ink2); border-block-end: 1.6px solid var(--ink2);
   transform: rotate(45deg); pointer-events: none;
 }
 .field .select-wrap { display: flex; width: 100%; }

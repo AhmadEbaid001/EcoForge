@@ -887,9 +887,7 @@ async function showApp() {
    * the rail immediately and every view re-reads its strings on the gemp:lang
    * event. One button, two states, labelled in BOTH languages so it reads the
    * same to whoever needs it whichever language the screen is currently in. */
-  const langButton = `<button type="button" class="secondary" id="lang-toggle"
-      aria-label="${currentLang() === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}">
-      ${currentLang() === 'ar' ? 'EN' : 'ع'}</button>`;
+  const langButton = '<button type="button" class="secondary" id="lang-toggle"></button>';
 
   const who = escapeHtml(state.user.display_name || state.user.username);
 
@@ -911,7 +909,7 @@ async function showApp() {
         <div class="rail-foot">
           <div class="rail-identity">
             <span class="rail-who" title="${who}">${who}</span>
-            <span class="rail-role">${escapeHtml(state.user.role)}</span>
+            <span class="rail-role">${escapeHtml(t(`role.${state.user.role}`))}</span>
           </div>
           <button class="rail-signout" type="button" id="sign-out">
             ${icon('signout')}<span>${t('shell.signout')}</span>
@@ -935,8 +933,8 @@ async function showApp() {
             <span id="page-head-actions"></span>
             <span class="clock" id="data-clock" role="status">
               ${icon('clock')}
-              <span class="clock-text" id="clock-text">Read just now</span>
-              <span class="clock-tag" id="clock-tag">fresh</span>
+              <span class="clock-text" id="clock-text">${t('ui.readJustNow')}</span>
+              <span class="clock-tag" id="clock-tag">${t('ui.fresh')}</span>
             </span>
             <button type="button" class="secondary" data-refresh>
               ${icon('refresh')}${t('shell.reread')}
@@ -959,6 +957,63 @@ async function showApp() {
   wireAppearance($('root'));
   wireTextScale($('root'));
   applyScale(storedScale());
+  /* Everything in the shell that is a WORD rather than a structure, re-read from
+   * the catalogue.
+   *
+   * The shell was rendered once and never again, while `gemp:lang` only
+   * re-navigated the view. So the rail, the sign-out button and the language
+   * toggle itself kept whatever language they were built in - the toggle sat
+   * there reading "ع" after the screen had already switched to Arabic, which
+   * is the clearest possible way to tell a reader the feature does not work.
+   *
+   * Repainting in place rather than re-rendering the shell keeps focus, scroll
+   * position and the data clock's own age, none of which should reset because
+   * somebody changed language. */
+  const paintShellStrings = () => {
+    const ar = currentLang() === 'ar';
+    const root = $('root');
+
+    const skip = root.querySelector('.skip-link');
+    if (skip) skip.textContent = t('shell.skip');
+
+    const rail = root.querySelector('.rail');
+    if (rail) rail.setAttribute('aria-label', t('shell.sections'));
+
+    root.querySelectorAll('[data-view]').forEach((button) => {
+      const label = button.querySelector('.nav-label');
+      if (label) label.textContent = t(`nav.${button.dataset.view}`);
+    });
+
+    const out = root.querySelector('#sign-out span');
+    if (out) out.textContent = t('shell.signout');
+
+    const role = root.querySelector('.rail-role');
+    if (role) role.textContent = t(`role.${state.user.role}`);
+
+    const reread = root.querySelector('[data-refresh]');
+    if (reread) {
+      /* The icon is the first child and has to survive; only the text node after
+         it carries the word. */
+      const text = [...reread.childNodes]
+        .find((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
+      if (text) text.textContent = t('shell.reread');
+      else reread.append(t('shell.reread'));
+    }
+
+    const toggle = $('lang-toggle');
+    if (toggle) {
+      /* The button names the language it will switch TO, written in that
+         language, so it is legible to somebody who cannot read the language
+         currently on the screen. */
+      toggle.textContent = ar ? 'EN' : '\u0639';
+      toggle.setAttribute('lang', ar ? 'en' : 'ar');
+      const label = ar ? 'Switch to English' : '\u0627\u0644\u062a\u0628\u062f\u064a\u0644 \u0625\u0644\u0649 \u0627\u0644\u0639\u0631\u0628\u064a\u0629';
+      toggle.setAttribute('aria-label', label);
+      toggle.title = label;
+    }
+  };
+
+  paintShellStrings();
   startClock();
   wireReread();
 
@@ -982,6 +1037,7 @@ async function showApp() {
     setLangCode(currentLang() === 'ar' ? 'en' : 'ar');
   });
   window.addEventListener('gemp:lang', () => {
+    paintShellStrings();
     navigate(state.view);
   });
 
