@@ -171,14 +171,34 @@ class SimulatorNode:
         wall_start = time.monotonic()
 
         log.info(
-            "simulating %d buildings from %s at %dx (1 wall-second = %d data-minutes)",
+            "simulating %d buildings from %s at %dx (1 wall-second = %d data-minutes)%s",
             len(self.buildings), data_start.isoformat(), settings.sim_speed,
             settings.sim_speed // 60,
+            ", clamped to wall time" if settings.sim_clamp_to_wall_clock else "",
         )
+
+        # Ahead of the wall clock before a single reading is published means the
+        # stored history is already in the future, which the clamp cannot undo -
+        # it can only refuse to make it worse. Say so once, loudly, with the
+        # remedy: silence from a simulator that looks healthy is worse than the
+        # drift it is declining to add to.
+        if settings.sim_clamp_to_wall_clock and data_start > datetime.now(UTC):
+            log.warning(
+                "data clock is %s, which is AHEAD of wall time %s - publishing "
+                "nothing until wall time catches up. The stored history was "
+                "written by an unclamped run; re-seed to bring it back to the "
+                "present (python -m gemp.seed --months N).",
+                data_start.isoformat(), datetime.now(UTC).isoformat(),
+            )
 
         while self.running:
             elapsed = time.monotonic() - wall_start
             data_target = data_start + timedelta(seconds=elapsed * settings.sim_speed)
+            if settings.sim_clamp_to_wall_clock:
+                # The acceleration is for catching up, not for running away. Once
+                # data time reaches the present this pins it there, and the
+                # simulator publishes at real time from then on.
+                data_target = min(data_target, datetime.now(UTC))
 
             while data_now <= data_target and self.running:
                 for building in self.buildings:

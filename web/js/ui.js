@@ -75,10 +75,16 @@ export function pageHead({ root, title, description, descriptionHtml, actions = 
 
 /* One clock for the whole read, in the header, ticking every second.
  *
- * The simulator runs at 720x real time, so a screen left open for forty-five
- * real seconds is showing nine hours of data time that has already gone past.
- * That is not a property of any one panel, which is why there are no per-panel
- * freshness badges: it is a property of the read.
+ * Staleness is a property of the read rather than of any one panel, which is why
+ * there are no per-panel freshness badges.
+ *
+ * It used to be reported in DATA time, multiplied by the simulator's 720x, on the
+ * reasoning that forty-five real seconds hid nine hours of data. That was true
+ * while the clock ran away; it is not true now that it is clamped to wall time.
+ * Once the simulator has caught up it advances at real time, so a read that is
+ * forty-five seconds old is forty-five seconds of data old, and multiplying it
+ * would put a figure on screen that overstates the drift by nearly three orders
+ * of magnitude. Real seconds are now reported as real seconds.
  *
  * Nothing polls. A dashboard that re-fetches on a timer during a demonstration
  * competes for the same solver the person is dragging a slider against, and it
@@ -91,17 +97,16 @@ export function pageHead({ root, title, description, descriptionHtml, actions = 
  * read, and the strip says exactly how long ago that was.
  */
 const STALE_AFTER_S = 45;
-const SIM_SPEED = 720;
 
 const clock = { readAt: Date.now(), dataClock: null, timer: null };
 
-/* Data time, in the unit a person would use: minutes under an hour, hours under
- * two days, then days. */
-function dataAge(realSeconds) {
-  const minutes = Math.round((realSeconds * SIM_SPEED) / 60);
-  if (minutes < 60) return `${minutes} minutes`;
-  if (minutes < 2880) return `${(minutes / 60).toFixed(1)} hours`;
-  return `${Math.round(minutes / 1440)} days`;
+/* Age in the unit a person would use: seconds under a minute, minutes under an
+ * hour, then hours. */
+function readAge(realSeconds) {
+  if (realSeconds < 60) return t('clock.seconds', { n: realSeconds });
+  const minutes = Math.round(realSeconds / 60);
+  if (minutes < 60) return t('clock.minutes', { n: minutes });
+  return t('clock.hours', { n: (minutes / 60).toFixed(1) });
 }
 
 function tickClock() {
@@ -112,14 +117,15 @@ function tickClock() {
   const stale = seconds > STALE_AFTER_S;
 
   $('clock-text').textContent = t('ui.readAt', { time: new Date(clock.readAt).toLocaleTimeString(locale()) })
-    + ` · ${seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`}`;
+    + ` · ${t('clock.ago', { age: readAge(seconds) })}`;
   $('clock-tag').textContent = stale ? t('ui.stale') : t('ui.fresh');
   box.classList.toggle('stale', stale);
   /* The data clock proper - the simulated timestamp the readings carry - is a
    * different quantity from when the browser read them, and only one of the two
    * earns a place in the header at 0.75rem. The other is here. */
   box.title = clock.dataClock
-    ? `Data time of this read: ${String(clock.dataClock).replace('T', ' ').slice(0, 19)}`
+    ? t('clock.dataTimeOf', {
+        ts: String(clock.dataClock).replace('T', ' ').slice(0, 19) })
     : t('ui.dataTime');
 
   const host = $('strips');
@@ -127,9 +133,7 @@ function tickClock() {
   const existing = $('stale-strip');
   if (!stale) { existing?.remove(); return; }
 
-  const message = `<strong>Numbers are stale.</strong> Read ${dataAge(seconds)} of data time
-    ago — the simulator runs at 720× real time. Nothing here has moved since, so every
-    figure below describes the portfolio as it was at that moment.`;
+  const message = t('clock.staleStrip', { age: readAge(seconds) });
 
   if (existing) {
     existing.querySelector('.strip-text').innerHTML = message;

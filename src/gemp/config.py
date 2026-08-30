@@ -52,6 +52,23 @@ class Settings(BaseSettings):
     sim_speed: int = Field(default=720, gt=0)
     sim_interval_s: float = Field(default=10.0, gt=0)
 
+    # A CEILING on that clock, and the reason the acceleration above is safe to
+    # leave switched on.
+    #
+    # `sim_speed` with nothing above it is a one-way ratchet: the simulator
+    # resumes from the newest stored reading, so a restart continues the climb
+    # rather than resetting it. At 720x one wall day is two data years, and a
+    # deployment left running for ten days had readings dated 2047 - twenty years
+    # ahead of the wall clock, on top of a database that had grown to 35.7 million
+    # rows because of it.
+    #
+    # With this on, the acceleration only ever spends itself catching UP: the
+    # clock runs fast through backfill until it reaches the present and then
+    # advances at real time, so data time converges on wall time instead of
+    # diverging from it. Turn it off only for a deliberate long-horizon replay,
+    # and expect to re-seed afterwards.
+    sim_clamp_to_wall_clock: bool = True
+
     # --- ingestion ---
     ingest_batch_rows: int = Field(default=500, gt=0)
     ingest_batch_seconds: float = Field(default=2.0, gt=0)

@@ -285,26 +285,35 @@ def test_charts_redraw_at_the_width_they_are_given():
 
 
 def test_a_screen_says_how_old_it_is():
-    """Data time advances at 720x, so a stamp states a moment without admitting the
-    moment has passed. Nothing is polled - re-fetching on a timer during a
-    demonstration moves numbers under whoever is talking about them - so the stamp
-    ages instead, and says so once it is worth pressing Re-read.
+    """A stamp states a moment without admitting the moment has passed. Nothing is
+    polled - re-fetching on a timer during a demonstration moves numbers under
+    whoever is talking about them - so the stamp ages instead, and says so once it
+    is worth pressing Re-read.
 
     The clock is ONE component in the shell header rather than a badge per panel,
-    which is why it lives in ui.js: at 720x staleness is a property of the read,
-    not of any single figure on the screen.
+    which is why it lives in ui.js: staleness is a property of the read, not of
+    any single figure on the screen.
+
+    The age used to be reported in DATA time, multiplied by the simulator's 720x,
+    because the clock ran away from the wall clock and forty-five real seconds
+    genuinely hid nine hours of data. The clock is clamped now - it advances at
+    real time once it has caught up - so that multiplier would overstate the drift
+    by nearly three orders of magnitude, and the age is reported in real seconds.
+    The words themselves come from the catalogue, so this asserts the mechanism
+    rather than an English literal that only exists in one of two languages.
     """
     ui = (WEB / "js" / "ui.js").read_text(encoding="utf-8")
     css = (WEB / "style.css").read_text(encoding="utf-8")
 
-    assert "s ago" in ui, "the reading's age has to be shown, not just its stamp"
+    assert "readAge" in ui, "the reading's age has to be shown, not just its stamp"
+    assert "clock.ago" in ui, "and the age has to be a translated string"
     assert "STALE_AFTER_S" in ui, "there has to be a point at which it says so"
     assert ".clock.stale" in css, "and it has to look different once it is past it"
 
-    # Stale is stated in DATA time, with the reason. Nine hours of simulated data
-    # go past while the screen sits there for forty-five real seconds, and the age
-    # that matters to a reader is the first number, not the second.
-    assert "SIM_SPEED" in ui and "dataAge" in ui
+    assert "SIM_SPEED" not in ui, (
+        "the 720x multiplier was removed with the clamp; reinstating it would put an "
+        "age on screen that is nearly three orders of magnitude too large"
+    )
     assert "stale-strip" in ui, "and the strip has to say what is consequently untrue"
 
     # One ticker, replaced rather than accumulated.

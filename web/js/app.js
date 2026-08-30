@@ -321,8 +321,9 @@ function showLanding() {
             <dd class="num-body">
               <span class="num-val"><span class="num-digits d3">720</span><span
                 class="num-mult">&times;</span></span>
-              <span class="num-note">The simulator&rsquo;s clock, so a fortnight of
-              behaviour plays out in half an hour of demonstration.</span>
+              <span class="num-note">The rate the simulator replays stored history
+              to reach the present. It is clamped there: once level, the clock
+              advances at real time and can never run into the future.</span>
               <span class="num-src">GEMP_SIM_SPEED</span>
             </dd>
           </div>
