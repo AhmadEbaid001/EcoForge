@@ -54,11 +54,28 @@ cd "${APP_DIR}" || die "no application directory at ${APP_DIR}"
 
 # Whatever is deployed right now. Not `latest`: the point is to seed with the code
 # that is serving, so the seeder and the readers agree about the schema.
+# Written as `if` blocks rather than `[ … ] && …` lists on purpose: under `set -e` a
+# list whose test fails IS a failed command, so `[ -f x ] && VAR=…` exits the script
+# the moment the file is absent - which is precisely the case the fallback exists to
+# handle.
 IMAGE=""
-[ -f "${LAST_GOOD_IMAGE}" ] && IMAGE="$(cat "${LAST_GOOD_IMAGE}")"
-if [ -z "${IMAGE}" ]; then
-  log "no recorded image; falling back to whatever compose resolves"
+if [ -f "${LAST_GOOD_IMAGE}" ]; then
+  IMAGE="$(cat "${LAST_GOOD_IMAGE}")"
 fi
+if [ -z "${IMAGE}" ]; then
+  # A host deployed before deploy.sh started recording, or one brought up by hand.
+  # Ask the running container what it is rather than falling through to compose's
+  # default of gemp-core:local, which on a deployed host does not exist and fails
+  # as "image not found" after the simulator has already been stopped.
+  container="$(docker compose ps -q core 2>/dev/null | head -n1 || true)"
+  if [ -n "${container}" ]; then
+    IMAGE="$(docker inspect -f '{{.Config.Image}}' "${container}" 2>/dev/null || true)"
+  fi
+  if [ -n "${IMAGE}" ]; then
+    log "no recorded image; using the one core is running: ${IMAGE}"
+  fi
+fi
+[ -n "${IMAGE}" ] || die "cannot tell which image is deployed; nothing was changed"
 
 log "reseeding ${MONTHS} month(s) of history, ending now"
 
