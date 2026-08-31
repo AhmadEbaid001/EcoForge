@@ -286,9 +286,8 @@ export const overview = {
               </div>
             </div>`
             : emptyState({
-                title: 'No allocation has been run yet',
-                body: 'Open the allocation map, set a budget and a method, and the '
-                    + 'optimizer will store its recommendation here.',
+                title: t('ov.emptyRunTitle'),
+                body: t('ov.emptyRunBody'),
               })}
         </section>`;
 
@@ -334,28 +333,27 @@ function wireJobButton(root, ctx, { selector, kind, label, confirm, onDone }) {
       if (!ok) return;
     }
     button.disabled = true;
-    button.textContent = `${label}…`;
-    setStatus(root, { kind: 'hint', message: `${label} started. This takes minutes; `
-      + 'the screen updates itself when it finishes.' });
+    button.textContent = t('jb.running', { label });
+    setStatus(root, { kind: 'hint', message: t('jb.started', { label }) });
 
     try {
       const state = await runJob(kind, {
         signal: ctx?.signal,
         onState: (s) => {
           if (s.status === 'busy') {
-            setStatus(root, { kind: 'warn', message: s.error
-              || 'Another maintenance job is running; wait for it to finish.' });
+            setStatus(root, { kind: 'warn', message: s.error || t('jb.busy') });
           }
         },
       });
 
       if (state.status === 'done') {
         setStatus(root, { kind: 'ok',
-          message: `${label} finished. ${(state.summary || '').split('\n').pop() || ''}`.trim() });
+          message: t('jb.finished', { label,
+            summary: (state.summary || '').split('\n').pop() || '' }).trim() });
         if (onDone) await onDone();
       } else if (state.status === 'failed') {
         setStatus(root, { kind: 'error',
-          message: `${label} failed: ${state.error || 'see the server log'}` });
+          message: t('jb.failed', { label, error: state.error || t('jb.seeLog') }) });
       } else if (state.status === 'busy') {
         /* Already reported by onState; nothing to add. */
       }
@@ -892,10 +890,10 @@ export const alerts = {
           const filtered = state.severity || state.building;
           const scope = filtered
             ? [
-                state.severity ? `severity ${state.severity}` : null,
-                state.building ? `building ${buildingInput.value}` : null,
-              ].filter(Boolean).join(' and ')
-            : 'the whole open inbox';
+                state.severity ? t('al.scopeSeverity', { severity: state.severity }) : null,
+                state.building ? t('al.scopeBuilding', { building: buildingInput.value }) : null,
+              ].filter(Boolean).join(t('al.scopeAnd'))
+            : t('al.scopeWhole');
           const count = !filtered ? state.total
             : (state.severity && !state.building ? state.bySeverity[state.severity] : null);
 
@@ -903,19 +901,17 @@ export const alerts = {
            * slip of the hand and nothing else; typing the number is the one
            * thing that cannot be done without having read it. */
           const ok = await confirmAction({
-            title: filtered ? 'Close every alert matching this filter'
-                            : 'Close every open alert',
+            title: filtered ? t('al.closeFilteredTitle') : t('al.closeAllTitle'),
             description: (filtered
-                ? `This closes every open alert matching ${scope}`
-                : 'This closes every open alert in the portfolio')
-              + (count ? ` — ${count.toLocaleString(locale())} of them` : '')
-              + ', not only the rows on screen. It will be recorded as '
-              + `${ctx.user.username}. It cannot be undone from this screen, because the `
-              + 'ids of the rows off screen were never loaded. Acknowledging instead is '
-              + 'reversible, and reaches the rows you can see.',
-            confirmLabel: count ? `Close ${count.toLocaleString(locale())} alerts` : 'Close them all',
+                ? t('al.closeFilteredBody', { scope })
+                : t('al.closeAllBody'))
+              + (count ? t('al.closeCount', { n: count.toLocaleString(locale()) }) : '')
+              + t('al.closeTail', { user: ctx.user.username }),
+            confirmLabel: count
+              ? t('al.closeConfirmN', { n: count.toLocaleString(locale()) })
+              : t('al.closeConfirmAll'),
             confirmText: count ? String(count) : '',
-            confirmHint: count ? 'The exact number, digits only.' : '',
+            confirmHint: count ? t('al.closeHint') : '',
           });
           if (!ok) return;
 
@@ -932,9 +928,11 @@ export const alerts = {
             await load();
             setStatus(root, {
               kind: 'ok',
-              message: `Closed ${compact(result?.changed ?? 0)} alerts `
-                     + `${filtered ? `matching ${scope}` : 'across the portfolio'}, `
-                     + `by ${ctx.user.username}. This one cannot be undone here.`,
+              message: filtered
+                ? t('al.closedScoped', { n: compact(result?.changed ?? 0), scope,
+                                         user: ctx.user.username })
+                : t('al.closedPortfolio', { n: compact(result?.changed ?? 0),
+                                            user: ctx.user.username }),
             });
           });
         });
@@ -946,8 +944,7 @@ export const alerts = {
         const b = buildings.find((x) => x.id === state.building);
         setStatus(root, {
           kind: 'hint',
-          message: `Showing only ${b ? b.code : 'one building'}. Clear filters for the `
-                 + 'whole inbox.',
+          message: t('al.showingOnly', { building: b ? b.code : t('al.oneBuilding') }),
         });
       }
     });
@@ -978,18 +975,18 @@ export const runs = {
       const columns = [
         { key: 'created_at', label: t('ad.colWhen'), sortable: true,
           render: (r) => `<span class="mono">${fmtDateTime(r.created_at)}</span>` },
-        { key: 'budget_egp', label: 'Budget EGP', num: true, sortable: true,
+        { key: 'budget_egp', label: t('rn.colBudget'), num: true, sortable: true,
           render: (r) => compact(r.budget_egp) },
-        { key: 'objective', label: 'Objective', sortable: true,
+        { key: 'objective', label: t('rn.colObjective'), sortable: true,
           render: (r) => escapeHtml(objectiveLabel(r.objective)) },
         /* Exact optimization is check-marked and bold wherever it appears: it is
          * the method that is provably right, and a reader scanning twenty-five
          * rows should not have to read the word to find it. */
-        { key: 'solver', label: 'Method', sortable: true,
+        { key: 'solver', label: t('rn.colMethod'), sortable: true,
           render: (r) => (r.solver === 'cpsat'
-            ? `<span class="method-exact">${mark('check', { size: 11 })}exact optimization</span>`
+            ? `<span class="method-exact">${mark('check', { size: 11 })}${t('rn.exact')}</span>`
             : escapeHtml(solverLabel(r.solver))) },
-        { key: 'buildings_funded', label: 'Funded', num: true, sortable: true,
+        { key: 'buildings_funded', label: t('rn.colFunded'), num: true, sortable: true,
           render: (r) => r.buildings_funded },
         { key: 'total_cost_egp', label: t('rn.colSpent'), num: true, sortable: true,
           render: (r) => compact(r.total_cost_egp) },
@@ -1424,7 +1421,7 @@ async function showBoq(runId) {
     downloadCsv(`gemp-boq-${String(runId).slice(0, 8)}.csv`, boq.lines));
   host.querySelector('[data-print]').addEventListener('click', () => {
     const previous = document.title;
-    document.title = `GEMP bill of quantities — run ${String(runId).slice(0, 8)}`;
+    document.title = t('rn.printTitle', { run: String(runId).slice(0, 8) });
     /* Restored after the dialog closes, whether the sheet was printed or the
      * print dialog was dismissed. `afterprint` fires for both. */
     const restore = () => {
@@ -1653,26 +1650,18 @@ export const admin = {
         ${pageHead({ root, title: t('ad.title') })}
         <div class="note-panel" role="note">
           ${icon('lock')}
-          <p><strong>Administration needs the admin role, and yours is
-          ${escapeHtml(ctx.user.role)}.</strong> Nothing here is hidden from you as a
-          matter of secrecy; it is simply a set of controls your role cannot use.</p>
+          <p><strong>${t('ad.lockedRole', {
+            role: t(`role.${ctx.user.role}`),
+          })}</strong> ${t('ad.lockedBody')}</p>
         </div>
         <section class="panel">
-          <header><h3>What this screen holds</h3></header>
+          <header><h3>${t('ad.holdsTitle')}</h3></header>
           <ul class="prose-list">
-            <li><strong>Security posture</strong> — what this deployment is currently
-            exposed to: the session cookie flags, the timeouts, the minimum password
-            length, and the recent failed sign-in attempts.</li>
-            <li><strong>Accounts</strong> — the list of people who can sign in, their
-            roles, and the actions that create, disable and reset them.</li>
-            <li><strong>Audit log</strong> — the most recent authenticated actions,
-            including the ones that were refused.</li>
+            <li>${t('ad.holdsPosture')}</li>
+            <li>${t('ad.holdsAccounts')}</li>
+            <li>${t('ad.holdsAudit')}</li>
           </ul>
-          <p class="caption">Your own password and the list of places this account is
-          signed in are on the <a href="#/account">account screen</a>, which needs no
-          admin role. If you need one of the things above, ask an administrator to do
-          it or to change your role — a role change is written to the audit log with
-          both usernames, yours and theirs.</p>
+          <p class="caption">${t('ad.lockedCaption')}</p>
         </section>`;
       return;
     }
@@ -1911,19 +1900,18 @@ export const admin = {
           const previous = select.dataset.current;
           const name = select.dataset.username;
           const ok = await confirmAction({
-            title: `Change the role of ${name}?`,
-            description: `${name} becomes ${next}, from ${previous}. `
-              + (next === 'admin'
-                ? 'An admin can create accounts, reset passwords and read the audit log.'
-                : next === 'analyst'
-                  ? 'An analyst can run the optimizer and acknowledge alerts.'
-                  : 'A viewer can read the portfolio but change nothing.'),
-            confirmLabel: `Make ${name} ${next}`,
+            title: t('ad.roleTitle', { name }),
+            description: t('ad.roleBody', {
+                name, next: t(`role.${next}`), previous: t(`role.${previous}`),
+              })
+              + (next === 'admin' ? t('ad.roleAdmin')
+                : next === 'analyst' ? t('ad.roleAnalyst') : t('ad.roleViewer')),
+            confirmLabel: t('ad.roleConfirm', { name, next: t(`role.${next}`) }),
           });
           if (!ok) { select.value = previous; return; }
           await guard(root, async () => {
             await api.updateUser(select.dataset.role, { role: next });
-            await reload(`${name} is now ${next}.`);
+            await reload(t('ad.roleDone', { name, role: t(`role.${next}`) }));
           });
         });
       });
@@ -1934,16 +1922,17 @@ export const admin = {
           const name = button.dataset.username;
           if (disabling) {
             const ok = await confirmAction({
-              title: `Disable ${name}?`,
-              description: 'Their sessions stop working immediately and they cannot sign in '
-                         + 'again until the account is enabled. Nothing is deleted.',
-              confirmLabel: `Disable ${name}`,
+              title: t('ad.disableTitle', { name }),
+              description: t('ad.disableBody'),
+              confirmLabel: t('ad.disableConfirm', { name }),
             });
             if (!ok) return;
           }
           await guard(root, async () => {
             await api.updateUser(button.dataset.toggle, { is_active: !disabling });
-            await reload(`${name} is now ${disabling ? 'disabled' : 'active'}.`);
+            await reload(t('ad.stateDone', {
+              name, state: disabling ? t('ad.disabled') : t('ad.enabled'),
+            }));
           });
         });
       });
@@ -1952,23 +1941,22 @@ export const admin = {
         button.addEventListener('click', async () => {
           const name = button.dataset.username;
           const values = await openDialog({
-            title: `Reset the password for ${name}`,
-            description: 'They will be required to choose a new one at next login, and every '
-                       + 'session they currently hold stops working.',
-            submitLabel: 'Reset password',
+            title: t('ad.resetTitle', { name }),
+            description: t('ad.resetBody'),
+            submitLabel: t('ad.resetConfirm'),
             validate: passwordProblem,
             fields: [
-              { name: 'password', label: 'New password', type: 'password',
+              { name: 'password', label: t('ad.newPassword'), type: 'password',
                 autocomplete: 'new-password', minlength: MIN_PASSWORD,
-                hint: `At least ${MIN_PASSWORD} characters.` },
-              { name: 'confirm', label: 'Repeat the new password', type: 'password',
+                hint: t('ad.minChars', { n: MIN_PASSWORD }) },
+              { name: 'confirm', label: t('ad.repeatNew'), type: 'password',
                 autocomplete: 'new-password' },
             ],
           });
           if (!values) return;
           await guard(root, async () => {
             await api.resetPassword(button.dataset.reset, values.password);
-            await reload(`Password reset for ${name}. Give it to them once, in person.`);
+            await reload(t('ad.resetDone', { name }));
           });
         });
       });
@@ -1976,19 +1964,18 @@ export const admin = {
       /* Also in the workspace header, for the same reason. */
       document.querySelector('#user-add')?.addEventListener('click', async () => {
         const values = await openDialog({
-          title: 'Add an account',
-          description: 'There is no self-service registration. The temporary password has to '
-                     + 'be changed at first login.',
-          submitLabel: 'Create account',
-          validate: (v) => (!v.username.trim() ? 'A username is required.' : passwordProblem(v)),
+          title: t('ad.addTitle'),
+          description: t('ad.addBody'),
+          submitLabel: t('ad.addConfirm'),
+          validate: (v) => (!v.username.trim() ? t('ad.usernameRequired') : passwordProblem(v)),
           fields: [
-            { name: 'username', label: 'Username', autocomplete: 'off' },
-            { name: 'password', label: 'Temporary password', type: 'password',
+            { name: 'username', label: t('ad.username'), autocomplete: 'off' },
+            { name: 'password', label: t('ad.tempPassword'), type: 'password',
               autocomplete: 'new-password', minlength: MIN_PASSWORD,
-              hint: `At least ${MIN_PASSWORD} characters.` },
-            { name: 'confirm', label: 'Repeat the password', type: 'password',
+              hint: t('ad.minChars', { n: MIN_PASSWORD }) },
+            { name: 'confirm', label: t('ad.repeatPassword'), type: 'password',
               autocomplete: 'new-password' },
-            { name: 'role', label: 'Role', type: 'select',
+            { name: 'role', label: t('ad.roleField'), type: 'select',
               options: ['viewer', 'analyst', 'admin'], value: 'viewer' },
           ],
         });
@@ -1999,7 +1986,9 @@ export const admin = {
             password: values.password,
             role: values.role,
           });
-          await reload(`Account ${values.username.trim()} created as ${values.role}.`);
+          await reload(t('ad.addDone', {
+            name: values.username.trim(), role: t(`role.${values.role}`),
+          }));
         });
       });
 
@@ -2009,12 +1998,9 @@ export const admin = {
        * clicking rather than by opening a terminal. */
       root.querySelector('#recompute-btn')?.addEventListener('click', async () => {
         const ok = await confirmAction({
-          title: 'Recompute the candidate set?',
-          description: 'Re-expands every building × measure combination from the '
-                     + 'current catalog.csv and params.yaml, rewrites the stored '
-                     + 'candidates, and invalidates the optimizer cache. Any change '
-                     + 'to data/ takes effect at the next solve.',
-          confirmLabel: 'Recompute',
+          title: t('ad.recomputeTitle'),
+          description: t('ad.recomputeBody'),
+          confirmLabel: t('ad.recomputeConfirm'),
           confirmText: String(await api.meta().then((m) => m.buildings).catch(() => 50)),
         });
         if (!ok) return;
@@ -2022,12 +2008,13 @@ export const admin = {
           const result = await api.recompute();
           setStatus(root, {
             kind: 'ok',
-            message: `Candidates rebuilt: ${result.candidates} options over `
-                   + `${result.buildings} buildings from ${result.interventions} `
-                   + `catalog rows (inputs ${result.inputs_hash}…).`
-                   + (result.uncited_catalog_rows.length
-                     ? ` Uncited rows remain: ${result.uncited_catalog_rows.join(', ')}.`
-                     : ''),
+            message: t('ad.recomputeDone', {
+                candidates: result.candidates, buildings: result.buildings,
+                interventions: result.interventions, hash: result.inputs_hash,
+              })
+              + (result.uncited_catalog_rows.length
+                ? t('ad.recomputeUncited', { rows: result.uncited_catalog_rows.join(', ') })
+                : ''),
           });
         });
       });
@@ -2231,10 +2218,13 @@ export const account = {
           result.innerHTML = '';
           setStatus(root, {
             kind: 'ok',
-            message: `Password changed by ${ctx.user.username} at `
-                   + `${new Date().toLocaleTimeString(locale())}. `
-                   + `${others ? `${others} other session${others === 1 ? '' : 's'} signed out.`
-                              : 'No other sessions were open.'}`,
+            message: t('ac.passwordChanged', {
+                user: ctx.user.username,
+                time: new Date().toLocaleTimeString(locale()),
+              })
+              + (others
+                ? (others === 1 ? t('ac.oneOtherOut') : t('ac.othersOut', { n: others }))
+                : t('ac.noOthers')),
           });
           root.querySelector('#pw-form').reset();
           check();

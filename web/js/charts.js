@@ -608,9 +608,9 @@ export function chainFigure({ rows, breakSeq = null, anchorSeq = null, ok = true
   return `<figure class="chain-figure">
     <svg viewBox="0 0 ${W} ${H}" class="chain-svg" role="img"
          aria-label="${breakSeq === null
-           ? `Every one of ${exact(total)} links re-computed and matched.`
-           : `Links 1 to ${exact(Math.max(0, breakSeq - 1))} matched. `
-             + `From ${exact(breakSeq)} to ${exact(total)} the chain is unproven.`}">
+           ? t('ch.allMatched', { n: exact(total) })
+           : t('ch.brokenAria', { upto: exact(Math.max(0, breakSeq - 1)),
+                                  from: exact(breakSeq), total: exact(total) })}">
       <defs>
         <pattern id="chain-unproven" width="7" height="7" patternUnits="userSpaceOnUse"
                  patternTransform="rotate(45)">
@@ -641,10 +641,10 @@ export function chainFigure({ rows, breakSeq = null, anchorSeq = null, ok = true
     </svg>
     <figcaption class="chain-legend">
       <span class="key"><span class="swatch proven"></span>${breakSeq === null
-        ? 'Re-computed and matched' : 'Matched up to the break'}</span>
+        ? t('ch.matched') : t('ch.matchedTo')}</span>
       ${breakSeq !== null
-        ? '<span class="key"><span class="swatch rest"></span>Unproven after it</span>' : ''}
-      ${anchorSeq ? '<span class="key"><span class="swatch anchor"></span>External anchor</span>' : ''}
+        ? `<span class="key"><span class="swatch rest"></span>${t('ch.unproven')}</span>` : ''}
+      ${anchorSeq ? `<span class="key"><span class="swatch anchor"></span>${t('ch.anchor')}</span>` : ''}
     </figcaption>
   </figure>`;
 }
@@ -940,7 +940,7 @@ function drawProportion(entries, width = DEFAULT_WIDTH, id = 'x') {
     `<span class="key b${i}">${escapeHtml(entry.label)} ${escapeHtml(exact(entry.value))}</span>`).join('');
 
   const html = `<svg class="chart proportion" viewBox="0 0 ${width} ${height}" tabindex="0"
-    role="img" aria-label="proportions">${textureDefs(id)}${segments}</svg>
+    role="img" aria-label="${t('ch.proportions')}">${textureDefs(id)}${segments}</svg>
     <div class="chart-legend proportion">${labels}</div>`;
 
   return { html, meta: { kind: 'bars', width, height, keys: ['share'], columns,

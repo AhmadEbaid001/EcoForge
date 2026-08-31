@@ -106,16 +106,17 @@ function applyAppearance(choice) {
   });
 }
 
-const APPEARANCE_LABELS = {
-  light: 'Light appearance',
-  dark: 'Dark appearance',
-};
+const APPEARANCE_LABELS = () => ({
+  light: t('shell.lightAppearance'),
+  dark: t('shell.darkAppearance'),
+});
 
 function appearanceSwitch() {
   const current = storedAppearance();
+  const labels = APPEARANCE_LABELS();
   const buttons = APPEARANCE_CHOICES.map((key) => `
-    <button type="button" data-appearance="${key}" title="${APPEARANCE_LABELS[key]}"
-            aria-label="${APPEARANCE_LABELS[key]}"
+    <button type="button" data-appearance="${key}" title="${labels[key]}"
+            aria-label="${labels[key]}"
             aria-pressed="${key === current}">${icon(key)}</button>`).join('');
 
   return `<div class="appearance" role="group" aria-label="Appearance">${buttons}</div>`;
@@ -161,8 +162,8 @@ function textScaleSwitch() {
   const current = storedScale();
   const buttons = SCALES.map((value) => `
     <button type="button" data-scale="${value}" aria-pressed="${value === current}"
-            aria-label="Text size ${value} percent">${value}%</button>`).join('');
-  return `<div class="textscale" role="group" aria-label="Text size">${buttons}</div>`;
+            aria-label="${t('si.textSizeN', { n: value })}">${value}%</button>`).join('');
+  return `<div class="textscale" role="group" aria-label="${t('si.textSize')}">${buttons}</div>`;
 }
 
 function wireTextScale(container) {
@@ -611,6 +612,11 @@ function showLogin(message = '') {
       <header class="login-bar">
         ${textScaleSwitch()}
         ${appearanceSwitch()}
+        <!-- The shell's toggle lives behind the sign-in form, which is one
+             screen too late: somebody who reads Arabic meets this page first. -->
+        <button type="button" class="secondary" id="signin-lang"
+                lang="${currentLang() === 'ar' ? 'en' : 'ar'}"
+                >${currentLang() === 'ar' ? 'EN' : '\u0639'}</button>
       </header>
 
       <!-- One card on the brand field, split: the way in, and what this is.
@@ -628,64 +634,55 @@ function showLogin(message = '') {
           </div>
 
           <form class="login" id="login-form">
-            <h2>Sign in</h2>
+            <h2>${t('si.signIn')}</h2>
             ${message ? `<div class="error-box" role="alert">
               <p>${escapeHtml(message)}</p>
-              <p class="small">The server answers the same way whether the password is
-              wrong, the account does not exist, or it has been disabled &mdash; so this
-              message cannot tell you which, and nor can we.</p>
-              <p class="small">${attempts === 1 ? 'That was the first attempt'
-                : `That is ${attempts} attempts`} from this browser. Each one is recorded
-              with the username tried and the address it came from.</p>
+              <p class="small">${t('si.sameAnswer')}</p>
+              <p class="small">${attempts === 1
+                ? t('si.firstAttempt')
+                : t('si.nAttempts', { n: attempts })}${t('si.attemptsTail')}</p>
             </div>` : ''}
 
-            <label for="login-user">Username
+            <label for="login-user">${t('si.username')}
               <input id="login-user" name="username" type="text" class="mono"
                      autocomplete="username" autocapitalize="none" spellcheck="false"
                      required autofocus></label>
 
-            <label for="login-pass">Password
+            <label for="login-pass">${t('si.password')}
               <span class="password-field">
                 <input id="login-pass" name="password" type="password" class="mono"
                        autocomplete="current-password" required>
                 <button type="button" class="reveal" id="login-reveal"
-                        aria-pressed="false" aria-label="Show password">
+                        aria-pressed="false" aria-label="${t('si.showPassword')}">
                   ${icon('eye')}
                 </button>
               </span>
-              <span class="hint" id="reveal-state">The password is hidden.</span>
-              <span class="caps-hint" id="caps-hint" role="status">Caps Lock is on.</span>
+              <span class="hint" id="reveal-state">${t('si.passwordHidden')}</span>
+              <span class="caps-hint" id="caps-hint" role="status">${t('si.capsLock')}</span>
             </label>
 
             <!-- Disabled until there is something to send, with a label that says
                  what is missing rather than going silent. -->
             <button type="submit" class="primary" id="login-submit" disabled>
-              Enter a username and password</button>
+              ${t('si.needBoth')}</button>
           </form>
 
-          <p class="login-note">There is no self-service registration, no default
-          account and no email reset. A forgotten password is reset by an
-          administrator in person.</p>
+          <p class="login-note">${t('si.noRegistration')}</p>
 
           <footer class="login-foot">
-            <button type="button" class="linkish" data-to-landing>&larr; What this is</button>
-            <span>Team Ecoforge &middot; RoboDam 2026</span>
+            <button type="button" class="linkish" data-to-landing>${t('si.whatThisIs')}</button>
+            <span>${t('si.team')}</span>
           </footer>
         </div>
 
         <aside class="login-scene" aria-labelledby="signin-lede">
           <div class="login-scene-art">${signInArtwork()}</div>
           <div class="login-scene-body">
-            <p class="lede" id="signin-lede">Allocates a fixed budget across fifty public
-            buildings across Greater Cairo, and shows the evidence for every building
-            it chose.</p>
+            <p class="lede" id="signin-lede">${t('si.lede')}</p>
             <ul class="login-points">
-              <li>${icon('integrity')}<span>Every reading signed on arrival, and
-                re-verifiable one building at a time.</span></li>
-              <li>${icon('table')}<span>Every allocation keeps its inputs &mdash; same
-                hash, same allocation.</span></li>
-              <li>${icon('check')}<span>Every recommendation shows what lost, not only
-                what won.</span></li>
+              <li>${icon('integrity')}<span>${t('si.pointIntegrity')}</span></li>
+              <li>${icon('table')}<span>${t('si.pointInputs')}</span></li>
+              <li>${icon('check')}<span>${t('si.pointLost')}</span></li>
             </ul>
           </div>
         </aside>
@@ -698,6 +695,13 @@ function showLogin(message = '') {
   applyScale(storedScale());
 
   $('root').querySelector('[data-to-landing]')?.addEventListener('click', () => showLanding());
+
+  /* Re-rendering the screen is the whole repaint: the form is empty at this
+     point, so nothing a reader typed can be lost by it. */
+  $('signin-lang')?.addEventListener('click', () => {
+    setLangCode(currentLang() === 'ar' ? 'en' : 'ar');
+    showLogin(message);
+  });
 
   /* Caps Lock is the commonest reason a correct password is refused, and the
    * server deliberately will not say which reason it was - so the page has to
@@ -715,7 +719,7 @@ function showLogin(message = '') {
   const ready = () => {
     const filled = $('login-user').value.trim() && $('login-pass').value;
     submit.disabled = !filled;
-    submit.textContent = filled ? 'Sign in' : 'Enter a username and password';
+    submit.textContent = filled ? t('si.signIn') : t('si.needBoth');
   };
   $('login-user').addEventListener('input', ready);
   $('login-pass').addEventListener('input', ready);
@@ -730,17 +734,15 @@ function showLogin(message = '') {
     field.type = shown ? 'password' : 'text';
     reveal.innerHTML = icon(shown ? 'eye' : 'eye-off');
     reveal.setAttribute('aria-pressed', String(!shown));
-    reveal.setAttribute('aria-label', shown ? 'Show password' : 'Hide password');
-    $('reveal-state').textContent = shown
-      ? 'The password is hidden.'
-      : 'The password is visible on screen — mind the room.';
+    reveal.setAttribute('aria-label', shown ? t('si.showPassword') : t('si.hidePassword'));
+    $('reveal-state').textContent = shown ? t('si.passwordHidden') : t('si.passwordShown');
     field.focus();
   });
 
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     submit.disabled = true;
-    submit.textContent = 'Signing in…';
+    submit.textContent = t('si.signingIn');
     try {
       const result = await api.login($('login-user').value, $('login-pass').value);
       attempts = 0;
@@ -770,6 +772,9 @@ function showPasswordChange() {
       <header class="login-bar">
         ${textScaleSwitch()}
         ${appearanceSwitch()}
+        <button type="button" class="secondary" id="firstlogin-lang"
+                lang="${currentLang() === 'ar' ? 'en' : 'ar'}"
+                >${currentLang() === 'ar' ? 'EN' : '\u0639'}</button>
       </header>
 
       <div class="login-body">
@@ -779,32 +784,29 @@ function showPasswordChange() {
           </div>
 
           <form class="login panel first-login" id="change-form">
-            <h2>${icon('lock')}Set a new password before you continue</h2>
-            <p class="lede">This account was created with a temporary password, which
-            works once. Nothing else in GEMP is reachable until it is replaced — the
-            server refuses every other request while the account is in this state.</p>
+            <h2>${icon('lock')}${t('fl.title')}</h2>
+            <p class="lede">${t('fl.lede')}</p>
 
             <div id="change-error"></div>
 
-            <label for="cp-current">Temporary password
+            <label for="cp-current">${t('fl.temporary')}
               <input id="cp-current" type="password" class="mono"
                      autocomplete="current-password" required autofocus></label>
 
-            <label for="cp-new">New password
+            <label for="cp-new">${t('fl.new')}
               <input id="cp-new" type="password" class="mono" autocomplete="new-password"
                      minlength="12" required>
               <span class="meter" id="cp-meter" aria-hidden="true"><span></span></span>
-              <span class="hint" id="cp-hint">At least 12 characters.</span></label>
+              <span class="hint" id="cp-hint">${t('fl.minChars', { n: 12 })}</span></label>
 
-            <label for="cp-confirm">Repeat the new password
+            <label for="cp-confirm">${t('fl.repeat')}
               <input id="cp-confirm" type="password" class="mono"
                      autocomplete="new-password" required>
               <span class="hint" id="cp-match"></span></label>
 
             <button type="submit" class="primary" id="cp-submit" disabled>
-              Fill in every field</button>
-            <p class="caption">There is no email reset. If you lose this password an
-            administrator has to set another one and hand it over directly.</p>
+              ${t('fl.fillAll')}</button>
+            <p class="caption">${t('fl.noEmailReset')}</p>
           </form>
         </div>
       </div>
@@ -830,24 +832,31 @@ function showPasswordChange() {
 
     meter.dataset.state = !value ? 'empty' : long ? 'ok' : 'short';
     meter.style.setProperty('--fill', `${Math.min(100, (value.length / 12) * 100)}%`);
-    $('cp-hint').textContent = !value ? 'At least 12 characters.'
-      : long ? `${value.length} characters — long enough.`
-             : `${value.length} of 12 characters.`;
+    $('cp-hint').textContent = !value ? t('fl.minChars', { n: 12 })
+      : long ? t('fl.longEnough', { n: value.length })
+             : t('fl.ofChars', { n: value.length, min: 12 });
     $('cp-hint').className = `hint ${long ? 'ok' : 'warn'}`;
     $('cp-match').textContent = !again.value ? ''
-      : matches ? 'The two match.' : 'The two do not match yet.';
+      : matches ? t('fl.match') : t('fl.noMatch');
     $('cp-match').className = `hint ${matches ? 'ok' : 'warn'}`;
 
     const ready = current.value && long && matches;
     submit.disabled = !ready;
-    submit.textContent = ready ? 'Set password and sign in'
-      : !current.value ? 'Enter the temporary password'
-      : !long ? 'The new password is too short'
-      : 'The two new passwords must match';
+    submit.textContent = ready ? t('fl.submit')
+      : !current.value ? t('fl.needTemporary')
+      : !long ? t('fl.tooShort')
+      : t('fl.mustMatch');
   };
 
   [current, fresh, again].forEach((field) => field.addEventListener('input', check));
   check();
+
+  /* Nothing typed here survives a language switch either, and for the same
+     reason: the fields are empty when the screen opens. */
+  $('firstlogin-lang')?.addEventListener('click', () => {
+    setLangCode(currentLang() === 'ar' ? 'en' : 'ar');
+    showPasswordChange();
+  });
 
   $('change-form').addEventListener('submit', async (event) => {
     event.preventDefault();

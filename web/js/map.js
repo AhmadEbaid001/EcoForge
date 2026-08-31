@@ -283,11 +283,10 @@ function makeReadOnly(root) {
   const controls = root.querySelector('.map-controls');
   if (!controls) return;
   controls.innerHTML = `
-    <header><h3>Most recent stored allocation</h3></header>
+    <header><h3>${t('mp.storedTitle')}</h3></header>
     <div class="control-body">
       <dl class="facts" id="run-facts"></dl>
-      <p class="note" id="readonly-note">The map below is that allocation exactly as it
-      was solved &mdash; not a fresh one. Running the optimizer needs the analyst role.</p>
+      <p class="note" id="readonly-note">${t('mp.readonlyNote')}</p>
       <p class="note" id="map-status" role="status"></p>
     </div>`;
 }
@@ -819,7 +818,7 @@ function currentRequest() {
 }
 
 async function solve() {
-  setStatus('solving', 'warn');
+  setStatus(t('mp.solving'), 'warn');
   try {
     state.run = await api.optimize(currentRequest());
     showSummary(state.run);
@@ -989,7 +988,7 @@ function anomalyCount(buildingId) {
 async function compare() {
   const modal = $('compare-modal');
   modal.hidden = false;
-  $('compare-body').textContent = 'Solving all four…';
+  $('compare-body').textContent = t('mp.solvingAll');
 
   let data;
   try {
@@ -999,11 +998,14 @@ async function compare() {
     return;
   }
 
+  /* Shorter than the control labels on purpose - this is a table column, not a
+     radio button with room for a sentence - but read from the same table, so a
+     language switch reaches both. */
   const names = {
-    equal_split: 'Equal split (status quo)',
-    greedy: 'Greedy heuristic',
-    greedy_upgrade: 'Greedy + upgrade pass',
-    cpsat: 'Exact optimization',
+    equal_split: t('mp.rowEqualSplit'),
+    greedy: t('mp.rowGreedy'),
+    greedy_upgrade: t('mp.rowGreedyUpgrade'),
+    cpsat: t('mp.rowCpsat'),
   };
   const order = ['equal_split', 'greedy', 'greedy_upgrade', 'cpsat'];
   const best = Math.max(...order.map((n) => data.results[n].total_benefit_kgco2e));
@@ -1025,8 +1027,8 @@ async function compare() {
      * other row has a number - unless the baseline scored zero, in which case the
      * improvement is infinite and there is no percentage to write. Rendering all
      * three as "baseline" claimed that exact optimization was the status quo. */
-    const versus = n === 'equal_split' ? 'baseline'
-      : delta === null ? '&infin; &mdash; the status quo funded nothing'
+    const versus = n === 'equal_split' ? t('mp.baseline')
+      : delta === null ? t('mp.statusQuoZero')
       : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`;
     return `<tr class="${cls}">
       <td>${n === 'cpsat' ? `${mark('check', { size: 12 })} ` : ''}${names[n]}</td>
@@ -1048,41 +1050,26 @@ async function compare() {
    * the same reason the column above can be. A number is not always available and
    * the sentence has to survive that. */
   const gapText = gap === null || gap === undefined
-    ? 'by a margin with no percentage, because the strongest heuristic funded nothing'
-    : `by <strong>${gap > 0 ? '+' : ''}${gap.toFixed(1)}%</strong>`;
+    ? t('mp.gapNoPct')
+    : t('mp.gapPct', { gap: `${gap > 0 ? '+' : ''}${gap.toFixed(1)}%` });
 
   $('compare-body').innerHTML = `
     <table>
-      <thead><tr><th>Method</th><th>Funded</th><th>Spent EGP</th>
-        <th>Lifetime kgCO₂e</th><th>vs status quo</th><th>Time</th></tr></thead>
+      <thead><tr><th>${t('mp.colMethod')}</th><th>${t('mp.colFunded')}</th>
+        <th>${t('mp.colSpent')}</th><th>${t('mp.colLifetime')}</th>
+        <th>${t('mp.colVsStatusQuo')}</th><th>${t('mp.colTime')}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <p class="caption">
-      Exact optimization beats the strongest heuristic ${gapText} here.
-      ${capped
-        ? `That gap is large because a per-district cap is active: no greedy variant
-           can plan around a constraint that couples buildings across the portfolio.`
-        : `No cap is active, so this is a plain knapsack and a good heuristic gets
-           close to it — whatever the figure above turns out to be, it is reported
-           rather than framed. Set a per-district cap to see where exact optimization
-           earns its solve time: a greedy pass spends its cap slots on the wrong
-           buildings, and the gap opens.`}
-      ${plainStalled
-        ? `The plain greedy row is spending less than the others: it never revisits a
-           funded building, so once each holds an option it stops, whatever budget is
-           left. The comparison above is quoted against the upgrade pass instead.`
-        : ''}
+      ${t('mp.beats', { gap: gapText })}
+      ${capped ? t('mp.cappedWhy') : t('mp.uncappedWhy')}
+      ${plainStalled ? t('mp.plainStalled') : ''}
       ${data.equal_split_scored === false
-        ? `Equal split funded nothing at all at this budget: a share of about
-           ${compact(request_budget / 50)} EGP per building does not reach the price of
-           the cheapest retrofit anywhere in the portfolio, so the entire budget goes
-           unspent. That is why the column above has no percentage in it.`
-        : `Equal split is the status quo rather than a contender: a share of about
-           ${compact(data.results.equal_split.total_cost_egp / 50)} EGP per building buys
-           nothing in most of them, so millions go unspent.`}
-      All four ran on the same fifty buildings, the same budget and the same objective,
-      so the columns are comparable &mdash; and the carbon figures are estimates, not
-      measured savings.
+        ? t('mp.equalNothing', { share: compact(request_budget / 50) })
+        : t('mp.equalStatusQuo', {
+            share: compact(data.results.equal_split.total_cost_egp / 50),
+          })}
+      ${t('mp.sameInputs')}
     </p>`;
 }
 
@@ -1109,15 +1096,11 @@ const OBJECTIVE_LABEL = () => ({
   egp_saved: t('obj.egp_saved'),
 });
 
-const IV_NAMES = {
-  led_lighting_v1: 'LED lighting',
-  hvac_controls_v1: 'BMS controls',
-  insulation_roof_v1: 'Roof insulation',
-  glazing_upgrade_v1: 'Double glazing',
-  hvac_replacement_v1: 'HVAC replacement',
-  rooftop_solar_v1: 'Rooftop solar',
-};
-const ivName = (id) => IV_NAMES[id] || id;
+/* Short names for the catalog's six interventions - the labels the catalog
+   itself carries are a sentence long, and these are column headings. Read at
+   call time, so they follow the language like everything else; an id the
+   catalog grows later falls through to the id rather than to nothing. */
+const ivName = (id) => localised(t(`iv.${id}`), `iv.${id}`, id);
 
 /* `admin_24x7` is what the database calls it. Nobody reads a screen in snake
  * case, and a raw enum in a fact grid beside "2,361 m²" reads as a leak rather
@@ -1140,13 +1123,13 @@ const hvacName = (v) => (v ? localised(t(`hv.${v}`), `hv.${v}`, v) : t('hv.unkno
 async function narrative() {
   const modal = $('narrative-modal');
   modal.hidden = false;
-  $('narrative-body').textContent = 'Loading…';
+  $('narrative-body').textContent = t('map.loading');
 
   let data;
   try {
     data = await api.narrative();
   } catch {
-    $('narrative-body').textContent = 'Not available for this catalog.';
+    $('narrative-body').textContent = t('mp.narrativeUnavailable');
     return;
   }
 
@@ -1160,43 +1143,36 @@ async function narrative() {
     return `
       <div class="card">
         <h3>${escapeHtml(b.code)}</h3>
-        <p class="caption">
-          ${escapeHtml(b.occupancy_pattern)} · ${escapeHtml(b.insulation_quality)} insulation ·
-          HVAC ${b.hvac_age_yr} yr · ${compact(b.annual_kwh)} kWh/yr</p>
+        <p class="caption">${t('mp.cardFacts', {
+          occupancy: occupancyName(b.occupancy_pattern),
+          insulation: insulationName(b.insulation_quality),
+          age: b.hvac_age_yr,
+          kwh: compact(b.annual_kwh),
+        })}</p>
         <div class="card-table">
-          <table><thead><tr><th>Measure</th><th>Cost EGP</th><th>Benefit /kEGP</th></tr></thead>
+          <table><thead><tr><th>${t('mp.colMeasure')}</th><th>${t('mp.colCostEgp')}</th>
+            <th>${t('mp.colBenefitK')}</th></tr></thead>
           <tbody>${rows}</tbody></table>
         </div>
-        <p class="winner">Winner: <strong>${escapeHtml(ivName(b.best))}</strong>.</p>
+        <p class="winner">${t('mp.winner', { measure: escapeHtml(ivName(b.best)) })}</p>
       </div>`;
   }).join('');
 
   const dist = Object.entries(data.distribution)
-    .map(([k, n]) => `${ivName(k)} on ${n}`).join(', ');
+    .map(([k, n]) => t('mp.distEntry', { measure: ivName(k), n })).join('، ');
 
   /* Spelled out, and counted from what came back. The server returns one
    * building per distinct winning measure, so how many cards there are IS the
    * finding: four groups means four different right answers. Hard-coding "four"
    * would have the dialog claiming a contrast the data may not contain. */
-  const COUNT = ['no', 'one', 'two', 'three', 'four'][data.buildings.length] || 'several';
+  const COUNT = [t('mp.countNo'), t('mp.countOne'), t('mp.countTwo'), t('mp.countThree'),
+    t('mp.countFour')][data.buildings.length] || t('mp.countSeveral');
 
   $('narrative-body').innerHTML = `
-    <p class="lede">A portfolio-wide priority list would give every building the same
-    retrofit. These ${COUNT} disagree about which retrofit is best, and the reason is in
-    their facts &mdash; the HVAC age and the insulation, not the size of the building.
-    Each one is the largest building in its group, and every group has a different
-    winner.</p>
+    <p class="lede">${t('mp.narrativeLede', { count: COUNT })}</p>
     <div class="card-row">${cards}</div>
-    <p class="caption">
-      Across the portfolio the best single measure is ${escapeHtml(dist)} — so no single
-      priority list is right for every building, which is what per-building optimization
-      is for. Note what does <em>not</em> happen: rooftop generation never has the best
-      benefit density anywhere. Cheap controls and lighting dominate it, which is the
-      ordinary efficiency-before-generation loading order, discovered from the catalog
-      rather than assumed.
-    </p>
-    <p class="caption">This is also why the option list on the right of the map shows the
-    options that were rejected. The argument only holds if you can see what lost.</p>`;
+    <p class="caption">${t('mp.narrativeDist', { dist: escapeHtml(dist) })}</p>
+    <p class="caption">${t('mp.narrativeRejected')}</p>`;
 }
 
 /* -------------------------------------------------------------- lifecycle */
@@ -1277,8 +1253,9 @@ function wirePicker(signal) {
             <span class="mono">${escapeHtml(p.code)}</span>
           </button>
         </li>`).join('')
-      : `<li class="picker-empty">No building matches &ldquo;${escapeHtml(input.value)}&rdquo;.
-         Clear the box to see all ${all.length}.</li>`;
+      : `<li class="picker-empty">${t('mp.pickerEmpty', {
+          query: escapeHtml(input.value), n: all.length,
+        })}</li>`;
 
     list.hidden = false;
     input.setAttribute('aria-expanded', 'true');
@@ -1405,15 +1382,14 @@ async function main(signal) {
  * new ones is restricted.
  */
 async function showStoredRun() {
-  setStatus('loading the last allocation', 'warn');
+  setStatus(t('mp.loadingRun'), 'warn');
   try {
     const runs = await api.runs();
     if (!runs.length) {
-      setStatus('no allocation stored yet', 'warn');
+      setStatus(t('mp.noRunYet'), 'warn');
       const note = $('readonly-note');
       if (note) {
-        note.textContent = 'No optimizer run has been stored yet. An analyst has to '
-                         + 'run one before there is anything to show here.';
+        note.textContent = t('mp.noRunNote');
       }
       return;
     }
@@ -1422,7 +1398,7 @@ async function showStoredRun() {
     showSummary(state.run);
     showRunFacts(state.run);
     render();
-    setStatus(`stored run · ${state.run.status.toLowerCase()}`, 'ok');
+    setStatus(t('mp.storedRun', { status: state.run.status.toLowerCase() }), 'ok');
   } catch (err) {
     setStatus(err.detail || err.message, 'bad');
   }
@@ -1442,12 +1418,12 @@ function showRunFacts(run) {
   const when = (run.created_at || '').replace('T', ' ').slice(0, 16);
   const cap = run.max_funded_per_district;
   facts.innerHTML = `
-    <div><dt>Decided</dt><dd>${escapeHtml(when)}</dd></div>
-    <div><dt>Budget</dt><dd>${compact(run.budget_egp)} EGP</dd></div>
+    <div><dt>${t('mp.decided')}</dt><dd>${escapeHtml(when)}</dd></div>
+    <div><dt>${t('mp.budget')}</dt><dd>${compact(run.budget_egp)} ${t('unit.egp')}</dd></div>
     <div><dt>${t('map.rankedBy')}</dt><dd>${escapeHtml(OBJECTIVE_LABEL()[run.objective] || run.objective)}</dd></div>
     <div><dt>${t('map.method2')}</dt><dd>${escapeHtml(SOLVER_LABEL()[run.solver] || run.solver)}</dd></div>
-    <div><dt>District cap</dt><dd>${cap ? `${cap} per district` : 'none'}</dd></div>
-    ${run.inputs_hash ? `<div class="wide"><dt>Input hash</dt>
+    <div><dt>${t('mp.districtCap')}</dt><dd>${cap ? t('rn.perDistrict', { n: cap }) : t('rn.none')}</dd></div>
+    ${run.inputs_hash ? `<div class="wide"><dt>${t('mp.inputHash')}</dt>
       <dd class="hash-block">${escapeHtml(run.inputs_hash)}</dd></div>` : ''}`;
 }
 
