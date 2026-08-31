@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import logging
 import sys
 import time
@@ -36,7 +37,7 @@ from gemp.db import (
 from gemp.domain.catalog import load_catalog
 from gemp.domain.portfolio import load_buildings
 from gemp.ingest.integrity import GENESIS, sign
-from gemp.paths import ground_truth_write_path
+from gemp.paths import ground_truth_write_path, integrity_anchor_path
 from gemp.repository import import_catalog, import_portfolio
 from gemp.sim.profiles import generate_series
 from gemp.timescale import ensure_timescale_objects, refresh_hourly
@@ -59,6 +60,7 @@ def seed_readings(months: int, step_minutes: int, seed: int,
     key = get_settings().key_bytes
     total_rows = 0
     events: list[dict] = []
+    checkpoints: list[dict] = []
 
     for index, building in enumerate(buildings, start=1):
         series = generate_series(
@@ -98,6 +100,19 @@ def seed_readings(months: int, step_minutes: int, seed: int,
                 }],
             )
 
+        # "Exactly as the live ingester does" was only half true: the ingester writes
+        # the head to the database AND to a file outside the database volume, and the
+        # external copy is the half that makes truncation detectable. The seeder wrote
+        # only the row, so after a re-seed the anchor still described the readings that
+        # had just been deleted - and F5-b failed with "5/5 chains verify, 0/5 match
+        # the anchor", which is the alarm working correctly against a stale file.
+        checkpoints.append({
+            "building_id": building.id,
+            "ts": end,
+            "last_seq": rows[-1]["seq"],
+            "head_sig": rows[-1]["sig"],
+        })
+
         total_rows += len(rows)
         events.extend({
             "building_id": e.building_id, "kind": e.kind,
@@ -108,8 +123,30 @@ def seed_readings(months: int, step_minutes: int, seed: int,
         if index % 10 == 0 or index == len(buildings):
             log.info("seeded %d/%d buildings (%d rows)", index, len(buildings), total_rows)
 
+    write_anchor(checkpoints)
     write_ground_truth(events)
     return total_rows, len(events)
+
+
+def write_anchor(checkpoints: list[dict]) -> None:
+    """Mirror the new chain heads outside the database volume.
+
+    Truncated rather than appended: the anchor holds heads for readings this run has
+    just replaced, and an appended file would leave the newest entry per building
+    correct while every older one describes a chain that no longer exists. The live
+    ingester appends because it is adding to a history; a re-seed IS the history.
+    """
+    path = integrity_anchor_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        for record in checkpoints:
+            fh.write(json.dumps({
+                "building_id": record["building_id"],
+                "ts": record["ts"].isoformat(),
+                "last_seq": record["last_seq"],
+                "head_sig": record["head_sig"].hex(),
+            }) + "\n")
+    log.info("anchored %d chain heads to %s", len(checkpoints), path)
 
 
 def write_ground_truth(events: list[dict]) -> None:

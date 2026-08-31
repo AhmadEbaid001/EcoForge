@@ -152,3 +152,40 @@ def test_a_reseed_removes_what_was_derived_from_the_readings(monkeypatch, sessio
     # And the building itself did not go with them: the fixture is re-imported, not
     # rebuilt, and everything else that references a building would break.
     assert session.execute(select(BuildingRow)).scalars().all()
+
+
+def test_a_reseed_anchors_the_new_chain_heads_outside_the_database(tmp_path, monkeypatch):
+    """The anchor is the half of the integrity story an adversary with database access
+    cannot reach, so a re-seed that rewrites the chains has to rewrite it too.
+    Measured before this: F5-b read "5/5 chains verify, 0/5 match the anchor" - the
+    alarm working correctly against a file describing deleted readings.
+
+    Truncated rather than appended, because every line in the old file names a chain
+    that no longer exists.
+    """
+    import json
+
+    from gemp import seed as seed_module
+
+    anchor = tmp_path / "anchor" / "integrity_anchor.jsonl"
+    anchor.parent.mkdir()
+    anchor.write_text(json.dumps({
+        "building_id": "b001", "ts": "2020-01-01T00:00:00+00:00",
+        "last_seq": 999, "head_sig": "de" * 32,
+    }) + "\n", encoding="utf-8")
+    monkeypatch.setattr(seed_module, "integrity_anchor_path", lambda: anchor)
+
+    from datetime import UTC, datetime
+
+    seed_module.write_anchor([{
+        "building_id": "b001",
+        "ts": datetime(2026, 8, 31, 10, 0, tzinfo=UTC),
+        "last_seq": 12,
+        "head_sig": b"\xab" * 32,
+    }])
+
+    lines = anchor.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1, "the stale head was appended to rather than replaced"
+    written = json.loads(lines[0])
+    assert written["last_seq"] == 12
+    assert written["head_sig"] == "ab" * 32
