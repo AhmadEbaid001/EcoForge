@@ -69,8 +69,26 @@ def load_building_rows(session: Session) -> list[BuildingRow]:
     return list(session.execute(select(BuildingRow).order_by(BuildingRow.code)).scalars())
 
 
-def import_portfolio(session: Session, geojson: dict | None = None) -> int:
-    """Load the GeoJSON fixture into the database. Idempotent."""
+def import_portfolio(
+    session: Session, geojson: dict | None = None, *, replace: bool = False
+) -> int:
+    """Load the GeoJSON fixture into the database.
+
+    `replace=False` inserts what is missing and leaves what is already there, which
+    is what an idempotent start-up wants.
+
+    `replace=True` makes the database MATCH the fixture, and it exists because the
+    other behaviour has a failure mode that is silent and total. Every fixture ever
+    generated numbers its buildings b001..b050, so a portfolio replaced in the
+    repository collides on every row and nothing is written at all. A host reseeded
+    after the portfolio changed reported "imported 50 buildings" and carried on
+    serving the fifty it already had - while the readings around them were generated
+    from the new profiles, so the stored consumption and the building it was
+    attributed to described different buildings.
+
+    The load shape is cleared rather than carried over: it is a measurement of
+    readings that a reseed has just deleted, and the next refit rewrites it.
+    """
     collection = geojson or load_geojson()
     now = datetime.now(UTC)
 
@@ -98,7 +116,24 @@ def import_portfolio(session: Session, geojson: dict | None = None) -> int:
             "updated_at": now,
         })
 
-    session.execute(insert_ignore(BuildingRow, session.bind.dialect.name), records)
+    if not replace:
+        session.execute(insert_ignore(BuildingRow, session.bind.dialect.name), records)
+        return len(records)
+
+    # Update-then-insert rather than a dialect upsert or a delete-and-reinsert.
+    # Deleting is not available: anomalies, forecasts and stored allocation items
+    # reference these rows and a reseed keeps all three. Fifty statements is not a
+    # performance question at this size, and it behaves the same on PostgreSQL and
+    # on the SQLite the tests run against.
+    for record in records:
+        values = {k: v for k, v in record.items() if k != "id"}
+        values["load_shape"] = None
+        values["load_shape_source"] = None
+        result = session.execute(
+            update(BuildingRow).where(BuildingRow.id == record["id"]).values(**values)
+        )
+        if not result.rowcount:
+            session.execute(insert_ignore(BuildingRow, session.bind.dialect.name), [record])
     return len(records)
 
 

@@ -167,8 +167,11 @@ def main(argv: list[str] | None = None) -> int:
         wipe_readings()
 
     if not args.skip_portfolio:
+        # `replace` is what makes a re-seed mean "the database now matches the
+        # fixture". Without it every id collides, nothing is written, and the
+        # readings generated below describe buildings the database does not hold.
         with session_scope() as session:
-            buildings = import_portfolio(session)
+            buildings = import_portfolio(session, replace=True)
             interventions = import_catalog(session, load_catalog())
         log.info("imported %d buildings and %d interventions", buildings, interventions)
 
