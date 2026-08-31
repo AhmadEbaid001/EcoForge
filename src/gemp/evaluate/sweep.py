@@ -29,10 +29,16 @@ from gemp.optimize.runner import SOLVERS, solve
 
 log = logging.getLogger("gemp.evaluate.sweep")
 
-# The reporting range. 2 M is roughly one large building; 40 M funds most of the
-# portfolio, past which every solver converges and the comparison stops being
-# informative. The claims about "every realistic budget" mean this range.
-DEFAULT_BUDGETS: tuple[float, ...] = tuple(float(m) * 1_000_000 for m in range(2, 42, 2))
+# The reporting range, and it is a function of the portfolio rather than a constant.
+# It used to be 2-40 M, which was right when the fixture was mostly apartment
+# blocks. The portfolio is public buildings now - ministries, hospitals, schools -
+# and their retrofits cost proportionally more: 25 M funds twelve of the fifty,
+# 100 M funds thirty-six, 200 M funds all of them. A sweep that stopped at 40 M
+# would report the bottom fifth of the curve and miss the point where the solvers
+# converge, which is exactly where several of the claims are measured.
+DEFAULT_BUDGETS: tuple[float, ...] = tuple(
+    float(m) * 1_000_000 for m in range(10, 210, 10)
+)
 
 # lca_carbon is the default objective; raw_kwh is what a conventional monitoring
 # tool would rank on, and the pair is what the LCA claim compares. tou_carbon (A5)

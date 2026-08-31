@@ -76,15 +76,21 @@ MIN_FORECAST_MAPE_IMPROVEMENT_PCT = 0.0
 
 # Budgets used by the claims that re-solve rather than read the sweep. Kept small:
 # these run inside the CI gate.
-PROBE_BUDGETS: tuple[float, ...] = (5_000_000.0, 10_000_000.0, 20_000_000.0)
+# Sized to the portfolio of public buildings: 25 M funds twelve of the fifty,
+# 50 M funds twenty-two, 100 M funds thirty-six. Probing below that range
+# measures a budget too small to make the allocation interesting.
+PROBE_BUDGETS: tuple[float, ...] = (25_000_000.0, 50_000_000.0, 100_000_000.0)
 
 # Below this many instances a "median gap" is a coincidence, and a claim measured on
 # it would report the grid rather than the solver.
 MIN_INSTANCES_FOR_A_MEDIAN = 3
 
-# Plain greedy's plateau begins around 16 M EGP on this portfolio, so a sweep that
+# Plain greedy's plateau begins around 57 M EGP on this portfolio, so a sweep that
 # stops below this cannot see it either way.
-SATURATION_PROBE_BUDGET = 30_000_000.0
+# The sweep has to reach well past the point plain greedy stops spending, or the
+# plateau is a single point and indistinguishable from the curve still rising.
+# Scaled with the portfolio when it became public buildings.
+SATURATION_PROBE_BUDGET = 150_000_000.0
 
 
 class Verdict(StrEnum):
@@ -279,7 +285,7 @@ def claim_plain_greedy_saturates(
     """A finding about the baseline, kept visible so nobody quotes the wrong number.
 
     Plain greedy never revisits a funded building, so on this portfolio it stops
-    spending at roughly 16 M EGP and its benefit flatlines from there. Any headline
+    spending at roughly 57 M EGP and its benefit flatlines from there. Any headline
     that compares CP-SAT against it above that point is measuring greedy's ceiling,
     not the value of exact optimization.
 

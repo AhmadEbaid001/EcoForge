@@ -8,15 +8,24 @@ because the reasoning is the point.
 
 ## Open finding: the LCA layer currently changes no decisions
 
-At every budget from 2 M to 40 M EGP, the `lca_carbon` and `raw_kwh` objectives fund
-**the same buildings with the same interventions**. Embodied carbon is a median 8 % of
-gross avoided emissions across the candidate set, and the options that actually get
-funded are the ones where it is smallest. At an Egyptian grid factor of
-0.45 kgCO₂e/kWh, embodied carbon is simply too small to reverse a retrofit ranking.
+At 18 of the 20 budgets from 10 M to 200 M EGP, the `lca_carbon` and `raw_kwh`
+objectives fund **the same buildings with the same interventions**, and at the two where
+they differ the carbon cost of having ranked by raw kWh is at most 0.0027 %. Embodied
+carbon is a median 8.2 % of gross avoided emissions across the 1,448 candidate options,
+and the options that actually get funded are the ones where it is smallest. At an
+Egyptian grid factor of 0.45 kgCO₂e/kWh, embodied carbon is simply too small to reverse
+a retrofit ranking.
 
-The LCA layer does earn its place in one respect: it correctly refuses to fund at least
-one glazing option whose manufacture emits more than it avoids over thirty years, which
-a raw-kWh ranking would treat as a benefit.
+The LCA layer used to earn its place in one respect: on the first portfolio it
+correctly refused a glazing option whose manufacture emitted more than it avoided over
+thirty years. **That case no longer occurs.** The portfolio is now named public
+buildings rather than the apartment blocks that fixture turned out to contain, and they
+are large enough that glazing always pays its embodied carbon back within the horizon:
+not one of the 1,448 candidate options is net-negative.
+
+The refusal is still the right behaviour and is still tested - by constructing such an
+option rather than by relying on the portfolio to contain one - but it can no longer be
+offered as an observed finding about this portfolio.
 
 This is pinned by `test_lca_adjustment_barely_changes_the_funded_set`. If a time-of-use
 marginal emission factor is added — making an HVAC kWh saved at a summer afternoon peak
@@ -24,8 +33,8 @@ worth more carbon than a lighting kWh saved in the evening — that test should 
 failing, and the failure is the signal that the LCA layer has begun to matter.
 
 Stated more usefully as what the difference is worth: choosing funding by raw kWh
-instead of life-cycle carbon costs at most **0.02 %** of the carbon a carbon-optimal
-allocation would deliver, across 20 budgets.
+instead of life-cycle carbon costs at most **0.003 %** of the carbon a carbon-optimal
+allocation would deliver, across those 20 budgets.
 
 ---
 

@@ -2,16 +2,33 @@
  "type": "FeatureCollection",
  "metadata": {
   "generator": "scripts/fetch_osm_buildings.py",
-  "source": "OpenStreetMap via Overpass API, ODbL",
+  "source": "OpenStreetMap via Overpass and Nominatim, ODbL",
   "bbox": [
-   30.02,
-   31.47,
-   30.05,
-   31.52
+   29.9,
+   31.1,
+   30.2,
+   31.9
   ],
   "seed": 20260814,
   "count": 50,
-  "note": "Footprints and locations are real OSM data. Operational attributes (occupancy, HVAC age, insulation quality, consumption) are synthetic; a deployment would collect them through the profile-entry form."
+  "note": "Footprints, locations, names and districts are real OSM data: every building is a way tagged as public estate, its name is the name OSM gives that way, and its district is what Nominatim resolves that building's own centroid to. No institution name is invented. Operational attributes (occupancy, HVAC age, insulation quality, consumption) are synthetic; a deployment would collect them through the profile-entry form.",
+  "selectors": [
+   "way[building][office=government]",
+   "way[building][government]",
+   "way[building=government]",
+   "way[building=public]",
+   "way[building=civic]",
+   "way[building][amenity=townhall]",
+   "way[building][amenity=courthouse]",
+   "way[building][amenity=police]",
+   "way[building][amenity=fire_station]",
+   "way[building][amenity=school]",
+   "way[building=school]",
+   "way[building][amenity=hospital]",
+   "way[building=hospital]",
+   "way[building][amenity=clinic]",
+   "way[building][amenity=library]"
+  ]
  },
  "features": [
   {
@@ -21,69 +38,48 @@
     "coordinates": [
      [
       [
-       31.4802224,
-       30.0262216
+       31.8093568,
+       30.1591673
       ],
       [
-       31.4805555,
-       30.0265325
+       31.8098718,
+       30.1584438
       ],
       [
-       31.4806671,
-       30.0264232
+       31.8090832,
+       30.1580495
       ],
       [
-       31.4807832,
-       30.0264207
+       31.8086165,
+       30.1587545
       ],
       [
-       31.4808975,
-       30.0265334
-      ],
-      [
-       31.4812354,
-       30.0262196
-      ],
-      [
-       31.4808986,
-       30.0259137
-      ],
-      [
-       31.4808591,
-       30.0259478
-      ],
-      [
-       31.4805943,
-       30.0259458
-      ],
-      [
-       31.4805692,
-       30.0259161
-      ],
-      [
-       31.4802224,
-       30.0262216
+       31.8093568,
+       30.1591673
       ]
      ]
     ]
    },
    "properties": {
     "id": "b001",
-    "code": "NAC-Downtown-001",
-    "name": "Office Building 1",
-    "district": "Downtown-CBD",
-    "lat": 30.026207,
-    "lon": 31.480728,
-    "floor_area_m2": 16389.3,
-    "roof_area_m2": 4097.3,
-    "glazing_area_m2": 1362.2,
-    "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 4,
-    "insulation_quality": "good",
-    "occupancy_pattern": "office",
-    "annual_kwh": 2780475.0,
-    "osm_way_id": 832893991
+    "code": "BAD-001",
+    "name": "مدرسة علاء عبد العزيز",
+    "district": "Badr",
+    "lat": 30.158604,
+    "lon": 31.809232,
+    "floor_area_m2": 31890.9,
+    "roof_area_m2": 7972.7,
+    "glazing_area_m2": 4937.9,
+    "roof_orientation": "S",
+    "hvac_type": "package",
+    "hvac_age_yr": 18,
+    "insulation_quality": "fair",
+    "occupancy_pattern": "school",
+    "annual_kwh": 3319753.0,
+    "osm_way_id": 1530888977,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -93,117 +89,48 @@
     "coordinates": [
      [
       [
-       31.4875415,
-       30.0413463
+       31.8109007,
+       30.1349606
       ],
       [
-       31.4876023,
-       30.0412893
+       31.8112476,
+       30.1349729
       ],
       [
-       31.4875799,
-       30.0412714
+       31.8112405,
+       30.1342689
       ],
       [
-       31.4878328,
-       30.0410346
+       31.8108441,
+       30.134275
       ],
       [
-       31.4878984,
-       30.0410872
-      ],
-      [
-       31.4878636,
-       30.0411198
-      ],
-      [
-       31.4878966,
-       30.0411461
-      ],
-      [
-       31.4879314,
-       30.0411135
-      ],
-      [
-       31.4880693,
-       30.041224
-      ],
-      [
-       31.4880557,
-       30.0412367
-      ],
-      [
-       31.4880697,
-       30.041248
-      ],
-      [
-       31.4880616,
-       30.0413118
-      ],
-      [
-       31.4880838,
-       30.0413298
-      ],
-      [
-       31.4880858,
-       30.041389
-      ],
-      [
-       31.4879617,
-       30.0415022
-      ],
-      [
-       31.487898,
-       30.041508
-      ],
-      [
-       31.4878665,
-       30.041479
-      ],
-      [
-       31.4878202,
-       30.0414813
-      ],
-      [
-       31.4878027,
-       30.0414673
-      ],
-      [
-       31.4877674,
-       30.0415003
-      ],
-      [
-       31.4877388,
-       30.0414774
-      ],
-      [
-       31.4877234,
-       30.0414919
-      ],
-      [
-       31.4875415,
-       30.0413463
+       31.8109007,
+       30.1349606
       ]
      ]
     ]
    },
    "properties": {
     "id": "b002",
-    "code": "NAC-Downtown-002",
-    "name": "Office Building 2",
-    "district": "Downtown-CBD",
-    "lat": 30.041321,
-    "lon": 31.487871,
-    "floor_area_m2": 3393.5,
-    "roof_area_m2": 1696.8,
-    "glazing_area_m2": 290.4,
-    "roof_orientation": "W",
+    "code": "BAD-002",
+    "name": "مجمع شرطة حدائق العاصمة",
+    "district": "Badr",
+    "lat": 30.134619,
+    "lon": 31.811058,
+    "floor_area_m2": 22131.1,
+    "roof_area_m2": 2766.4,
+    "glazing_area_m2": 4564.3,
+    "roof_orientation": "FLAT",
     "hvac_type": "package",
-    "hvac_age_yr": 19,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "office",
-    "annual_kwh": 617147.0,
-    "osm_way_id": 1123856551
+    "hvac_age_yr": 5,
+    "insulation_quality": "poor",
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 5488737.0,
+    "osm_way_id": 1530890556,
+    "osm_kind": "police",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -213,97 +140,48 @@
     "coordinates": [
      [
       [
-       31.4792361,
-       30.0389267
+       31.8125032,
+       30.1356682
       ],
       [
-       31.4792574,
-       30.0389086
+       31.8128783,
+       30.135656
       ],
       [
-       31.4792817,
-       30.0388879
+       31.8128642,
+       30.1349948
       ],
       [
-       31.4793064,
-       30.0389097
+       31.8124819,
+       30.1349948
       ],
       [
-       31.4793634,
-       30.0388613
-      ],
-      [
-       31.4794646,
-       30.0388628
-      ],
-      [
-       31.4795367,
-       30.0388639
-      ],
-      [
-       31.4795623,
-       30.0388869
-      ],
-      [
-       31.4795769,
-       30.0388747
-      ],
-      [
-       31.4796596,
-       30.0389488
-      ],
-      [
-       31.4796432,
-       30.0389625
-      ],
-      [
-       31.4796624,
-       30.0389798
-      ],
-      [
-       31.479673,
-       30.0389893
-      ],
-      [
-       31.4796694,
-       30.0392275
-      ],
-      [
-       31.4792493,
-       30.0392227
-      ],
-      [
-       31.4792524,
-       30.039016
-      ],
-      [
-       31.4792957,
-       30.0389792
-      ],
-      [
-       31.4792361,
-       30.0389267
+       31.8125032,
+       30.1356682
       ]
      ]
     ]
    },
    "properties": {
     "id": "b003",
-    "code": "NAC-Downtown-003",
-    "name": "Office Building 3",
-    "district": "Downtown-CBD",
-    "lat": 30.038959,
-    "lon": 31.479452,
-    "floor_area_m2": 4543.3,
-    "roof_area_m2": 1514.4,
-    "glazing_area_m2": 769.4,
+    "code": "BAD-003",
+    "name": "مدرسة عدلى منصور",
+    "district": "Badr",
+    "lat": 30.135328,
+    "lon": 31.812682,
+    "floor_area_m2": 8128.4,
+    "roof_area_m2": 2709.5,
+    "glazing_area_m2": 2428.8,
     "roof_orientation": "FLAT",
     "hvac_type": "split",
-    "hvac_age_yr": 9,
-    "insulation_quality": "good",
-    "occupancy_pattern": "office",
-    "annual_kwh": 839691.0,
-    "osm_way_id": 1123859413
+    "hvac_age_yr": 7,
+    "insulation_quality": "fair",
+    "occupancy_pattern": "school",
+    "annual_kwh": 715461.0,
+    "osm_way_id": 1530879747,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -313,69 +191,52 @@
     "coordinates": [
      [
       [
-       31.4867423,
-       30.0261611
+       31.8110611,
+       30.1355706
       ],
       [
-       31.48726,
-       30.0261611
+       31.8111042,
+       30.1358797
       ],
       [
-       31.4873109,
-       30.0261448
+       31.8113569,
+       30.1358637
       ],
       [
-       31.4873056,
-       30.0260008
+       31.8112767,
+       30.1352668
       ],
       [
-       31.4872305,
-       30.0259962
+       31.8110241,
+       30.1352668
       ],
       [
-       31.4871688,
-       30.0260101
-      ],
-      [
-       31.4871715,
-       30.0260519
-      ],
-      [
-       31.4868871,
-       30.0260357
-      ],
-      [
-       31.4868013,
-       30.0260357
-      ],
-      [
-       31.4867369,
-       30.0260914
-      ],
-      [
-       31.4867423,
-       30.0261611
+       31.8110611,
+       30.1355706
       ]
      ]
     ]
    },
    "properties": {
     "id": "b004",
-    "code": "NAC-Downtown-004",
-    "name": "Office Building 4",
-    "district": "Downtown-CBD",
-    "lat": 30.026069,
-    "lon": 31.487061,
-    "floor_area_m2": 3084.5,
-    "roof_area_m2": 771.1,
-    "glazing_area_m2": 871.1,
-    "roof_orientation": "S",
-    "hvac_type": "split",
-    "hvac_age_yr": 4,
+    "code": "BAD-004",
+    "name": "جهاز مدينة حدائق العاصمة",
+    "district": "Badr",
+    "lat": 30.13557,
+    "lon": 31.811165,
+    "floor_area_m2": 9921.9,
+    "roof_area_m2": 1653.6,
+    "glazing_area_m2": 1263.4,
+    "roof_orientation": "FLAT",
+    "hvac_type": "package",
+    "hvac_age_yr": 3,
     "insulation_quality": "good",
     "occupancy_pattern": "office",
-    "annual_kwh": 538793.0,
-    "osm_way_id": 338261352
+    "annual_kwh": 1880234.0,
+    "osm_way_id": 1530879520,
+    "osm_kind": "public",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -385,109 +246,240 @@
     "coordinates": [
      [
       [
-       31.4798381,
-       30.023322
+       31.2444792,
+       30.0448616
       ],
       [
-       31.4799642,
-       30.0233215
+       31.2445765,
+       30.0450691
       ],
       [
-       31.4799641,
-       30.0233083
+       31.2449711,
+       30.0449304
       ],
       [
-       31.4800081,
-       30.0233082
+       31.2449944,
+       30.0449802
       ],
       [
-       31.4800081,
-       30.0232954
+       31.2451249,
+       30.0449343
       ],
       [
-       31.4800468,
-       30.0232952
+       31.2451492,
+       30.0449859
       ],
       [
-       31.4800459,
-       30.0231366
+       31.2453488,
+       30.0449157
       ],
       [
-       31.4800102,
-       30.0231367
+       31.2453387,
+       30.0448944
       ],
       [
-       31.4800101,
-       30.0231242
+       31.2453709,
+       30.044883
       ],
       [
-       31.4799668,
-       30.0231243
+       31.2454099,
+       30.0449662
       ],
       [
-       31.4799667,
-       30.0231091
+       31.2455756,
+       30.0449079
       ],
       [
-       31.479826,
-       30.0231097
+       31.245589,
+       30.0449364
       ],
       [
-       31.4798261,
-       30.0231257
+       31.2458941,
+       30.0448291
       ],
       [
-       31.4797866,
-       30.0231258
+       31.245904,
+       30.0448506
       ],
       [
-       31.4797867,
-       30.0231405
+       31.2460975,
+       30.0447844
       ],
       [
-       31.4797576,
-       30.0231406
+       31.246062,
+       30.0447066
       ],
       [
-       31.4797583,
-       30.0232908
+       31.2462603,
+       30.0446388
       ],
       [
-       31.4797985,
-       30.0232906
+       31.246239,
+       30.0445922
       ],
       [
-       31.4797985,
-       30.0233074
+       31.2462879,
+       30.0445754
       ],
       [
-       31.479838,
-       30.0233073
+       31.2462594,
+       30.044513
       ],
       [
-       31.4798381,
-       30.023322
+       31.246387,
+       30.0444693
+      ],
+      [
+       31.2462477,
+       30.0441645
+      ],
+      [
+       31.2458858,
+       30.0442884
+      ],
+      [
+       31.2458704,
+       30.0442549
+      ],
+      [
+       31.245779,
+       30.0442863
+      ],
+      [
+       31.2457974,
+       30.0443264
+      ],
+      [
+       31.2456928,
+       30.0443624
+      ],
+      [
+       31.2457529,
+       30.0444933
+      ],
+      [
+       31.246136,
+       30.0443614
+      ],
+      [
+       31.246197,
+       30.0444942
+      ],
+      [
+       31.24612,
+       30.0445207
+      ],
+      [
+       31.246133,
+       30.044549
+      ],
+      [
+       31.246072,
+       30.0445701
+      ],
+      [
+       31.2461088,
+       30.0446498
+      ],
+      [
+       31.246031,
+       30.0446768
+      ],
+      [
+       31.2459869,
+       30.0445815
+      ],
+      [
+       31.2458265,
+       30.0446371
+      ],
+      [
+       31.2458358,
+       30.0446572
+      ],
+      [
+       31.2454895,
+       30.0447778
+      ],
+      [
+       31.2454755,
+       30.0447477
+      ],
+      [
+       31.2452998,
+       30.0448091
+      ],
+      [
+       31.2453156,
+       30.0448429
+      ],
+      [
+       31.2452683,
+       30.0448594
+      ],
+      [
+       31.2452507,
+       30.0448217
+      ],
+      [
+       31.245183,
+       30.0448455
+      ],
+      [
+       31.2451361,
+       30.0447453
+      ],
+      [
+       31.245497,
+       30.0446186
+      ],
+      [
+       31.2454166,
+       30.044447
+      ],
+      [
+       31.2448265,
+       30.0446542
+      ],
+      [
+       31.2448769,
+       30.0447616
+      ],
+      [
+       31.244663,
+       30.0448368
+      ],
+      [
+       31.244647,
+       30.0448026
+      ],
+      [
+       31.2444792,
+       30.0448616
       ]
      ]
     ]
    },
    "properties": {
     "id": "b005",
-    "code": "NAC-Downtown-005",
-    "name": "Office Building 5",
-    "district": "Downtown-CBD",
-    "lat": 30.023216,
-    "lon": 31.4799,
-    "floor_area_m2": 1758.7,
-    "roof_area_m2": 586.2,
-    "glazing_area_m2": 449.0,
+    "code": "CAI-005",
+    "name": "Cairo Governorate Headoffice",
+    "district": "Cairo",
+    "lat": 30.044686,
+    "lon": 31.245599,
+    "floor_area_m2": 35476.4,
+    "roof_area_m2": 5912.7,
+    "glazing_area_m2": 5714.2,
     "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 15,
-    "insulation_quality": "good",
+    "hvac_type": "package",
+    "hvac_age_yr": 4,
+    "insulation_quality": "poor",
     "occupancy_pattern": "office",
-    "annual_kwh": 250161.0,
-    "osm_way_id": 592098082
+    "annual_kwh": 6013448.0,
+    "osm_way_id": 1465589099,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -497,109 +489,72 @@
     "coordinates": [
      [
       [
-       31.4796624,
-       30.0232588
+       31.2305543,
+       30.0238622
       ],
       [
-       31.4796611,
-       30.0231496
+       31.2307735,
+       30.0237827
       ],
       [
-       31.479646,
-       30.0231498
+       31.2308979,
+       30.024237
       ],
       [
-       31.4796455,
-       30.0231116
+       31.2309816,
+       30.0242381
       ],
       [
-       31.4796308,
-       30.0231118
+       31.2310225,
+       30.0242174
       ],
       [
-       31.4796304,
-       30.0230782
+       31.2309306,
+       30.0237795
       ],
       [
-       31.4794472,
-       30.0230799
+       31.2312509,
+       30.0237214
       ],
       [
-       31.4794475,
-       30.0231108
+       31.2313968,
+       30.0243353
       ],
       [
-       31.479433,
-       30.023111
+       31.2307226,
+       30.024471
       ],
       [
-       31.4794335,
-       30.0231485
+       31.2306766,
+       30.0243306
       ],
       [
-       31.4794159,
-       30.0231486
-      ],
-      [
-       31.4794173,
-       30.0232704
-      ],
-      [
-       31.4794358,
-       30.0232702
-      ],
-      [
-       31.4794362,
-       30.0233044
-      ],
-      [
-       31.4794531,
-       30.0233043
-      ],
-      [
-       31.4794534,
-       30.0233295
-      ],
-      [
-       31.4796269,
-       30.023328
-      ],
-      [
-       31.4796265,
-       30.0232933
-      ],
-      [
-       31.4796458,
-       30.0232931
-      ],
-      [
-       31.4796454,
-       30.023259
-      ],
-      [
-       31.4796624,
-       30.0232588
+       31.2305543,
+       30.0238622
       ]
      ]
     ]
    },
    "properties": {
     "id": "b006",
-    "code": "NAC-Downtown-006",
-    "name": "School Building 6",
-    "district": "Downtown-CBD",
-    "lat": 30.023206,
-    "lon": 31.47954,
-    "floor_area_m2": 2344.5,
-    "roof_area_m2": 586.1,
-    "glazing_area_m2": 478.7,
+    "code": "CAI-006",
+    "name": "National Cancer Institute",
+    "district": "Cairo",
+    "lat": 30.024098,
+    "lon": 31.230921,
+    "floor_area_m2": 12430.3,
+    "roof_area_m2": 4143.4,
+    "glazing_area_m2": 1334.2,
     "roof_orientation": "FLAT",
-    "hvac_type": "package",
-    "hvac_age_yr": 6,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "school",
-    "annual_kwh": 191179.0,
-    "osm_way_id": 592098083
+    "hvac_type": "split",
+    "hvac_age_yr": 14,
+    "insulation_quality": "good",
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 2903253.0,
+    "osm_way_id": 1134882634,
+    "osm_kind": "hospital",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -609,109 +564,48 @@
     "coordinates": [
      [
       [
-       31.4800361,
-       30.0242126
+       31.2347652,
+       30.0297079
       ],
       [
-       31.4800348,
-       30.0241034
+       31.2353746,
+       30.0295667
       ],
       [
-       31.4800197,
-       30.0241036
+       31.2347652,
+       30.0288905
       ],
       [
-       31.4800192,
-       30.0240654
+       31.2344734,
+       30.0289202
       ],
       [
-       31.4800045,
-       30.0240656
-      ],
-      [
-       31.4800041,
-       30.024032
-      ],
-      [
-       31.4798209,
-       30.0240337
-      ],
-      [
-       31.4798212,
-       30.0240646
-      ],
-      [
-       31.4798067,
-       30.0240648
-      ],
-      [
-       31.4798072,
-       30.0241023
-      ],
-      [
-       31.4797896,
-       30.0241024
-      ],
-      [
-       31.479791,
-       30.0242242
-      ],
-      [
-       31.4798095,
-       30.024224
-      ],
-      [
-       31.4798099,
-       30.0242582
-      ],
-      [
-       31.4798268,
-       30.0242581
-      ],
-      [
-       31.4798271,
-       30.0242833
-      ],
-      [
-       31.4800006,
-       30.0242818
-      ],
-      [
-       31.4800002,
-       30.0242471
-      ],
-      [
-       31.4800195,
-       30.0242469
-      ],
-      [
-       31.4800191,
-       30.0242128
-      ],
-      [
-       31.4800361,
-       30.0242126
+       31.2347652,
+       30.0297079
       ]
      ]
     ]
    },
    "properties": {
     "id": "b007",
-    "code": "NAC-Downtown-007",
-    "name": "Admin 24X7 Building 7",
-    "district": "Downtown-CBD",
-    "lat": 30.024159,
-    "lon": 31.479913,
-    "floor_area_m2": 2930.6,
-    "roof_area_m2": 586.1,
-    "glazing_area_m2": 250.4,
-    "roof_orientation": "SE",
-    "hvac_type": "chiller",
-    "hvac_age_yr": 25,
-    "insulation_quality": "poor",
+    "code": "CAI-007",
+    "name": "Abu Al-Rish University Hospital for Children",
+    "district": "Cairo",
+    "lat": 30.029271,
+    "lon": 31.234845,
+    "floor_area_m2": 19758.1,
+    "roof_area_m2": 3951.6,
+    "glazing_area_m2": 2831.2,
+    "roof_orientation": "FLAT",
+    "hvac_type": "package",
+    "hvac_age_yr": 21,
+    "insulation_quality": "fair",
     "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 608148.0,
-    "osm_way_id": 592104145
+    "annual_kwh": 5025041.0,
+    "osm_way_id": 28827053,
+    "osm_kind": "hospital",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -721,109 +615,48 @@
     "coordinates": [
      [
       [
-       31.479359,
-       30.0242287
+       31.2274214,
+       30.0665592
       ],
       [
-       31.4793577,
-       30.0241195
+       31.2275539,
+       30.0660208
       ],
       [
-       31.4793426,
-       30.0241197
+       31.2281737,
+       30.0661349
       ],
       [
-       31.4793421,
-       30.0240815
+       31.2280413,
+       30.0666734
       ],
       [
-       31.4793274,
-       30.0240817
-      ],
-      [
-       31.479327,
-       30.0240481
-      ],
-      [
-       31.4791438,
-       30.0240498
-      ],
-      [
-       31.4791441,
-       30.0240807
-      ],
-      [
-       31.4791296,
-       30.0240809
-      ],
-      [
-       31.4791301,
-       30.0241184
-      ],
-      [
-       31.4791125,
-       30.0241185
-      ],
-      [
-       31.4791139,
-       30.0242403
-      ],
-      [
-       31.4791324,
-       30.0242401
-      ],
-      [
-       31.4791328,
-       30.0242743
-      ],
-      [
-       31.4791497,
-       30.0242742
-      ],
-      [
-       31.47915,
-       30.0242994
-      ],
-      [
-       31.4793235,
-       30.0242979
-      ],
-      [
-       31.4793231,
-       30.0242632
-      ],
-      [
-       31.4793424,
-       30.024263
-      ],
-      [
-       31.479342,
-       30.0242289
-      ],
-      [
-       31.479359,
-       30.0242287
+       31.2274214,
+       30.0665592
       ]
      ]
     ]
    },
    "properties": {
     "id": "b008",
-    "code": "NAC-Downtown-008",
-    "name": "Office Building 8",
-    "district": "Downtown-CBD",
-    "lat": 30.024175,
-    "lon": 31.479236,
-    "floor_area_m2": 2344.5,
-    "roof_area_m2": 586.1,
-    "glazing_area_m2": 237.7,
-    "roof_orientation": "FLAT",
+    "code": "CAI-008",
+    "name": "National Archives of Egypt",
+    "district": "Cairo",
+    "lat": 30.066347,
+    "lon": 31.227798,
+    "floor_area_m2": 7483.2,
+    "roof_area_m2": 3741.6,
+    "glazing_area_m2": 2214.3,
+    "roof_orientation": "SE",
     "hvac_type": "split",
-    "hvac_age_yr": 5,
-    "insulation_quality": "fair",
+    "hvac_age_yr": 14,
+    "insulation_quality": "good",
     "occupancy_pattern": "office",
-    "annual_kwh": 376594.0,
-    "osm_way_id": 592104142
+    "annual_kwh": 1072950.0,
+    "osm_way_id": 110654251,
+    "osm_kind": "library",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -833,109 +666,104 @@
     "coordinates": [
      [
       [
-       31.4796228,
-       30.0242267
+       31.40445,
+       30.1273842
       ],
       [
-       31.4796215,
-       30.0241175
+       31.4048571,
+       30.1270314
       ],
       [
-       31.4796064,
-       30.0241177
+       31.4049082,
+       30.1270755
       ],
       [
-       31.4796059,
-       30.0240795
+       31.4049897,
+       30.127005
       ],
       [
-       31.4795912,
-       30.0240797
+       31.4051949,
+       30.1271821
       ],
       [
-       31.4795908,
-       30.0240461
+       31.4051365,
+       30.1272328
       ],
       [
-       31.4794076,
-       30.0240478
+       31.4050226,
+       30.1271345
       ],
       [
-       31.4794079,
-       30.0240787
+       31.4049623,
+       30.1271867
       ],
       [
-       31.4793934,
-       30.0240789
+       31.405126,
+       30.127328
       ],
       [
-       31.4793939,
-       30.0241164
+       31.4050213,
+       30.1274188
       ],
       [
-       31.4793763,
-       30.0241165
+       31.4048794,
+       30.1272963
       ],
       [
-       31.4793777,
-       30.0242383
+       31.4043794,
+       30.1277296
       ],
       [
-       31.4793962,
-       30.0242381
+       31.4044889,
+       30.1278241
       ],
       [
-       31.4793966,
-       30.0242723
+       31.4044078,
+       30.1278944
       ],
       [
-       31.4794135,
-       30.0242722
+       31.4041689,
+       30.1276882
       ],
       [
-       31.4794138,
-       30.0242974
+       31.4043699,
+       30.127514
       ],
       [
-       31.4795873,
-       30.0242959
+       31.4040132,
+       30.1272061
       ],
       [
-       31.4795869,
-       30.0242612
+       31.4041282,
+       30.1271064
       ],
       [
-       31.4796062,
-       30.024261
-      ],
-      [
-       31.4796058,
-       30.0242269
-      ],
-      [
-       31.4796228,
-       30.0242267
+       31.40445,
+       30.1273842
       ]
      ]
     ]
    },
    "properties": {
     "id": "b009",
-    "code": "NAC-Downtown-009",
-    "name": "School Building 9",
-    "district": "Downtown-CBD",
-    "lat": 30.024173,
-    "lon": 31.4795,
-    "floor_area_m2": 1172.2,
-    "roof_area_m2": 586.1,
-    "glazing_area_m2": 121.7,
-    "roof_orientation": "S",
-    "hvac_type": "package",
-    "hvac_age_yr": 6,
+    "code": "CAI-009",
+    "name": "Egyptair Hospital",
+    "district": "Cairo",
+    "lat": 30.127347,
+    "lon": 31.404695,
+    "floor_area_m2": 20672.4,
+    "roof_area_m2": 3445.4,
+    "glazing_area_m2": 3601.9,
+    "roof_orientation": "FLAT",
+    "hvac_type": "split",
+    "hvac_age_yr": 7,
     "insulation_quality": "poor",
-    "occupancy_pattern": "school",
-    "annual_kwh": 121596.0,
-    "osm_way_id": 592104144
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 5130793.0,
+    "osm_way_id": 94507198,
+    "osm_kind": "hospital",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -945,109 +773,64 @@
     "coordinates": [
      [
       [
-       31.4798727,
-       30.0237547
+       31.3122681,
+       30.0902325
       ],
       [
-       31.4799988,
-       30.0237542
+       31.3123271,
+       30.0902232
       ],
       [
-       31.4799987,
-       30.0237411
+       31.3124612,
+       30.0897266
       ],
       [
-       31.4800428,
-       30.0237409
+       31.3124183,
+       30.089722
       ],
       [
-       31.4800427,
-       30.0237282
+       31.3124558,
+       30.0896129
       ],
       [
-       31.4800814,
-       30.023728
+       31.31237,
+       30.0895386
       ],
       [
-       31.4800805,
-       30.0235693
+       31.3116914,
+       30.0896129
       ],
       [
-       31.4800448,
-       30.0235695
+       31.3116887,
+       30.0896872
       ],
       [
-       31.4800447,
-       30.0235569
-      ],
-      [
-       31.4800014,
-       30.0235571
-      ],
-      [
-       31.4800013,
-       30.0235419
-      ],
-      [
-       31.4798606,
-       30.0235425
-      ],
-      [
-       31.4798607,
-       30.0235584
-      ],
-      [
-       31.4798213,
-       30.0235586
-      ],
-      [
-       31.4798213,
-       30.0235733
-      ],
-      [
-       31.4797922,
-       30.0235734
-      ],
-      [
-       31.479793,
-       30.0237235
-      ],
-      [
-       31.4798331,
-       30.0237234
-      ],
-      [
-       31.4798332,
-       30.0237402
-      ],
-      [
-       31.4798726,
-       30.02374
-      ],
-      [
-       31.4798727,
-       30.0237547
+       31.3122681,
+       30.0902325
       ]
      ]
     ]
    },
    "properties": {
     "id": "b010",
-    "code": "NAC-Downtown-010",
-    "name": "School Building 10",
-    "district": "Downtown-CBD",
-    "lat": 30.023649,
-    "lon": 31.479935,
-    "floor_area_m2": 1172.0,
-    "roof_area_m2": 586.0,
-    "glazing_area_m2": 179.9,
+    "code": "CAI-010",
+    "name": "Al-Khulafaa' prep school for boys",
+    "district": "Cairo",
+    "lat": 30.089794,
+    "lon": 31.31221,
+    "floor_area_m2": 6678.0,
+    "roof_area_m2": 3339.0,
+    "glazing_area_m2": 1485.1,
     "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 18,
+    "hvac_type": "chiller",
+    "hvac_age_yr": 21,
     "insulation_quality": "fair",
     "occupancy_pattern": "school",
-    "annual_kwh": 123460.0,
-    "osm_way_id": 592098086
+    "annual_kwh": 608784.0,
+    "osm_way_id": 438471024,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1057,61 +840,48 @@
     "coordinates": [
      [
       [
-       31.4894901,
-       30.0263922
+       31.2329041,
+       30.0288143
       ],
       [
-       31.489486,
-       30.0260559
+       31.2338349,
+       30.0286237
       ],
       [
-       31.4895577,
-       30.0260552
+       31.2337493,
+       30.0283103
       ],
       [
-       31.4895569,
-       30.025996
+       31.2328185,
+       30.0285009
       ],
       [
-       31.4902865,
-       30.0259893
-      ],
-      [
-       31.4902874,
-       30.0260644
-      ],
-      [
-       31.4903366,
-       30.026064
-      ],
-      [
-       31.4903406,
-       30.0263844
-      ],
-      [
-       31.4894901,
-       30.0263922
+       31.2329041,
+       30.0288143
       ]
      ]
     ]
    },
    "properties": {
     "id": "b011",
-    "code": "NAC-Knowledge-011",
-    "name": "Office Building 11",
-    "district": "Knowledge-City",
-    "lat": 30.026125,
-    "lon": 31.489918,
-    "floor_area_m2": 17621.9,
-    "roof_area_m2": 3524.4,
-    "glazing_area_m2": 2100.5,
-    "roof_orientation": "S",
-    "hvac_type": "package",
-    "hvac_age_yr": 10,
+    "code": "CAI-011",
+    "name": "Abu A-Reesh Japanese Children Hospital",
+    "district": "Cairo",
+    "lat": 30.028562,
+    "lon": 31.233327,
+    "floor_area_m2": 19828.7,
+    "roof_area_m2": 3304.8,
+    "glazing_area_m2": 4611.8,
+    "roof_orientation": "FLAT",
+    "hvac_type": "split",
+    "hvac_age_yr": 16,
     "insulation_quality": "poor",
-    "occupancy_pattern": "office",
-    "annual_kwh": 3318897.0,
-    "osm_way_id": 252560390
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 4812333.0,
+    "osm_way_id": 52294846,
+    "osm_kind": "hospital",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1121,61 +891,112 @@
     "coordinates": [
      [
       [
-       31.4901041,
-       30.0254798
+       31.3306983,
+       30.0956558
       ],
       [
-       31.4912426,
-       30.0254768
+       31.3307618,
+       30.0956106
       ],
       [
-       31.4912424,
-       30.0254026
+       31.330786,
+       30.095636
       ],
       [
-       31.491242,
-       30.0253097
+       31.3308376,
+       30.0955992
       ],
       [
-       31.4912418,
-       30.0252237
+       31.3308512,
+       30.0956136
       ],
       [
-       31.4901032,
-       30.0252265
+       31.3309161,
+       30.0955674
       ],
       [
-       31.4901035,
-       30.0253096
+       31.3309539,
+       30.0955139
       ],
       [
-       31.4901038,
-       30.0254052
+       31.3311857,
+       30.0955889
       ],
       [
-       31.4901041,
-       30.0254798
+       31.3313067,
+       30.0956164
+      ],
+      [
+       31.3315964,
+       30.0957208
+      ],
+      [
+       31.3313164,
+       30.096036
+      ],
+      [
+       31.3313039,
+       30.0960599
+      ],
+      [
+       31.3312572,
+       30.0961191
+      ],
+      [
+       31.3311688,
+       30.0961837
+      ],
+      [
+       31.3308195,
+       30.0958383
+      ],
+      [
+       31.3308578,
+       30.0958111
+      ],
+      [
+       31.3308028,
+       30.0957532
+      ],
+      [
+       31.3307556,
+       30.0957867
+      ],
+      [
+       31.3307316,
+       30.0957615
+      ],
+      [
+       31.3307717,
+       30.095733
+      ],
+      [
+       31.3306983,
+       30.0956558
       ]
      ]
     ]
    },
    "properties": {
     "id": "b012",
-    "code": "NAC-Knowledge-012",
-    "name": "Office Building 12",
-    "district": "Knowledge-City",
-    "lat": 30.025354,
-    "lon": 31.490673,
-    "floor_area_m2": 9279.1,
-    "roof_area_m2": 3093.0,
-    "glazing_area_m2": 2744.2,
+    "code": "CAI-012",
+    "name": "Capital Hospital",
+    "district": "Cairo",
+    "lat": 30.09576,
+    "lon": 31.330984,
+    "floor_area_m2": 13021.0,
+    "roof_area_m2": 3255.2,
+    "glazing_area_m2": 3324.0,
     "roof_orientation": "FLAT",
-    "hvac_type": "package",
-    "hvac_age_yr": 2,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "office",
-    "annual_kwh": 1460508.0,
-    "osm_way_id": 1232415410
+    "hvac_type": "split",
+    "hvac_age_yr": 15,
+    "insulation_quality": "good",
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 2639235.0,
+    "osm_way_id": 376827235,
+    "osm_kind": "hospital",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1185,81 +1006,48 @@
     "coordinates": [
      [
       [
-       31.4901649,
-       30.0378148
+       31.2664415,
+       30.0964437
       ],
       [
-       31.4899902,
-       30.0375918
+       31.2659497,
+       30.0965319
       ],
       [
-       31.4896306,
-       30.0376442
+       31.2658746,
+       30.0961049
       ],
       [
-       31.4896247,
-       30.0376125
+       31.2663202,
+       30.095973
       ],
       [
-       31.4897572,
-       30.037594
-      ],
-      [
-       31.4897378,
-       30.0374915
-      ],
-      [
-       31.4897654,
-       30.0374586
-      ],
-      [
-       31.4897412,
-       30.0373283
-      ],
-      [
-       31.4896799,
-       30.0372888
-      ],
-      [
-       31.4894358,
-       30.0373238
-      ],
-      [
-       31.4895078,
-       30.0376996
-      ],
-      [
-       31.4895078,
-       30.0378687
-      ],
-      [
-       31.4897188,
-       30.0378687
-      ],
-      [
-       31.4901649,
-       30.0378148
+       31.2664415,
+       30.0964437
       ]
      ]
     ]
    },
    "properties": {
     "id": "b013",
-    "code": "NAC-Knowledge-013",
-    "name": "Office Building 13",
-    "district": "Knowledge-City",
-    "lat": 30.037583,
-    "lon": 31.489712,
-    "floor_area_m2": 9704.2,
-    "roof_area_m2": 2426.1,
-    "glazing_area_m2": 856.6,
-    "roof_orientation": "S",
+    "code": "CAI-013",
+    "name": "قسم الزاوية الحمراء",
+    "district": "Cairo",
+    "lat": 30.096263,
+    "lon": 31.266146,
+    "floor_area_m2": 16599.9,
+    "roof_area_m2": 2371.4,
+    "glazing_area_m2": 3525.9,
+    "roof_orientation": "FLAT",
     "hvac_type": "package",
-    "hvac_age_yr": 20,
-    "insulation_quality": "poor",
-    "occupancy_pattern": "office",
-    "annual_kwh": 1736809.0,
-    "osm_way_id": 1304314503
+    "hvac_age_yr": 23,
+    "insulation_quality": "good",
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 3882165.0,
+    "osm_way_id": 413191361,
+    "osm_kind": "police",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1269,45 +1057,48 @@
     "coordinates": [
      [
       [
-       31.4886802,
-       30.0283498
+       31.3152162,
+       30.1213416
       ],
       [
-       31.4891067,
-       30.0283474
+       31.3148259,
+       30.1214195
       ],
       [
-       31.4891067,
-       30.0279039
+       31.3146975,
+       30.120938
       ],
       [
-       31.4886775,
-       30.0278946
+       31.3150877,
+       30.1208601
       ],
       [
-       31.4886802,
-       30.0283498
+       31.3152162,
+       30.1213416
       ]
      ]
     ]
    },
    "properties": {
     "id": "b014",
-    "code": "NAC-Knowledge-014",
-    "name": "School Building 14",
-    "district": "Knowledge-City",
-    "lat": 30.028124,
-    "lon": 31.488893,
-    "floor_area_m2": 8250.5,
-    "roof_area_m2": 2062.6,
-    "glazing_area_m2": 1978.3,
+    "code": "CAI-014",
+    "name": "Desert Institute",
+    "district": "Cairo",
+    "lat": 30.12114,
+    "lon": 31.314957,
+    "floor_area_m2": 12728.2,
+    "roof_area_m2": 2121.4,
+    "glazing_area_m2": 1777.8,
     "roof_orientation": "FLAT",
-    "hvac_type": "chiller",
-    "hvac_age_yr": 6,
+    "hvac_type": "package",
+    "hvac_age_yr": 25,
     "insulation_quality": "poor",
-    "occupancy_pattern": "school",
-    "annual_kwh": 748454.0,
-    "osm_way_id": 338261350
+    "occupancy_pattern": "office",
+    "annual_kwh": 2185970.0,
+    "osm_way_id": 34145774,
+    "osm_kind": "public",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1317,45 +1108,52 @@
     "coordinates": [
      [
       [
-       31.4882376,
-       30.0265408
+       31.2168252,
+       30.0602775
       ],
       [
-       31.4882269,
-       30.0269054
+       31.217017,
+       30.0602566
       ],
       [
-       31.4887258,
-       30.0269054
+       31.217249,
+       30.0606687
       ],
       [
-       31.4887312,
-       30.0265384
+       31.2168387,
+       30.0608521
       ],
       [
-       31.4882376,
-       30.0265408
+       31.2167381,
+       30.0607801
+      ],
+      [
+       31.2168252,
+       30.0602775
       ]
      ]
     ]
    },
    "properties": {
     "id": "b015",
-    "code": "NAC-Knowledge-015",
-    "name": "School Building 15",
-    "district": "Knowledge-City",
-    "lat": 30.026722,
-    "lon": 31.48848,
-    "floor_area_m2": 3895.0,
-    "roof_area_m2": 1947.5,
-    "glazing_area_m2": 841.4,
-    "roof_orientation": "S",
-    "hvac_type": "chiller",
-    "hvac_age_yr": 15,
-    "insulation_quality": "good",
-    "occupancy_pattern": "school",
-    "annual_kwh": 463133.0,
-    "osm_way_id": 338261349
+    "code": "CAI-015",
+    "name": "Ministry of Culture",
+    "district": "Cairo",
+    "lat": 30.060567,
+    "lon": 31.216934,
+    "floor_area_m2": 6096.7,
+    "roof_area_m2": 2032.2,
+    "glazing_area_m2": 521.2,
+    "roof_orientation": "FLAT",
+    "hvac_type": "package",
+    "hvac_age_yr": 6,
+    "insulation_quality": "poor",
+    "occupancy_pattern": "office",
+    "annual_kwh": 883195.0,
+    "osm_way_id": 519168421,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1365,61 +1163,48 @@
     "coordinates": [
      [
       [
-       31.4931786,
-       30.0258316
+       31.292591,
+       30.0823135
       ],
       [
-       31.4933748,
-       30.0258357
+       31.2922584,
+       30.0819793
       ],
       [
-       31.4934098,
-       30.0264988
+       31.2925588,
+       30.0817379
       ],
       [
-       31.4932277,
-       30.0264968
+       31.2929021,
+       30.0820721
       ],
       [
-       31.493216,
-       30.0263977
-      ],
-      [
-       31.4930035,
-       30.0263795
-      ],
-      [
-       31.4930058,
-       30.0262582
-      ],
-      [
-       31.4931926,
-       30.0262562
-      ],
-      [
-       31.4931786,
-       30.0258316
+       31.292591,
+       30.0823135
       ]
      ]
     ]
    },
    "properties": {
     "id": "b016",
-    "code": "NAC-Knowledge-016",
-    "name": "School Building 16",
-    "district": "Knowledge-City",
-    "lat": 30.026244,
-    "lon": 31.493201,
-    "floor_area_m2": 3370.6,
-    "roof_area_m2": 1685.3,
-    "glazing_area_m2": 499.6,
+    "code": "CAI-016",
+    "name": "Ministry of Defence",
+    "district": "Cairo",
+    "lat": 30.082026,
+    "lon": 31.292578,
+    "floor_area_m2": 9852.5,
+    "roof_area_m2": 1970.5,
+    "glazing_area_m2": 2085.3,
     "roof_orientation": "FLAT",
-    "hvac_type": "package",
-    "hvac_age_yr": 17,
-    "insulation_quality": "good",
-    "occupancy_pattern": "school",
-    "annual_kwh": 342926.0,
-    "osm_way_id": 832893978
+    "hvac_type": "chiller",
+    "hvac_age_yr": 19,
+    "insulation_quality": "fair",
+    "occupancy_pattern": "office",
+    "annual_kwh": 1443035.0,
+    "osm_way_id": 52131044,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1429,97 +1214,48 @@
     "coordinates": [
      [
       [
-       31.491921,
-       30.0280035
+       31.2259677,
+       30.0119176
       ],
       [
-       31.4919625,
-       30.027987
+       31.2259677,
+       30.011611
       ],
       [
-       31.4920126,
-       30.0279603
+       31.2264935,
+       30.011611
       ],
       [
-       31.4920865,
-       30.0278992
+       31.2265471,
+       30.0119176
       ],
       [
-       31.4920664,
-       30.0277339
-      ],
-      [
-       31.4920984,
-       30.0277338
-      ],
-      [
-       31.4922776,
-       30.0277332
-      ],
-      [
-       31.4923045,
-       30.0277333
-      ],
-      [
-       31.4923005,
-       30.027914
-      ],
-      [
-       31.4923001,
-       30.0279336
-      ],
-      [
-       31.492364,
-       30.0279352
-      ],
-      [
-       31.4923762,
-       30.0281411
-      ],
-      [
-       31.4922807,
-       30.0281405
-      ],
-      [
-       31.4922813,
-       30.0281797
-      ],
-      [
-       31.4920341,
-       30.0281896
-      ],
-      [
-       31.4919197,
-       30.0281613
-      ],
-      [
-       31.49192,
-       30.0281138
-      ],
-      [
-       31.491921,
-       30.0280035
+       31.2259677,
+       30.0119176
       ]
      ]
     ]
    },
    "properties": {
     "id": "b017",
-    "code": "NAC-Knowledge-017",
-    "name": "Office Building 17",
-    "district": "Knowledge-City",
-    "lat": 30.02797,
-    "lon": 31.492147,
-    "floor_area_m2": 3184.9,
-    "roof_area_m2": 1592.5,
-    "glazing_area_m2": 325.6,
-    "roof_orientation": "E",
-    "hvac_type": "package",
-    "hvac_age_yr": 5,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "office",
-    "annual_kwh": 558088.0,
-    "osm_way_id": 1227370363
+    "code": "CAI-017",
+    "name": "Gihan Al-Sadat",
+    "district": "Cairo",
+    "lat": 30.011764,
+    "lon": 31.226244,
+    "floor_area_m2": 7272.2,
+    "roof_area_m2": 1818.1,
+    "glazing_area_m2": 810.5,
+    "roof_orientation": "FLAT",
+    "hvac_type": "split",
+    "hvac_age_yr": 22,
+    "insulation_quality": "poor",
+    "occupancy_pattern": "school",
+    "annual_kwh": 586828.0,
+    "osm_way_id": 53329638,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1529,145 +1265,68 @@
     "coordinates": [
      [
       [
-       31.4919198,
-       30.0264762
+       31.2521417,
+       30.0445658
       ],
       [
-       31.4919205,
-       30.0265003
+       31.2523724,
+       30.0446071
       ],
       [
-       31.491945,
-       30.0264998
+       31.2524277,
+       30.0445799
       ],
       [
-       31.491955,
-       30.0264908
+       31.2525725,
+       30.0444711
       ],
       [
-       31.4919743,
-       30.0265067
+       31.2526766,
+       30.0444304
       ],
       [
-       31.4919586,
-       30.026521
+       31.2525814,
+       30.0442457
       ],
       [
-       31.492033,
-       30.0265825
+       31.2526557,
+       30.0442172
       ],
       [
-       31.4920363,
-       30.0265825
+       31.2525597,
+       30.0441288
       ],
       [
-       31.4921498,
-       30.0265816
+       31.2522659,
+       30.0442181
       ],
       [
-       31.4921503,
-       30.0265684
-      ],
-      [
-       31.4922114,
-       30.0265686
-      ],
-      [
-       31.4922106,
-       30.026587
-      ],
-      [
-       31.4922906,
-       30.0265868
-      ],
-      [
-       31.4922911,
-       30.0265687
-      ],
-      [
-       31.4923512,
-       30.0265683
-      ],
-      [
-       31.4923491,
-       30.0265159
-      ],
-      [
-       31.4923585,
-       30.0265063
-      ],
-      [
-       31.4923484,
-       30.0264967
-      ],
-      [
-       31.4923471,
-       30.0264629
-      ],
-      [
-       31.4923459,
-       30.0264307
-      ],
-      [
-       31.4921627,
-       30.0264307
-      ],
-      [
-       31.4921651,
-       30.0264218
-      ],
-      [
-       31.492082,
-       30.026391
-      ],
-      [
-       31.4920739,
-       30.0264033
-      ],
-      [
-       31.4919698,
-       30.0263118
-      ],
-      [
-       31.4919599,
-       30.0263031
-      ],
-      [
-       31.4918416,
-       30.0263971
-      ],
-      [
-       31.4918536,
-       30.026407
-      ],
-      [
-       31.4919282,
-       30.0264686
-      ],
-      [
-       31.4919198,
-       30.0264762
+       31.2521417,
+       30.0445658
       ]
      ]
     ]
    },
    "properties": {
     "id": "b018",
-    "code": "NAC-Knowledge-018",
-    "name": "Admin 24X7 Building 18",
-    "district": "Knowledge-City",
-    "lat": 30.026487,
-    "lon": 31.49211,
-    "floor_area_m2": 6739.0,
-    "roof_area_m2": 842.4,
-    "glazing_area_m2": 607.0,
+    "code": "CAI-018",
+    "name": "دار الكتب",
+    "district": "Cairo",
+    "lat": 30.044385,
+    "lon": 31.252473,
+    "floor_area_m2": 10291.4,
+    "roof_area_m2": 1715.2,
+    "glazing_area_m2": 1263.4,
     "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 6,
+    "hvac_type": "chiller",
+    "hvac_age_yr": 7,
     "insulation_quality": "fair",
-    "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 1379500.0,
-    "osm_way_id": 1227370366
+    "occupancy_pattern": "office",
+    "annual_kwh": 1707707.0,
+    "osm_way_id": 29853309,
+    "osm_kind": "library",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1677,61 +1336,56 @@
     "coordinates": [
      [
       [
-       31.4935602,
-       30.0481789
+       31.2300207,
+       30.055699
       ],
       [
-       31.4935531,
-       30.0481138
+       31.2298012,
+       30.0556277
       ],
       [
-       31.4935975,
-       30.0480859
+       31.2296322,
+       30.0555729
       ],
       [
-       31.4936261,
-       30.0480486
+       31.2297065,
+       30.0554014
       ],
       [
-       31.493649,
-       30.0480335
+       31.2297806,
+       30.0552304
       ],
       [
-       31.4937592,
-       30.0479994
+       31.2301691,
+       30.0553565
       ],
       [
-       31.4938911,
-       30.0482483
-      ],
-      [
-       31.4936298,
-       30.0483592
-      ],
-      [
-       31.4935602,
-       30.0481789
+       31.2300207,
+       30.055699
       ]
      ]
     ]
    },
    "properties": {
     "id": "b019",
-    "code": "NAC-Knowledge-019",
-    "name": "Office Building 19",
-    "district": "Knowledge-City",
-    "lat": 30.048133,
-    "lon": 31.493658,
-    "floor_area_m2": 4742.7,
-    "roof_area_m2": 790.4,
-    "glazing_area_m2": 852.0,
+    "code": "CAI-019",
+    "name": "Foreign Ministry",
+    "district": "Cairo",
+    "lat": 30.055481,
+    "lon": 31.229852,
+    "floor_area_m2": 4883.5,
+    "roof_area_m2": 1627.8,
+    "glazing_area_m2": 857.6,
     "roof_orientation": "FLAT",
     "hvac_type": "chiller",
-    "hvac_age_yr": 7,
-    "insulation_quality": "fair",
+    "hvac_age_yr": 8,
+    "insulation_quality": "poor",
     "occupancy_pattern": "office",
-    "annual_kwh": 898341.0,
-    "osm_way_id": 498052959
+    "annual_kwh": 745742.0,
+    "osm_way_id": 36053383,
+    "osm_kind": "public",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1741,133 +1395,48 @@
     "coordinates": [
      [
       [
-       31.4913828,
-       30.0366958
+       31.3167359,
+       30.1228513
       ],
       [
-       31.4914457,
-       30.0367481
+       31.3171462,
+       30.1227619
       ],
       [
-       31.4914564,
-       30.0367385
+       31.3170527,
+       30.1224412
       ],
       [
-       31.491479,
-       30.0367573
+       31.3166424,
+       30.1225306
       ],
       [
-       31.491478,
-       30.0367694
-      ],
-      [
-       31.4914629,
-       30.036783
-      ],
-      [
-       31.4914478,
-       30.0367705
-      ],
-      [
-       31.4913734,
-       30.036838
-      ],
-      [
-       31.4915081,
-       30.0369493
-      ],
-      [
-       31.4915262,
-       30.0369329
-      ],
-      [
-       31.4915443,
-       30.0369479
-      ],
-      [
-       31.4915934,
-       30.0369034
-      ],
-      [
-       31.4915721,
-       30.0368857
-      ],
-      [
-       31.4915952,
-       30.0368648
-      ],
-      [
-       31.4915635,
-       30.0368386
-      ],
-      [
-       31.4915949,
-       30.0368102
-      ],
-      [
-       31.4916805,
-       30.0368098
-      ],
-      [
-       31.4916802,
-       30.0367585
-      ],
-      [
-       31.4915479,
-       30.0367591
-      ],
-      [
-       31.4915477,
-       30.0367276
-      ],
-      [
-       31.4916146,
-       30.0366673
-      ],
-      [
-       31.4915833,
-       30.0366413
-      ],
-      [
-       31.4915926,
-       30.0366329
-      ],
-      [
-       31.4915413,
-       30.0365903
-      ],
-      [
-       31.4915263,
-       30.0366038
-      ],
-      [
-       31.4915048,
-       30.0365859
-      ],
-      [
-       31.4913828,
-       30.0366958
+       31.3167359,
+       30.1228513
       ]
      ]
     ]
    },
    "properties": {
     "id": "b020",
-    "code": "NAC-Knowledge-020",
-    "name": "Clinic Building 20",
-    "district": "Knowledge-City",
-    "lat": 30.03677,
-    "lon": 31.491532,
-    "floor_area_m2": 2382.1,
-    "roof_area_m2": 595.5,
-    "glazing_area_m2": 284.4,
+    "code": "CAI-020",
+    "name": "مدرسة النعام الإعدادية بنات",
+    "district": "Cairo",
+    "lat": 30.122646,
+    "lon": 31.316894,
+    "floor_area_m2": 3000.0,
+    "roof_area_m2": 1500.0,
+    "glazing_area_m2": 473.4,
     "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 17,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "clinic",
-    "annual_kwh": 482842.0,
-    "osm_way_id": 1304314474
+    "hvac_type": "package",
+    "hvac_age_yr": 22,
+    "insulation_quality": "good",
+    "occupancy_pattern": "school",
+    "annual_kwh": 267960.0,
+    "osm_way_id": 929127190,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1877,57 +1446,128 @@
     "coordinates": [
      [
       [
-       31.4951537,
-       30.027418
+       31.2288541,
+       30.0299905
       ],
       [
-       31.4951269,
-       30.0267585
+       31.2288912,
+       30.0300656
       ],
       [
-       31.4953791,
-       30.0268142
+       31.2290653,
+       30.0300013
       ],
       [
-       31.4955078,
-       30.0269304
+       31.2289408,
+       30.0297486
       ],
       [
-       31.49554,
-       30.0272137
+       31.2288816,
+       30.0297705
       ],
       [
-       31.4954863,
-       30.0273484
+       31.2288454,
+       30.0296971
       ],
       [
-       31.4952932,
-       30.027432
+       31.2287889,
+       30.029718
       ],
       [
-       31.4951537,
-       30.027418
+       31.228825,
+       30.0297914
+      ],
+      [
+       31.2287667,
+       30.0298129
+      ],
+      [
+       31.2288021,
+       30.0298849
+      ],
+      [
+       31.2287708,
+       30.0298965
+      ],
+      [
+       31.2287063,
+       30.0297656
+      ],
+      [
+       31.2286815,
+       30.0297747
+      ],
+      [
+       31.2286366,
+       30.0297913
+      ],
+      [
+       31.2285846,
+       30.0298105
+      ],
+      [
+       31.2286524,
+       30.0299482
+      ],
+      [
+       31.2286283,
+       30.0299571
+      ],
+      [
+       31.2286793,
+       30.0300606
+      ],
+      [
+       31.2287034,
+       30.0300517
+      ],
+      [
+       31.228769,
+       30.0301847
+      ],
+      [
+       31.2288324,
+       30.0301615
+      ],
+      [
+       31.2288702,
+       30.0301474
+      ],
+      [
+       31.2288907,
+       30.0301398
+      ],
+      [
+       31.2288228,
+       30.0300021
+      ],
+      [
+       31.2288541,
+       30.0299905
       ]
      ]
     ]
    },
    "properties": {
     "id": "b021",
-    "code": "NAC-Medical-021",
-    "name": "Admin 24X7 Building 21",
-    "district": "Medical-City",
-    "lat": 30.027131,
-    "lon": 31.495355,
-    "floor_area_m2": 9445.4,
-    "roof_area_m2": 2361.3,
-    "glazing_area_m2": 1020.9,
-    "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 8,
-    "insulation_quality": "good",
-    "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 1998407.0,
-    "osm_way_id": 832893977
+    "code": "CAI-021",
+    "name": "Students Affairs",
+    "district": "Cairo",
+    "lat": 30.029924,
+    "lon": 31.228787,
+    "floor_area_m2": 5047.5,
+    "roof_area_m2": 1261.9,
+    "glazing_area_m2": 445.5,
+    "roof_orientation": "S",
+    "hvac_type": "package",
+    "hvac_age_yr": 20,
+    "insulation_quality": "poor",
+    "occupancy_pattern": "office",
+    "annual_kwh": 903376.0,
+    "osm_way_id": 547653397,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -1937,93 +1577,192 @@
     "coordinates": [
      [
       [
-       31.4997928,
-       30.0201186
+       31.2150415,
+       30.0534057
       ],
       [
-       31.4996512,
-       30.0202346
+       31.2155499,
+       30.053523
       ],
       [
-       31.499577,
-       30.0201667
+       31.2155928,
+       30.0535323
       ],
       [
-       31.4994591,
-       30.0202633
+       31.2161164,
+       30.0536063
       ],
       [
-       31.4995354,
-       30.0203332
+       31.2160862,
+       30.0537605
       ],
       [
-       31.4994385,
-       30.0204127
+       31.215638,
+       30.0536718
       ],
       [
-       31.4990918,
-       30.0200954
+       31.2155946,
+       30.0538449
       ],
       [
-       31.4991291,
-       30.0200648
+       31.2155911,
+       30.0538589
       ],
       [
-       31.4991074,
-       30.020045
+       31.2155356,
+       30.0540805
       ],
       [
-       31.499067,
-       30.020008
+       31.2159423,
+       30.0541569
       ],
       [
-       31.499127,
-       30.0199588
+       31.2159201,
+       30.0542454
       ],
       [
-       31.4991651,
-       30.0199936
+       31.2155064,
+       30.0541677
       ],
       [
-       31.4991921,
-       30.0200183
+       31.2154036,
+       30.0545777
       ],
       [
-       31.4992255,
-       30.0199909
+       31.215814,
+       30.0546548
       ],
       [
-       31.4993635,
-       30.0201171
+       31.2157947,
+       30.0547318
       ],
       [
-       31.4995891,
-       30.0199322
+       31.2153788,
+       30.0546537
       ],
       [
-       31.4997928,
-       30.0201186
+       31.2153226,
+       30.0548781
+      ],
+      [
+       31.2157364,
+       30.0549558
+      ],
+      [
+       31.2157138,
+       30.0550459
+      ],
+      [
+       31.2152957,
+       30.0549674
+      ],
+      [
+       31.2152444,
+       30.0551723
+      ],
+      [
+       31.2156604,
+       30.0552504
+      ],
+      [
+       31.2156362,
+       30.0553467
+      ],
+      [
+       31.2147112,
+       30.055173
+      ],
+      [
+       31.2147346,
+       30.0550799
+      ],
+      [
+       31.215127,
+       30.0551536
+      ],
+      [
+       31.2151782,
+       30.054949
+      ],
+      [
+       31.2147916,
+       30.0548764
+      ],
+      [
+       31.2148146,
+       30.0547847
+      ],
+      [
+       31.2152029,
+       30.0548576
+      ],
+      [
+       31.2152584,
+       30.0546361
+      ],
+      [
+       31.214876,
+       30.0545643
+      ],
+      [
+       31.2148962,
+       30.0544837
+      ],
+      [
+       31.2152808,
+       30.0545559
+      ],
+      [
+       31.2153833,
+       30.0541467
+      ],
+      [
+       31.2150082,
+       30.0540763
+      ],
+      [
+       31.2150283,
+       30.0539962
+      ],
+      [
+       31.2154061,
+       30.0540671
+      ],
+      [
+       31.2155098,
+       30.0536534
+      ],
+      [
+       31.2150032,
+       30.0535583
+      ],
+      [
+       31.2150415,
+       30.0534057
       ]
      ]
     ]
    },
    "properties": {
     "id": "b022",
-    "code": "NAC-Medical-022",
-    "name": "School Building 22",
-    "district": "Medical-City",
-    "lat": 30.02011,
-    "lon": 31.499344,
-    "floor_area_m2": 6411.2,
-    "roof_area_m2": 1602.8,
-    "glazing_area_m2": 1358.3,
+    "code": "GIZ-022",
+    "name": "Mustashfa Al-Aguza",
+    "district": "Giza",
+    "lat": 30.054418,
+    "lon": 31.215383,
+    "floor_area_m2": 49094.5,
+    "roof_area_m2": 7013.5,
+    "glazing_area_m2": 5461.5,
     "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 18,
+    "hvac_type": "package",
+    "hvac_age_yr": 20,
     "insulation_quality": "poor",
-    "occupancy_pattern": "school",
-    "annual_kwh": 729150.0,
-    "osm_way_id": 539061341
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 11958270.0,
+    "osm_way_id": 48980479,
+    "osm_kind": "hospital",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2033,57 +1772,48 @@
     "coordinates": [
      [
       [
-       31.4965951,
-       30.0495489
+       31.1123081,
+       29.9912152
       ],
       [
-       31.4967808,
-       30.0495443
+       31.1129911,
+       29.9914231
       ],
       [
-       31.4970008,
-       30.0495321
+       31.1131946,
+       29.9909213
       ],
       [
-       31.496874,
-       30.0492454
+       31.1125116,
+       29.9907136
       ],
       [
-       31.4966574,
-       30.0492988
-      ],
-      [
-       31.496587,
-       30.0493127
-      ],
-      [
-       31.496587,
-       30.0493713
-      ],
-      [
-       31.4965951,
-       30.0495489
+       31.1123081,
+       29.9912152
       ]
      ]
     ]
    },
    "properties": {
     "id": "b023",
-    "code": "NAC-Medical-023",
-    "name": "Admin 24X7 Building 23",
-    "district": "Medical-City",
-    "lat": 30.049408,
-    "lon": 31.496726,
-    "floor_area_m2": 4028.0,
-    "roof_area_m2": 1007.0,
-    "glazing_area_m2": 469.6,
+    "code": "GIZ-023",
+    "name": "شهيد عقيد ا.ح عاصم محمد عصام الدين عبدالرحمن الثانويه بنين",
+    "district": "Giza",
+    "lat": 29.991068,
+    "lon": 31.112751,
+    "floor_area_m2": 16526.4,
+    "roof_area_m2": 4131.6,
+    "glazing_area_m2": 2957.3,
     "roof_orientation": "FLAT",
-    "hvac_type": "chiller",
-    "hvac_age_yr": 20,
+    "hvac_type": "split",
+    "hvac_age_yr": 16,
     "insulation_quality": "good",
-    "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 874850.0,
-    "osm_way_id": 497855287
+    "occupancy_pattern": "school",
+    "annual_kwh": 1439591.0,
+    "osm_way_id": 1457135722,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2093,45 +1823,120 @@
     "coordinates": [
      [
       [
-       31.4954903,
-       30.0480224
+       31.215627,
+       30.0533059
       ],
       [
-       31.4955904,
-       30.0482568
+       31.2154325,
+       30.0532664
       ],
       [
-       31.4953004,
-       30.0483495
+       31.2154768,
+       30.0530894
       ],
       [
-       31.4952004,
-       30.0481152
+       31.215405,
+       30.0530761
       ],
       [
-       31.4954903,
-       30.0480224
+       31.2154379,
+       30.0529455
+      ],
+      [
+       31.215515,
+       30.0529588
+      ],
+      [
+       31.2155619,
+       30.052769
+      ],
+      [
+       31.216156,
+       30.0528903
+      ],
+      [
+       31.2161051,
+       30.053068
+      ],
+      [
+       31.2160933,
+       30.0530654
+      ],
+      [
+       31.2160608,
+       30.0531867
+      ],
+      [
+       31.2160772,
+       30.0531896
+      ],
+      [
+       31.2160293,
+       30.0533872
+      ],
+      [
+       31.215806,
+       30.0533387
+      ],
+      [
+       31.2158087,
+       30.0533239
+      ],
+      [
+       31.2156769,
+       30.0532981
+      ],
+      [
+       31.2156444,
+       30.0534597
+      ],
+      [
+       31.2156075,
+       30.0534562
+      ],
+      [
+       31.2155928,
+       30.0535323
+      ],
+      [
+       31.2155499,
+       30.053523
+      ],
+      [
+       31.2155784,
+       30.053357
+      ],
+      [
+       31.2156209,
+       30.0533616
+      ],
+      [
+       31.215627,
+       30.0533059
       ]
      ]
     ]
    },
    "properties": {
     "id": "b024",
-    "code": "NAC-Medical-024",
-    "name": "School Building 24",
-    "district": "Medical-City",
-    "lat": 30.048186,
-    "lon": 31.495395,
-    "floor_area_m2": 2485.2,
-    "roof_area_m2": 828.4,
-    "glazing_area_m2": 218.3,
+    "code": "GIZ-024",
+    "name": "مستشفى الشرطة",
+    "district": "Giza",
+    "lat": 30.05322,
+    "lon": 31.215721,
+    "floor_area_m2": 21212.0,
+    "roof_area_m2": 3535.3,
+    "glazing_area_m2": 5677.2,
     "roof_orientation": "FLAT",
     "hvac_type": "split",
-    "hvac_age_yr": 12,
+    "hvac_age_yr": 6,
     "insulation_quality": "poor",
-    "occupancy_pattern": "school",
-    "annual_kwh": 281590.0,
-    "osm_way_id": 498052948
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 4903024.0,
+    "osm_way_id": 414001473,
+    "osm_kind": "hospital",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2141,45 +1946,48 @@
     "coordinates": [
      [
       [
-       31.4946033,
-       30.0461842
+       31.2262727,
+       30.0916805
       ],
       [
-       31.4946991,
-       30.0464171
+       31.2262837,
+       30.0909937
       ],
       [
-       31.4944654,
-       30.0464892
+       31.2267259,
+       30.090999
       ],
       [
-       31.4943696,
-       30.0462563
+       31.2267149,
+       30.0916858
       ],
       [
-       31.4946033,
-       30.0461842
+       31.2262727,
+       30.0916805
       ]
      ]
     ]
    },
    "properties": {
     "id": "b025",
-    "code": "NAC-Medical-025",
-    "name": "Office Building 25",
-    "district": "Medical-City",
-    "lat": 30.046337,
-    "lon": 31.494534,
-    "floor_area_m2": 2631.8,
-    "roof_area_m2": 657.9,
-    "glazing_area_m2": 233.8,
+    "code": "GIZ-025",
+    "name": "Ministry of Irrigation",
+    "district": "Giza",
+    "lat": 30.09134,
+    "lon": 31.226499,
+    "floor_area_m2": 16284.7,
+    "roof_area_m2": 3256.9,
+    "glazing_area_m2": 4869.6,
     "roof_orientation": "FLAT",
-    "hvac_type": "chiller",
-    "hvac_age_yr": 19,
+    "hvac_type": "split",
+    "hvac_age_yr": 23,
     "insulation_quality": "poor",
     "occupancy_pattern": "office",
-    "annual_kwh": 382547.0,
-    "osm_way_id": 498052957
+    "annual_kwh": 2563704.0,
+    "osm_way_id": 25746077,
+    "osm_kind": "public",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2189,45 +1997,48 @@
     "coordinates": [
      [
       [
-       31.4943194,
-       30.0489281
+       31.2111271,
+       30.0493284
       ],
       [
-       31.4945296,
-       30.0490955
+       31.2108002,
+       30.0492394
       ],
       [
-       31.4943615,
-       30.0492535
+       31.2112205,
+       30.0484876
       ],
       [
-       31.4941514,
-       30.049086
+       31.2115101,
+       30.0485927
       ],
       [
-       31.4943194,
-       30.0489281
+       31.2111271,
+       30.0493284
       ]
      ]
     ]
    },
    "properties": {
     "id": "b026",
-    "code": "NAC-Medical-026",
-    "name": "Office Building 26",
-    "district": "Medical-City",
-    "lat": 30.049091,
-    "lon": 31.49434,
-    "floor_area_m2": 2631.6,
-    "roof_area_m2": 657.9,
-    "glazing_area_m2": 735.3,
+    "code": "GIZ-026",
+    "name": "Egyptian Drug Authority - EDA",
+    "district": "Giza",
+    "lat": 30.048912,
+    "lon": 31.211164,
+    "floor_area_m2": 5754.6,
+    "roof_area_m2": 2877.3,
+    "glazing_area_m2": 1374.8,
     "roof_orientation": "FLAT",
-    "hvac_type": "chiller",
-    "hvac_age_yr": 5,
-    "insulation_quality": "poor",
+    "hvac_type": "package",
+    "hvac_age_yr": 23,
+    "insulation_quality": "fair",
     "occupancy_pattern": "office",
-    "annual_kwh": 448044.0,
-    "osm_way_id": 498052944
+    "annual_kwh": 1062288.0,
+    "osm_way_id": 448986246,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2237,45 +2048,48 @@
     "coordinates": [
      [
       [
-       31.4941238,
-       30.0477885
+       31.2170281,
+       30.0474364
       ],
       [
-       31.4943979,
-       30.0477092
+       31.2173253,
+       30.0466996
       ],
       [
-       31.4944675,
-       30.0478894
+       31.2170329,
+       30.0466112
       ],
       [
-       31.4941934,
-       30.0479687
+       31.2167355,
+       30.047348
       ],
       [
-       31.4941238,
-       30.0477885
+       31.2170281,
+       30.0474364
       ]
      ]
     ]
    },
    "properties": {
     "id": "b027",
-    "code": "NAC-Medical-027",
-    "name": "Clinic Building 27",
-    "district": "Medical-City",
-    "lat": 30.047839,
-    "lon": 31.494296,
-    "floor_area_m2": 1178.1,
-    "roof_area_m2": 589.0,
-    "glazing_area_m2": 176.9,
+    "code": "GIZ-027",
+    "name": "Agouza Police Department",
+    "district": "Giza",
+    "lat": 30.047024,
+    "lon": 31.21703,
+    "floor_area_m2": 12968.5,
+    "roof_area_m2": 2593.7,
+    "glazing_area_m2": 3565.2,
     "roof_orientation": "FLAT",
     "hvac_type": "package",
-    "hvac_age_yr": 12,
-    "insulation_quality": "poor",
-    "occupancy_pattern": "clinic",
-    "annual_kwh": 197684.0,
-    "osm_way_id": 498052953
+    "hvac_age_yr": 19,
+    "insulation_quality": "good",
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 2965788.0,
+    "osm_way_id": 768013659,
+    "osm_kind": "police",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2285,45 +2099,120 @@
     "coordinates": [
      [
       [
-       31.4957345,
-       30.0495631
+       31.2183809,
+       30.0353966
       ],
       [
-       31.4957376,
-       30.0497442
+       31.2186947,
+       30.035313
       ],
       [
-       31.4954032,
-       30.049746
+       31.2187296,
+       30.03527
       ],
       [
-       31.4954632,
-       30.0495668
+       31.2188621,
+       30.0352432
       ],
       [
-       31.4957345,
-       30.0495631
+       31.218768,
+       30.0349481
+      ],
+      [
+       31.2186559,
+       30.0349774
+      ],
+      [
+       31.2185968,
+       30.0348033
+      ],
+      [
+       31.2182227,
+       30.034902
+      ],
+      [
+       31.2182716,
+       30.0350721
+      ],
+      [
+       31.2183689,
+       30.03505
+      ],
+      [
+       31.218401,
+       30.0351556
+      ],
+      [
+       31.2183796,
+       30.0351658
+      ],
+      [
+       31.2183638,
+       30.0351783
+      ],
+      [
+       31.2183561,
+       30.0351873
+      ],
+      [
+       31.2183548,
+       30.0351972
+      ],
+      [
+       31.2183588,
+       30.0352082
+      ],
+      [
+       31.2183722,
+       30.0352154
+      ],
+      [
+       31.2183997,
+       30.0352233
+      ],
+      [
+       31.2184027,
+       30.0352305
+      ],
+      [
+       31.2184017,
+       30.0352349
+      ],
+      [
+       31.2183957,
+       30.0352369
+      ],
+      [
+       31.2183407,
+       30.0352456
+      ],
+      [
+       31.2183809,
+       30.0353966
       ]
      ]
     ]
    },
    "properties": {
     "id": "b028",
-    "code": "NAC-Medical-028",
-    "name": "Clinic Building 28",
-    "district": "Medical-City",
-    "lat": 30.049655,
-    "lon": 31.495585,
-    "floor_area_m2": 2337.5,
-    "roof_area_m2": 584.4,
-    "glazing_area_m2": 582.5,
-    "roof_orientation": "S",
-    "hvac_type": "split",
-    "hvac_age_yr": 12,
-    "insulation_quality": "poor",
-    "occupancy_pattern": "clinic",
-    "annual_kwh": 444603.0,
-    "osm_way_id": 497882943
+    "code": "GIZ-028",
+    "name": "State Council",
+    "district": "Giza",
+    "lat": 30.035157,
+    "lon": 31.218458,
+    "floor_area_m2": 9502.2,
+    "roof_area_m2": 2375.6,
+    "glazing_area_m2": 2593.0,
+    "roof_orientation": "FLAT",
+    "hvac_type": "chiller",
+    "hvac_age_yr": 7,
+    "insulation_quality": "good",
+    "occupancy_pattern": "office",
+    "annual_kwh": 1415256.0,
+    "osm_way_id": 486774020,
+    "osm_kind": "courthouse",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2333,45 +2222,56 @@
     "coordinates": [
      [
       [
-       31.4960274,
-       30.0495608
+       31.2828333,
+       29.9439363
       ],
       [
-       31.4960304,
-       30.0497419
+       31.2834804,
+       29.9438371
       ],
       [
-       31.4957381,
-       30.0497456
+       31.2835862,
+       29.9432319
       ],
       [
-       31.4957351,
-       30.0495645
+       31.2827175,
+       29.9434693
       ],
       [
-       31.4960274,
-       30.0495608
+       31.2827172,
+       29.9434994
+      ],
+      [
+       31.2827448,
+       29.9436202
+      ],
+      [
+       31.2828333,
+       29.9439363
       ]
      ]
     ]
    },
    "properties": {
     "id": "b029",
-    "code": "NAC-Medical-029",
-    "name": "Clinic Building 29",
-    "district": "Medical-City",
-    "lat": 30.049653,
-    "lon": 31.495883,
-    "floor_area_m2": 1703.8,
-    "roof_area_m2": 567.9,
-    "glazing_area_m2": 268.8,
+    "code": "HEL-029",
+    "name": "مدرسة الشهيد عبد الخالق نبيل",
+    "district": "Helwan",
+    "lat": 29.943599,
+    "lon": 31.283013,
+    "floor_area_m2": 17608.1,
+    "roof_area_m2": 4402.0,
+    "glazing_area_m2": 2659.3,
     "roof_orientation": "FLAT",
-    "hvac_type": "package",
-    "hvac_age_yr": 22,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "clinic",
-    "annual_kwh": 336734.0,
-    "osm_way_id": 497882942
+    "hvac_type": "chiller",
+    "hvac_age_yr": 2,
+    "insulation_quality": "poor",
+    "occupancy_pattern": "school",
+    "annual_kwh": 1411425.0,
+    "osm_way_id": 1110693705,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2381,45 +2281,116 @@
     "coordinates": [
      [
       [
-       31.5051515,
-       30.0426047
+       31.2392528,
+       29.9688183
       ],
       [
-       31.5054976,
-       30.0424509
+       31.2391737,
+       29.9689099
       ],
       [
-       31.5054167,
-       30.0423419
+       31.2393764,
+       29.9690413
       ],
       [
-       31.5051011,
-       30.0424704
+       31.2393353,
+       29.9690888
       ],
       [
-       31.5051515,
-       30.0426047
+       31.2395319,
+       29.9692166
+      ],
+      [
+       31.2395558,
+       29.9691891
+      ],
+      [
+       31.2395882,
+       29.9692103
+      ],
+      [
+       31.2397593,
+       29.9690148
+      ],
+      [
+       31.2397981,
+       29.9690403
+      ],
+      [
+       31.2399897,
+       29.9688228
+      ],
+      [
+       31.239942,
+       29.9687913
+      ],
+      [
+       31.2401015,
+       29.9686111
+      ],
+      [
+       31.2400626,
+       29.9685852
+      ],
+      [
+       31.2400865,
+       29.9685584
+      ],
+      [
+       31.2399403,
+       29.9684604
+      ],
+      [
+       31.2398949,
+       29.9685111
+      ],
+      [
+       31.2396794,
+       29.9683664
+      ],
+      [
+       31.2396173,
+       29.9684358
+      ],
+      [
+       31.239604,
+       29.9685763
+      ],
+      [
+       31.2395172,
+       29.9687094
+      ],
+      [
+       31.2393936,
+       29.9687919
+      ],
+      [
+       31.2392528,
+       29.9688183
       ]
      ]
     ]
    },
    "properties": {
     "id": "b030",
-    "code": "NAC-Medical-030",
-    "name": "Office Building 30",
-    "district": "Medical-City",
-    "lat": 30.042467,
-    "lon": 31.505292,
-    "floor_area_m2": 3186.9,
-    "roof_area_m2": 531.2,
-    "glazing_area_m2": 814.1,
+    "code": "HEL-030",
+    "name": "Al-Mahkama Al-Dustureya",
+    "district": "Helwan",
+    "lat": 29.968798,
+    "lon": 31.239676,
+    "floor_area_m2": 23682.2,
+    "roof_area_m2": 3947.0,
+    "glazing_area_m2": 2899.7,
     "roof_orientation": "FLAT",
     "hvac_type": "split",
-    "hvac_age_yr": 25,
+    "hvac_age_yr": 4,
     "insulation_quality": "fair",
     "occupancy_pattern": "office",
-    "annual_kwh": 485927.0,
-    "osm_way_id": 1125728391
+    "annual_kwh": 3523297.0,
+    "osm_way_id": 28829680,
+    "osm_kind": "courthouse",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2429,109 +2400,52 @@
     "coordinates": [
      [
       [
-       31.4757747,
-       30.0232416
+       31.2620427,
+       29.9604405
       ],
       [
-       31.4757888,
-       30.0232544
+       31.2621392,
+       29.9604753
       ],
       [
-       31.4758077,
-       30.0232387
+       31.2625737,
+       29.9598456
       ],
       [
-       31.4758191,
-       30.0232488
+       31.2623082,
+       29.9596945
       ],
       [
-       31.4758577,
-       30.0232164
+       31.2621848,
+       29.9596736
       ],
       [
-       31.4760019,
-       30.0233452
-      ],
-      [
-       31.4759624,
-       30.0233785
-      ],
-      [
-       31.4759713,
-       30.0233864
-      ],
-      [
-       31.4759509,
-       30.0234034
-      ],
-      [
-       31.4759614,
-       30.0234128
-      ],
-      [
-       31.4758583,
-       30.0234991
-      ],
-      [
-       31.4758464,
-       30.0234885
-      ],
-      [
-       31.4758282,
-       30.0235039
-      ],
-      [
-       31.4758201,
-       30.0234966
-      ],
-      [
-       31.4757791,
-       30.0235309
-      ],
-      [
-       31.4756277,
-       30.0233949
-      ],
-      [
-       31.4756629,
-       30.0233656
-      ],
-      [
-       31.4756548,
-       30.0233583
-      ],
-      [
-       31.4756745,
-       30.0233418
-      ],
-      [
-       31.4756652,
-       30.0233334
-      ],
-      [
-       31.4757747,
-       30.0232416
+       31.2620427,
+       29.9604405
       ]
      ]
     ]
    },
    "properties": {
     "id": "b031",
-    "code": "NAC-R3-031",
-    "name": "Clinic Building 31",
-    "district": "R3-Government",
-    "lat": 30.023372,
-    "lon": 31.475816,
-    "floor_area_m2": 1409.4,
-    "roof_area_m2": 704.7,
-    "glazing_area_m2": 407.1,
+    "code": "HEL-031",
+    "name": "Maadi Police Station",
+    "district": "Helwan",
+    "lat": 29.960026,
+    "lon": 31.26225,
+    "floor_area_m2": 15469.3,
+    "roof_area_m2": 2209.9,
+    "glazing_area_m2": 3277.3,
     "roof_orientation": "FLAT",
     "hvac_type": "split",
-    "hvac_age_yr": 22,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "clinic",
-    "annual_kwh": 265470.0,
-    "osm_way_id": 592099058
+    "hvac_age_yr": 18,
+    "insulation_quality": "poor",
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 3876544.0,
+    "osm_way_id": 1234647927,
+    "osm_kind": "police",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2541,109 +2455,148 @@
     "coordinates": [
      [
       [
-       31.4772221,
-       30.0238506
+       31.2713703,
+       29.9732695
       ],
       [
-       31.4772407,
-       30.0238578
+       31.2712979,
+       29.9734546
       ],
       [
-       31.4772512,
-       30.0238369
+       31.2712979,
+       29.9734879
       ],
       [
-       31.4772662,
-       30.0238425
+       31.2713154,
+       29.9735203
       ],
       [
-       31.4772875,
-       30.0237997
+       31.2713563,
+       29.9735486
       ],
       [
-       31.4774778,
-       30.0238707
+       31.2713936,
+       29.9735517
       ],
       [
-       31.4774561,
-       30.0239145
+       31.2714357,
+       29.9735405
       ],
       [
-       31.4774678,
-       30.0239188
+       31.2714602,
+       29.9735213
       ],
       [
-       31.4774566,
-       30.0239413
+       31.2714742,
+       29.9734991
       ],
       [
-       31.4774704,
-       30.0239465
+       31.2716134,
+       29.9731874
       ],
       [
-       31.4774136,
-       30.0240605
+       31.2716221,
+       29.9731508
       ],
       [
-       31.4773979,
-       30.0240547
+       31.2716188,
+       29.9731183
       ],
       [
-       31.4773879,
-       30.0240749
+       31.271606,
+       29.9730852
       ],
       [
-       31.4773772,
-       30.0240709
+       31.2715792,
+       29.9730573
       ],
       [
-       31.4773546,
-       30.0241162
+       31.2715477,
+       29.9730393
       ],
       [
-       31.4771545,
-       30.0240411
+       31.2715114,
+       29.9730275
       ],
       [
-       31.4771739,
-       30.0240023
+       31.2711339,
+       29.9729219
       ],
       [
-       31.4771632,
-       30.0239983
+       31.2711014,
+       29.9729219
       ],
       [
-       31.4771741,
-       30.0239764
+       31.2710739,
+       29.9729325
       ],
       [
-       31.4771617,
-       30.0239718
+       31.2710465,
+       29.9729571
       ],
       [
-       31.4772221,
-       30.0238506
+       31.2710292,
+       29.972987
+      ],
+      [
+       31.2710262,
+       29.9730267
+      ],
+      [
+       31.2710445,
+       29.9730619
+      ],
+      [
+       31.2710821,
+       29.9730865
+      ],
+      [
+       31.2711126,
+       29.9730953
+      ],
+      [
+       31.2712945,
+       29.9731438
+      ],
+      [
+       31.2712945,
+       29.9731746
+      ],
+      [
+       31.2713047,
+       29.9732124
+      ],
+      [
+       31.2713301,
+       29.9732441
+      ],
+      [
+       31.2713703,
+       29.9732695
       ]
      ]
     ]
    },
    "properties": {
     "id": "b032",
-    "code": "NAC-R3-032",
-    "name": "School Building 32",
-    "district": "R3-Government",
-    "lat": 30.023957,
-    "lon": 31.477318,
-    "floor_area_m2": 1409.2,
-    "roof_area_m2": 704.6,
-    "glazing_area_m2": 234.6,
-    "roof_orientation": "SW",
-    "hvac_type": "package",
+    "code": "HEL-032",
+    "name": "Maadi Public Library",
+    "district": "Helwan",
+    "lat": 29.973201,
+    "lon": 31.271323,
+    "floor_area_m2": 5580.1,
+    "roof_area_m2": 1860.0,
+    "glazing_area_m2": 650.6,
+    "roof_orientation": "FLAT",
+    "hvac_type": "chiller",
     "hvac_age_yr": 20,
-    "insulation_quality": "poor",
-    "occupancy_pattern": "school",
-    "annual_kwh": 145510.0,
-    "osm_way_id": 592099051
+    "insulation_quality": "good",
+    "occupancy_pattern": "office",
+    "annual_kwh": 861159.0,
+    "osm_way_id": 968780893,
+    "osm_kind": "library",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2653,109 +2606,48 @@
     "coordinates": [
      [
       [
-       31.4760342,
-       30.023457
+       31.2544314,
+       29.9642428
       ],
       [
-       31.4760482,
-       30.0234698
+       31.2542963,
+       29.9642252
       ],
       [
-       31.4760672,
-       30.023454
+       31.2542453,
+       29.9637231
       ],
       [
-       31.4760786,
-       30.0234642
+       31.2547889,
+       29.9637753
       ],
       [
-       31.4761172,
-       30.0234318
-      ],
-      [
-       31.4762613,
-       30.0235606
-      ],
-      [
-       31.4762219,
-       30.0235938
-      ],
-      [
-       31.4762307,
-       30.0236018
-      ],
-      [
-       31.4762104,
-       30.0236188
-      ],
-      [
-       31.4762209,
-       30.0236281
-      ],
-      [
-       31.4761177,
-       30.0237145
-      ],
-      [
-       31.4761059,
-       30.0237039
-      ],
-      [
-       31.4760877,
-       30.0237193
-      ],
-      [
-       31.4760796,
-       30.0237119
-      ],
-      [
-       31.4760386,
-       30.0237462
-      ],
-      [
-       31.4758872,
-       30.0236103
-      ],
-      [
-       31.4759224,
-       30.0235809
-      ],
-      [
-       31.4759142,
-       30.0235737
-      ],
-      [
-       31.475934,
-       30.0235571
-      ],
-      [
-       31.4759246,
-       30.0235487
-      ],
-      [
-       31.4760342,
-       30.023457
+       31.2544314,
+       29.9642428
       ]
      ]
     ]
    },
    "properties": {
     "id": "b033",
-    "code": "NAC-R3-033",
-    "name": "School Building 33",
-    "district": "R3-Government",
-    "lat": 30.023587,
-    "lon": 31.476075,
-    "floor_area_m2": 2818.1,
-    "roof_area_m2": 704.5,
-    "glazing_area_m2": 728.3,
-    "roof_orientation": "FLAT",
+    "code": "HEL-033",
+    "name": "مدرسة الخبيري الإبتدائية",
+    "district": "Helwan",
+    "lat": 29.963992,
+    "lon": 31.25444,
+    "floor_area_m2": 5470.9,
+    "roof_area_m2": 1823.6,
+    "glazing_area_m2": 1386.4,
+    "roof_orientation": "SE",
     "hvac_type": "package",
-    "hvac_age_yr": 13,
-    "insulation_quality": "poor",
+    "hvac_age_yr": 8,
+    "insulation_quality": "fair",
     "occupancy_pattern": "school",
-    "annual_kwh": 299919.0,
-    "osm_way_id": 592099057
+    "annual_kwh": 445480.0,
+    "osm_way_id": 260185741,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2765,109 +2657,56 @@
     "coordinates": [
      [
       [
-       31.4776092,
-       30.0214962
+       31.2625737,
+       29.9598456
       ],
       [
-       31.4775887,
-       30.0214965
+       31.262728,
+       29.9596306
       ],
       [
-       31.4775891,
-       30.0215192
+       31.2624517,
+       29.9594435
       ],
       [
-       31.4775728,
-       30.0215194
+       31.262245,
+       29.9594356
       ],
       [
-       31.4775736,
-       30.021566
+       31.2621848,
+       29.9596736
       ],
       [
-       31.4773664,
-       30.0215687
+       31.2623082,
+       29.9596945
       ],
       [
-       31.4773656,
-       30.021521
-      ],
-      [
-       31.4773528,
-       30.0215212
-      ],
-      [
-       31.4773524,
-       30.0214967
-      ],
-      [
-       31.4773373,
-       30.0214969
-      ],
-      [
-       31.4773354,
-       30.0213727
-      ],
-      [
-       31.4773523,
-       30.0213725
-      ],
-      [
-       31.4773519,
-       30.0213505
-      ],
-      [
-       31.4773636,
-       30.0213504
-      ],
-      [
-       31.4773628,
-       30.0213011
-      ],
-      [
-       31.4775809,
-       30.0212986
-      ],
-      [
-       31.4775815,
-       30.0213408
-      ],
-      [
-       31.4775932,
-       30.0213407
-      ],
-      [
-       31.4775936,
-       30.0213646
-      ],
-      [
-       31.477607,
-       30.0213644
-      ],
-      [
-       31.4776092,
-       30.0214962
+       31.2625737,
+       29.9598456
       ]
      ]
     ]
    },
    "properties": {
     "id": "b034",
-    "code": "NAC-R3-034",
-    "name": "Admin 24X7 Building 34",
-    "district": "R3-Government",
-    "lat": 30.021433,
-    "lon": 31.477472,
-    "floor_area_m2": 5635.6,
-    "roof_area_m2": 704.4,
-    "glazing_area_m2": 907.0,
+    "code": "HEL-034",
+    "name": "National Security Investigations",
+    "district": "Helwan",
+    "lat": 29.959621,
+    "lon": 31.262415,
+    "floor_area_m2": 2794.0,
+    "roof_area_m2": 1397.0,
+    "glazing_area_m2": 379.5,
     "roof_orientation": "FLAT",
     "hvac_type": "split",
     "hvac_age_yr": 16,
-    "insulation_quality": "poor",
-    "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 1178026.0,
-    "osm_way_id": 592098081
+    "insulation_quality": "good",
+    "occupancy_pattern": "office",
+    "annual_kwh": 511845.0,
+    "osm_way_id": 1234647928,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2877,109 +2716,400 @@
     "coordinates": [
      [
       [
-       31.4754319,
-       30.0224666
+       31.6402445,
+       30.0830566
       ],
       [
-       31.4754321,
-       30.0224488
+       31.6402771,
+       30.08294
       ],
       [
-       31.4754059,
-       30.0224487
+       31.6400209,
+       30.0828866
       ],
       [
-       31.475406,
-       30.0224345
+       31.6399884,
+       30.0830031
       ],
       [
-       31.4753522,
-       30.0224341
+       31.6397581,
+       30.082955
       ],
       [
-       31.4753538,
-       30.0222548
+       31.6397675,
+       30.0829208
       ],
       [
-       31.4754089,
-       30.0222551
+       31.6397046,
+       30.0829076
       ],
       [
-       31.475409,
-       30.0222441
+       31.6397138,
+       30.0828745
       ],
       [
-       31.4754372,
-       30.0222443
+       31.6396489,
+       30.082861
       ],
       [
-       31.4754374,
-       30.0222312
+       31.6396397,
+       30.0828938
       ],
       [
-       31.4755808,
-       30.0222323
+       31.6395694,
+       30.0828792
       ],
       [
-       31.4755807,
-       30.022247
+       31.6395233,
+       30.0830449
       ],
       [
-       31.4756061,
-       30.0222472
+       31.6397215,
+       30.0830863
       ],
       [
-       31.4756059,
-       30.0222573
+       31.6397332,
+       30.0830441
       ],
       [
-       31.4756629,
-       30.0222578
+       31.6397531,
+       30.0830484
       ],
       [
-       31.4756607,
-       30.0224465
+       31.6397379,
+       30.0831027
       ],
       [
-       31.4756119,
-       30.0224461
+       31.639751,
+       30.0831244
       ],
       [
-       31.4756118,
-       30.0224563
+       31.6397808,
+       30.0831298
       ],
       [
-       31.4755843,
-       30.0224561
+       31.6398033,
+       30.0831164
       ],
       [
-       31.4755842,
-       30.0224677
+       31.6400335,
+       30.0831644
       ],
       [
-       31.4754319,
-       30.0224666
+       31.6400296,
+       30.0831782
+      ],
+      [
+       31.6399878,
+       30.0831694
+      ],
+      [
+       31.6399612,
+       30.0832649
+      ],
+      [
+       31.640003,
+       30.0832736
+      ],
+      [
+       31.6399972,
+       30.0832947
+      ],
+      [
+       31.6397771,
+       30.0832487
+      ],
+      [
+       31.6397639,
+       30.0832962
+      ],
+      [
+       31.6397246,
+       30.0832879
+      ],
+      [
+       31.6397004,
+       30.0833746
+      ],
+      [
+       31.6397067,
+       30.0833965
+      ],
+      [
+       31.6397312,
+       30.0834026
+      ],
+      [
+       31.6397565,
+       30.0833863
+      ],
+      [
+       31.6399598,
+       30.0834288
+      ],
+      [
+       31.6399545,
+       30.0834476
+      ],
+      [
+       31.6399153,
+       30.0834394
+      ],
+      [
+       31.6398906,
+       30.0835281
+      ],
+      [
+       31.6399299,
+       30.0835363
+      ],
+      [
+       31.6399232,
+       30.0835601
+      ],
+      [
+       31.6396253,
+       30.0834979
+      ],
+      [
+       31.6396209,
+       30.0835142
+      ],
+      [
+       31.6395733,
+       30.0835043
+      ],
+      [
+       31.639564,
+       30.0835378
+      ],
+      [
+       31.6395076,
+       30.0835261
+      ],
+      [
+       31.6394977,
+       30.0835617
+      ],
+      [
+       31.6394629,
+       30.0835544
+      ],
+      [
+       31.639449,
+       30.0836048
+      ],
+      [
+       31.6395329,
+       30.0836223
+      ],
+      [
+       31.6395427,
+       30.0836475
+      ],
+      [
+       31.639572,
+       30.0836542
+      ],
+      [
+       31.6395901,
+       30.0836342
+      ],
+      [
+       31.6399057,
+       30.0837002
+      ],
+      [
+       31.6399171,
+       30.083721
+      ],
+      [
+       31.6399429,
+       30.0837276
+      ],
+      [
+       31.6399694,
+       30.0837134
+      ],
+      [
+       31.6402774,
+       30.0837776
+      ],
+      [
+       31.6402939,
+       30.0838019
+      ],
+      [
+       31.6403197,
+       30.0838085
+      ],
+      [
+       31.6403429,
+       30.0837914
+      ],
+      [
+       31.6404229,
+       30.0838081
+      ],
+      [
+       31.640437,
+       30.0837577
+      ],
+      [
+       31.6404049,
+       30.083751
+      ],
+      [
+       31.6404148,
+       30.0837154
+      ],
+      [
+       31.6403515,
+       30.0837022
+      ],
+      [
+       31.6403608,
+       30.0836686
+      ],
+      [
+       31.6403137,
+       30.0836587
+      ],
+      [
+       31.6403183,
+       30.0836425
+      ],
+      [
+       31.6400148,
+       30.0835791
+      ],
+      [
+       31.6400214,
+       30.0835555
+      ],
+      [
+       31.640036,
+       30.0835585
+      ],
+      [
+       31.6400608,
+       30.0834698
+      ],
+      [
+       31.6400462,
+       30.0834667
+      ],
+      [
+       31.6400514,
+       30.0834478
+      ],
+      [
+       31.6402623,
+       30.0834918
+      ],
+      [
+       31.6402716,
+       30.0835123
+      ],
+      [
+       31.6402938,
+       30.0835162
+      ],
+      [
+       31.6403143,
+       30.0835027
+      ],
+      [
+       31.6403384,
+       30.083416
+      ],
+      [
+       31.6402877,
+       30.0834054
+      ],
+      [
+       31.6403009,
+       30.083358
+      ],
+      [
+       31.6400888,
+       30.0833138
+      ],
+      [
+       31.6400946,
+       30.0832927
+      ],
+      [
+       31.6401021,
+       30.0832943
+      ],
+      [
+       31.6401287,
+       30.0831989
+      ],
+      [
+       31.6401212,
+       30.0831973
+      ],
+      [
+       31.6401251,
+       30.0831836
+      ],
+      [
+       31.6403305,
+       30.0832265
+      ],
+      [
+       31.6403374,
+       30.083243
+      ],
+      [
+       31.6403625,
+       30.0832492
+      ],
+      [
+       31.6403861,
+       30.083238
+      ],
+      [
+       31.6404087,
+       30.083157
+      ],
+      [
+       31.6403531,
+       30.0831454
+      ],
+      [
+       31.6403705,
+       30.0830828
+      ],
+      [
+       31.6402445,
+       30.0830566
       ]
      ]
     ]
    },
    "properties": {
     "id": "b035",
-    "code": "NAC-R3-035",
-    "name": "Office Building 35",
-    "district": "R3-Government",
-    "lat": 30.022349,
-    "lon": 31.475508,
-    "floor_area_m2": 4226.5,
-    "roof_area_m2": 704.4,
-    "glazing_area_m2": 923.3,
-    "roof_orientation": "FLAT",
+    "code": "MAD-035",
+    "name": "Madinaty Integrated Language School",
+    "district": "Madinaty",
+    "lat": 30.083372,
+    "lon": 31.639977,
+    "floor_area_m2": 8902.3,
+    "roof_area_m2": 4451.2,
+    "glazing_area_m2": 2600.1,
+    "roof_orientation": "S",
     "hvac_type": "chiller",
-    "hvac_age_yr": 23,
-    "insulation_quality": "poor",
-    "occupancy_pattern": "office",
-    "annual_kwh": 792333.0,
-    "osm_way_id": 592091776
+    "hvac_age_yr": 21,
+    "insulation_quality": "fair",
+    "occupancy_pattern": "school",
+    "annual_kwh": 906105.0,
+    "osm_way_id": 536722701,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -2989,109 +3119,48 @@
     "coordinates": [
      [
       [
-       31.47599,
-       30.0224726
+       31.6419957,
+       30.084465
       ],
       [
-       31.4759901,
-       30.0224549
+       31.6416066,
+       30.0841609
       ],
       [
-       31.4759639,
-       30.0224547
+       31.6420057,
+       30.0837982
       ],
       [
-       31.4759641,
-       30.0224405
+       31.6423722,
+       30.0841544
       ],
       [
-       31.4759103,
-       30.0224402
-      ],
-      [
-       31.4759119,
-       30.0222608
-      ],
-      [
-       31.4759669,
-       30.0222612
-      ],
-      [
-       31.475967,
-       30.0222501
-      ],
-      [
-       31.4759953,
-       30.0222503
-      ],
-      [
-       31.4759954,
-       30.0222373
-      ],
-      [
-       31.4761389,
-       30.0222384
-      ],
-      [
-       31.4761387,
-       30.022253
-      ],
-      [
-       31.4761641,
-       30.0222532
-      ],
-      [
-       31.476164,
-       30.0222633
-      ],
-      [
-       31.476221,
-       30.0222638
-      ],
-      [
-       31.4762188,
-       30.0224526
-      ],
-      [
-       31.47617,
-       30.0224522
-      ],
-      [
-       31.4761699,
-       30.0224624
-      ],
-      [
-       31.4761423,
-       30.0224622
-      ],
-      [
-       31.4761422,
-       30.0224737
-      ],
-      [
-       31.47599,
-       30.0224726
+       31.6419957,
+       30.084465
       ]
      ]
     ]
    },
    "properties": {
     "id": "b036",
-    "code": "NAC-R3-036",
-    "name": "School Building 36",
-    "district": "R3-Government",
-    "lat": 30.022355,
-    "lon": 31.476066,
-    "floor_area_m2": 1408.7,
-    "roof_area_m2": 704.4,
-    "glazing_area_m2": 168.1,
+    "code": "MAD-036",
+    "name": "Madinaty Police Department",
+    "district": "Madinaty",
+    "lat": 30.084145,
+    "lon": 31.641995,
+    "floor_area_m2": 16419.9,
+    "roof_area_m2": 2736.7,
+    "glazing_area_m2": 4556.2,
     "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 9,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "school",
-    "annual_kwh": 148779.0,
-    "osm_way_id": 592091778
+    "hvac_type": "package",
+    "hvac_age_yr": 12,
+    "insulation_quality": "poor",
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 3388745.0,
+    "osm_way_id": 721860140,
+    "osm_kind": "police",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3101,45 +3170,56 @@
     "coordinates": [
      [
       [
-       31.4753664,
-       30.0396606
+       31.3916748,
+       30.0521899
       ],
       [
-       31.475697,
-       30.0396588
+       31.391045,
+       30.0521149
       ],
       [
-       31.4756956,
-       30.0394731
+       31.3910565,
+       30.0519273
       ],
       [
-       31.4753651,
-       30.0394748
+       31.3908658,
+       30.0519343
       ],
       [
-       31.4753664,
-       30.0396606
+       31.3905538,
+       30.051358
+      ],
+      [
+       31.3918006,
+       30.0514475
+      ],
+      [
+       31.3916748,
+       30.0521899
       ]
      ]
     ]
    },
    "properties": {
     "id": "b037",
-    "code": "NAC-R3-037",
-    "name": "Office Building 37",
-    "district": "R3-Government",
-    "lat": 30.039567,
-    "lon": 31.475531,
-    "floor_area_m2": 1317.4,
-    "roof_area_m2": 658.7,
-    "glazing_area_m2": 371.2,
+    "code": "NC-037",
+    "name": "مدرسه الشهيد طيار اسامه احمد اسماعيل",
+    "district": "Nasr City",
+    "lat": 30.051829,
+    "lon": 31.391166,
+    "floor_area_m2": 14887.8,
+    "roof_area_m2": 7443.9,
+    "glazing_area_m2": 2454.3,
     "roof_orientation": "FLAT",
     "hvac_type": "chiller",
-    "hvac_age_yr": 16,
+    "hvac_age_yr": 19,
     "insulation_quality": "good",
-    "occupancy_pattern": "office",
-    "annual_kwh": 210421.0,
-    "osm_way_id": 1278161271
+    "occupancy_pattern": "school",
+    "annual_kwh": 1478470.0,
+    "osm_way_id": 1552524495,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3149,101 +3229,48 @@
     "coordinates": [
      [
       [
-       31.4773673,
-       30.039175
+       31.326758,
+       30.0746925
       ],
       [
-       31.4773623,
-       30.0392081
+       31.3260753,
+       30.0744533
       ],
       [
-       31.4773915,
-       30.0392394
+       31.326447,
+       30.0736588
       ],
       [
-       31.4774263,
-       30.0392438
+       31.3271297,
+       30.0738979
       ],
       [
-       31.477425,
-       30.0392577
-      ],
-      [
-       31.4774082,
-       30.0392603
-      ],
-      [
-       31.4774059,
-       30.0393021
-      ],
-      [
-       31.4774226,
-       30.0393042
-      ],
-      [
-       31.4774206,
-       30.0393207
-      ],
-      [
-       31.4774491,
-       30.0393219
-      ],
-      [
-       31.4774612,
-       30.0393277
-      ],
-      [
-       31.4774806,
-       30.0393259
-      ],
-      [
-       31.477484,
-       30.0393216
-      ],
-      [
-       31.4775018,
-       30.0393222
-      ],
-      [
-       31.4775014,
-       30.0393123
-      ],
-      [
-       31.477653,
-       30.0393088
-      ],
-      [
-       31.4776533,
-       30.0391138
-      ],
-      [
-       31.4775987,
-       30.0390357
-      ],
-      [
-       31.4773673,
-       30.039175
+       31.326758,
+       30.0746925
       ]
      ]
     ]
    },
    "properties": {
     "id": "b038",
-    "code": "NAC-R3-038",
-    "name": "Admin 24X7 Building 38",
-    "district": "R3-Government",
-    "lat": 30.039261,
-    "lon": 31.477467,
-    "floor_area_m2": 2485.0,
-    "roof_area_m2": 621.3,
-    "glazing_area_m2": 456.3,
-    "roof_orientation": "FLAT",
+    "code": "NC-038",
+    "name": "Ministry of Defence (2)",
+    "district": "Nasr City",
+    "lat": 30.074176,
+    "lon": 31.326602,
+    "floor_area_m2": 27081.3,
+    "roof_area_m2": 6770.3,
+    "glazing_area_m2": 6748.4,
+    "roof_orientation": "S",
     "hvac_type": "split",
     "hvac_age_yr": 12,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 564138.0,
-    "osm_way_id": 1278161261
+    "insulation_quality": "poor",
+    "occupancy_pattern": "office",
+    "annual_kwh": 4473033.0,
+    "osm_way_id": 39610076,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3253,129 +3280,48 @@
     "coordinates": [
      [
       [
-       31.4768419,
-       30.0391437
+       31.3418401,
+       30.0683517
       ],
       [
-       31.476849,
-       30.0391509
+       31.3417677,
+       30.0689261
       ],
       [
-       31.4768691,
-       30.0391509
+       31.3422649,
+       30.068973
       ],
       [
-       31.4768775,
-       30.0391448
+       31.3423373,
+       30.0683986
       ],
       [
-       31.4768852,
-       30.0391448
-      ],
-      [
-       31.4768859,
-       30.0391628
-      ],
-      [
-       31.4768939,
-       30.0391681
-      ],
-      [
-       31.4769046,
-       30.0391698
-      ],
-      [
-       31.4769657,
-       30.0391695
-      ],
-      [
-       31.477025,
-       30.0391413
-      ],
-      [
-       31.4771014,
-       30.0390531
-      ],
-      [
-       31.4770877,
-       30.0390467
-      ],
-      [
-       31.4771082,
-       30.0390189
-      ],
-      [
-       31.4771149,
-       30.0389893
-      ],
-      [
-       31.4771266,
-       30.0389904
-      ],
-      [
-       31.4771242,
-       30.0389556
-      ],
-      [
-       31.4770947,
-       30.0389591
-      ],
-      [
-       31.4770988,
-       30.0389208
-      ],
-      [
-       31.477029,
-       30.0389237
-      ],
-      [
-       31.477029,
-       30.0389318
-      ],
-      [
-       31.4768614,
-       30.0389318
-      ],
-      [
-       31.4768621,
-       30.0389431
-      ],
-      [
-       31.4768802,
-       30.038944
-      ],
-      [
-       31.4768812,
-       30.0389539
-      ],
-      [
-       31.4768456,
-       30.0389533
-      ],
-      [
-       31.4768419,
-       30.0391437
+       31.3418401,
+       30.0683517
       ]
      ]
     ]
    },
    "properties": {
     "id": "b039",
-    "code": "NAC-R3-039",
-    "name": "Office Building 39",
-    "district": "R3-Government",
-    "lat": 30.039042,
-    "lon": 31.47697,
-    "floor_area_m2": 1765.9,
-    "roof_area_m2": 588.6,
-    "glazing_area_m2": 235.2,
+    "code": "NC-039",
+    "name": "North Cairo Electricity Company",
+    "district": "Nasr City",
+    "lat": 30.068662,
+    "lon": 31.342052,
+    "floor_area_m2": 9297.7,
+    "roof_area_m2": 3099.2,
+    "glazing_area_m2": 1466.7,
     "roof_orientation": "FLAT",
     "hvac_type": "package",
-    "hvac_age_yr": 15,
-    "insulation_quality": "good",
+    "hvac_age_yr": 22,
+    "insulation_quality": "fair",
     "occupancy_pattern": "office",
-    "annual_kwh": 318929.0,
-    "osm_way_id": 1278164647
+    "annual_kwh": 1593292.0,
+    "osm_way_id": 54291726,
+    "osm_kind": "public",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3385,45 +3331,112 @@
     "coordinates": [
      [
       [
-       31.4753566,
-       30.0401625
+       31.3438284,
+       30.0473727
       ],
       [
-       31.4756442,
-       30.0401612
+       31.3440208,
+       30.0473932
       ],
       [
-       31.4756431,
-       30.0399771
+       31.3440051,
+       30.0475039
       ],
       [
-       31.4753554,
-       30.0399785
+       31.3438901,
+       30.0474917
       ],
       [
-       31.4753566,
-       30.0401625
+       31.3438772,
+       30.0475826
+      ],
+      [
+       31.3440163,
+       30.0475973
+      ],
+      [
+       31.3440045,
+       30.0476802
+      ],
+      [
+       31.3439228,
+       30.0476715
+      ],
+      [
+       31.3439119,
+       30.0477479
+      ],
+      [
+       31.3433657,
+       30.0476898
+      ],
+      [
+       31.3433579,
+       30.047745
+      ],
+      [
+       31.3430507,
+       30.0477123
+      ],
+      [
+       31.3430621,
+       30.0476318
+      ],
+      [
+       31.3428362,
+       30.0476078
+      ],
+      [
+       31.3428431,
+       30.0475597
+      ],
+      [
+       31.3426222,
+       30.0475362
+      ],
+      [
+       31.3426476,
+       30.0473574
+      ],
+      [
+       31.3431706,
+       30.047413
+      ],
+      [
+       31.3431522,
+       30.0475424
+      ],
+      [
+       31.3437946,
+       30.0476108
+      ],
+      [
+       31.3438284,
+       30.0473727
       ]
      ]
     ]
    },
    "properties": {
     "id": "b040",
-    "code": "NAC-R3-040",
-    "name": "Office Building 40",
-    "district": "R3-Government",
-    "lat": 30.04007,
-    "lon": 31.4755,
-    "floor_area_m2": 2271.8,
-    "roof_area_m2": 568.0,
-    "glazing_area_m2": 611.2,
+    "code": "NC-040",
+    "name": "Khaled Ibn Walid Experimental School",
+    "district": "Nasr City",
+    "lat": 30.047572,
+    "lon": 31.343469,
+    "floor_area_m2": 5714.3,
+    "roof_area_m2": 2857.2,
+    "glazing_area_m2": 958.8,
     "roof_orientation": "FLAT",
     "hvac_type": "chiller",
-    "hvac_age_yr": 23,
+    "hvac_age_yr": 9,
     "insulation_quality": "poor",
-    "occupancy_pattern": "office",
-    "annual_kwh": 386717.0,
-    "osm_way_id": 1278161273
+    "occupancy_pattern": "school",
+    "annual_kwh": 639252.0,
+    "osm_way_id": 41239589,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3433,109 +3446,148 @@
     "coordinates": [
      [
       [
-       31.4783505,
-       30.0231959
+       31.348403,
+       30.0621384
       ],
       [
-       31.4783439,
-       30.0231792
+       31.3484476,
+       30.0621143
       ],
       [
-       31.478319,
-       30.0231866
+       31.3484915,
+       30.0621445
       ],
       [
-       31.4783137,
-       30.0231733
+       31.3485492,
+       30.0621265
       ],
       [
-       31.4782629,
-       30.0231886
+       31.3485539,
+       30.062072
       ],
       [
-       31.4781946,
-       30.0230193
+       31.3486049,
+       30.0620534
       ],
       [
-       31.4782466,
-       30.0230035
+       31.3486078,
+       30.0620249
       ],
       [
-       31.4782424,
-       30.0229931
+       31.3486116,
+       30.0619884
       ],
       [
-       31.4782691,
-       30.022985
+       31.3485686,
+       30.0619681
       ],
       [
-       31.4782641,
-       30.0229727
+       31.3485693,
+       30.0619002
       ],
       [
-       31.4783996,
-       30.0229319
+       31.3485271,
+       30.0618741
       ],
       [
-       31.4784052,
-       30.0229457
+       31.3484689,
+       30.0618966
       ],
       [
-       31.4784292,
-       30.0229385
+       31.3484198,
+       30.0618654
       ],
       [
-       31.478433,
-       30.022948
+       31.3483735,
+       30.0618839
       ],
       [
-       31.4784868,
-       30.0229319
+       31.3482642,
+       30.0618137
       ],
       [
-       31.4785583,
-       30.0231102
+       31.348226,
+       30.0618262
       ],
       [
-       31.4785121,
-       30.0231241
+       31.348221,
+       30.0618616
       ],
       [
-       31.478516,
-       30.0231337
+       31.3481442,
+       30.0618897
       ],
       [
-       31.4784899,
-       30.0231415
+       31.3481432,
+       30.0619258
       ],
       [
-       31.4784944,
-       30.0231525
+       31.3480609,
+       30.0619253
       ],
       [
-       31.4783505,
-       30.0231959
+       31.3480601,
+       30.0619509
+      ],
+      [
+       31.3480585,
+       30.0620029
+      ],
+      [
+       31.3481013,
+       30.0620033
+      ],
+      [
+       31.3481274,
+       30.0620209
+      ],
+      [
+       31.3481278,
+       30.0620548
+      ],
+      [
+       31.3481878,
+       30.062094
+      ],
+      [
+       31.3481905,
+       30.0621335
+      ],
+      [
+       31.3482283,
+       30.0621564
+      ],
+      [
+       31.3483559,
+       30.0621032
+      ],
+      [
+       31.348403,
+       30.0621384
       ]
      ]
     ]
    },
    "properties": {
     "id": "b041",
-    "code": "NAC-R5-041",
-    "name": "Admin 24X7 Building 41",
-    "district": "R5-Residential",
-    "lat": 30.023063,
-    "lon": 31.478377,
-    "floor_area_m2": 2113.7,
-    "roof_area_m2": 704.6,
-    "glazing_area_m2": 327.2,
-    "roof_orientation": "E",
+    "code": "NC-041",
+    "name": "Nasr City Public Library",
+    "district": "Nasr City",
+    "lat": 30.061994,
+    "lon": 31.348334,
+    "floor_area_m2": 3858.3,
+    "roof_area_m2": 1286.1,
+    "glazing_area_m2": 930.8,
+    "roof_orientation": "FLAT",
     "hvac_type": "split",
-    "hvac_age_yr": 5,
-    "insulation_quality": "good",
-    "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 543624.0,
-    "osm_way_id": 592098089
+    "hvac_age_yr": 15,
+    "insulation_quality": "fair",
+    "occupancy_pattern": "office",
+    "annual_kwh": 686859.0,
+    "osm_way_id": 1225447501,
+    "osm_kind": "library",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3545,109 +3597,108 @@
     "coordinates": [
      [
       [
-       31.4783506,
-       30.0234879
+       31.740906,
+       30.0157481
       ],
       [
-       31.4783524,
-       30.0234703
+       31.7409046,
+       30.0155481
       ],
       [
-       31.4783262,
-       30.0234684
+       31.7409816,
+       30.0155079
       ],
       [
-       31.4783275,
-       30.0234543
+       31.7410494,
+       30.0154659
       ],
       [
-       31.4782739,
-       30.0234506
+       31.7411111,
+       30.0154174
       ],
       [
-       31.4782904,
-       30.0232718
+       31.7411671,
+       30.015362
       ],
       [
-       31.4783453,
-       30.0232755
+       31.7412151,
+       30.0153014
       ],
       [
-       31.4783463,
-       30.0232645
+       31.7412546,
+       30.0152363
       ],
       [
-       31.4783745,
-       30.0232665
+       31.7414947,
+       30.0152363
       ],
       [
-       31.4783757,
-       30.0232535
+       31.741494,
+       30.0153217
       ],
       [
-       31.4785187,
-       30.0232635
+       31.7419751,
+       30.01532
       ],
       [
-       31.4785173,
-       30.0232782
+       31.7419758,
+       30.0154126
       ],
       [
-       31.4785427,
-       30.0232799
+       31.7419769,
+       30.0155624
       ],
       [
-       31.4785417,
-       30.02329
+       31.7419775,
+       30.0156401
       ],
       [
-       31.4785985,
-       30.023294
+       31.7415037,
+       30.0156407
       ],
       [
-       31.4785806,
-       30.0234822
+       31.7413572,
+       30.0157647
       ],
       [
-       31.4785319,
-       30.0234787
+       31.7413571,
+       30.0159454
       ],
       [
-       31.478531,
-       30.0234888
+       31.7409932,
+       30.0159453
       ],
       [
-       31.4785036,
-       30.0234869
+       31.7409932,
+       30.0157481
       ],
       [
-       31.4785025,
-       30.0234985
-      ],
-      [
-       31.4783506,
-       30.0234879
+       31.740906,
+       30.0157481
       ]
      ]
     ]
    },
    "properties": {
     "id": "b042",
-    "code": "NAC-R5-042",
-    "name": "Office Building 42",
-    "district": "R5-Residential",
-    "lat": 30.023375,
-    "lon": 31.478437,
-    "floor_area_m2": 4227.3,
-    "roof_area_m2": 704.5,
-    "glazing_area_m2": 540.0,
+    "code": "NAC-042",
+    "name": "Ministry of Higher Education",
+    "district": "New Administrative Capital",
+    "lat": 30.015533,
+    "lon": 31.741352,
+    "floor_area_m2": 29310.9,
+    "roof_area_m2": 4885.2,
+    "glazing_area_m2": 8372.7,
     "roof_orientation": "FLAT",
-    "hvac_type": "chiller",
-    "hvac_age_yr": 20,
-    "insulation_quality": "good",
+    "hvac_type": "package",
+    "hvac_age_yr": 5,
+    "insulation_quality": "poor",
     "occupancy_pattern": "office",
-    "annual_kwh": 594589.0,
-    "osm_way_id": 592098091
+    "annual_kwh": 5427119.0,
+    "osm_way_id": 829671336,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3657,109 +3708,88 @@
     "coordinates": [
      [
       [
-       31.4780628,
-       30.0220971
+       31.748202,
+       30.0115326
       ],
       [
-       31.4780481,
-       30.0220848
+       31.7476962,
+       30.0115389
       ],
       [
-       31.4780299,
-       30.0221012
+       31.7475389,
+       30.0114107
       ],
       [
-       31.4780181,
-       30.0220914
+       31.7475378,
+       30.0112372
       ],
       [
-       31.4779809,
-       30.022125
+       31.7471711,
+       30.0112391
       ],
       [
-       31.4778313,
-       30.0220009
+       31.7471734,
+       30.0115917
       ],
       [
-       31.4778694,
-       30.0219665
+       31.7473081,
+       30.0116651
       ],
       [
-       31.4778602,
-       30.0219588
+       31.7474242,
+       30.0117699
       ],
       [
-       31.4778798,
-       30.0219412
+       31.7474975,
+       30.0118612
       ],
       [
-       31.4778689,
-       30.0219321
+       31.7481927,
+       30.0118535
       ],
       [
-       31.4779683,
-       30.0218426
+       31.7481912,
+       30.0117697
       ],
       [
-       31.4779805,
-       30.0218527
+       31.7482236,
+       30.0117692
       ],
       [
-       31.4779981,
-       30.0218368
+       31.7482208,
+       30.0116108
       ],
       [
-       31.4780065,
-       30.0218438
+       31.7482033,
+       30.011611
       ],
       [
-       31.478046,
-       30.0218083
-      ],
-      [
-       31.4782031,
-       30.0219392
-      ],
-      [
-       31.4781692,
-       30.0219697
-      ],
-      [
-       31.4781777,
-       30.0219767
-      ],
-      [
-       31.4781586,
-       30.0219939
-      ],
-      [
-       31.4781683,
-       30.022002
-      ],
-      [
-       31.4780628,
-       30.0220971
+       31.748202,
+       30.0115326
       ]
      ]
     ]
    },
    "properties": {
     "id": "b043",
-    "code": "NAC-R5-043",
-    "name": "School Building 43",
-    "district": "R5-Residential",
-    "lat": 30.021968,
-    "lon": 31.478016,
-    "floor_area_m2": 2818.0,
-    "roof_area_m2": 704.5,
-    "glazing_area_m2": 323.7,
+    "code": "NAC-043",
+    "name": "Ministry of Health",
+    "district": "New Administrative Capital",
+    "lat": 30.011604,
+    "lon": 31.747756,
+    "floor_area_m2": 25863.3,
+    "roof_area_m2": 4310.6,
+    "glazing_area_m2": 3807.2,
     "roof_orientation": "FLAT",
     "hvac_type": "split",
-    "hvac_age_yr": 8,
-    "insulation_quality": "poor",
-    "occupancy_pattern": "school",
-    "annual_kwh": 281858.0,
-    "osm_way_id": 592095250
+    "hvac_age_yr": 18,
+    "insulation_quality": "good",
+    "occupancy_pattern": "office",
+    "annual_kwh": 3962920.0,
+    "osm_way_id": 829671328,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3769,109 +3799,88 @@
     "coordinates": [
      [
       [
-       31.4779132,
-       30.0239034
+       31.7419933,
+       30.0115685
       ],
       [
-       31.4779308,
-       30.0238945
+       31.7414874,
+       30.0115748
       ],
       [
-       31.4779174,
-       30.0238749
+       31.7413302,
+       30.0114466
       ],
       [
-       31.4779314,
-       30.0238676
+       31.741329,
+       30.0112731
       ],
       [
-       31.4779037,
-       30.0238277
+       31.7409623,
+       30.0112749
       ],
       [
-       31.4780814,
-       30.0237354
+       31.7409646,
+       30.0116276
       ],
       [
-       31.4781098,
-       30.0237763
+       31.7410993,
+       30.011701
       ],
       [
-       31.4781207,
-       30.0237706
+       31.7412155,
+       30.0118058
       ],
       [
-       31.4781352,
-       30.0237916
+       31.7412888,
+       30.011897
       ],
       [
-       31.4781481,
-       30.0237849
+       31.7419839,
+       30.0118894
       ],
       [
-       31.4782218,
-       30.0238915
+       31.7419824,
+       30.0118055
       ],
       [
-       31.4782072,
-       30.023899
+       31.7420148,
+       30.0118051
       ],
       [
-       31.4782203,
-       30.0239179
+       31.7420121,
+       30.0116466
       ],
       [
-       31.4782103,
-       30.0239231
+       31.7419946,
+       30.0116469
       ],
       [
-       31.4782395,
-       30.0239654
-      ],
-      [
-       31.4780522,
-       30.0240622
-      ],
-      [
-       31.4780272,
-       30.0240258
-      ],
-      [
-       31.4780172,
-       30.0240311
-      ],
-      [
-       31.4780031,
-       30.0240106
-      ],
-      [
-       31.4779915,
-       30.0240166
-      ],
-      [
-       31.4779132,
-       30.0239034
+       31.7419933,
+       30.0115685
       ]
      ]
     ]
    },
    "properties": {
     "id": "b044",
-    "code": "NAC-R5-044",
-    "name": "Admin 24X7 Building 44",
-    "district": "R5-Residential",
-    "lat": 30.023899,
-    "lon": 31.478069,
-    "floor_area_m2": 2817.9,
-    "roof_area_m2": 704.5,
-    "glazing_area_m2": 319.2,
-    "roof_orientation": "SE",
-    "hvac_type": "split",
-    "hvac_age_yr": 24,
+    "code": "NAC-044",
+    "name": "Ministry of Finance",
+    "district": "New Administrative Capital",
+    "lat": 30.01164,
+    "lon": 31.741547,
+    "floor_area_m2": 25863.0,
+    "roof_area_m2": 4310.5,
+    "glazing_area_m2": 6683.8,
+    "roof_orientation": "FLAT",
+    "hvac_type": "package",
+    "hvac_age_yr": 13,
     "insulation_quality": "poor",
-    "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 718288.0,
-    "osm_way_id": 592099047
+    "occupancy_pattern": "office",
+    "annual_kwh": 4475143.0,
+    "osm_way_id": 829671327,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3881,109 +3890,88 @@
     "coordinates": [
      [
       [
-       31.478462,
-       30.0215427
+       31.7452977,
+       30.0115567
       ],
       [
-       31.4784415,
-       30.021543
+       31.7458036,
+       30.0115579
       ],
       [
-       31.4784419,
-       30.0215657
+       31.7459591,
+       30.0114281
       ],
       [
-       31.4784256,
-       30.0215659
+       31.745958,
+       30.0112547
       ],
       [
-       31.4784264,
-       30.0216125
+       31.7463247,
+       30.0112528
       ],
       [
-       31.4782192,
-       30.0216152
+       31.7463271,
+       30.0116055
       ],
       [
-       31.4782184,
-       30.0215675
+       31.7461933,
+       30.0116802
       ],
       [
-       31.4782056,
-       30.0215677
+       31.7460786,
+       30.0117862
       ],
       [
-       31.4782052,
-       30.0215432
+       31.7460065,
+       30.0118781
       ],
       [
-       31.4781901,
-       30.0215434
+       31.7453113,
+       30.0118774
       ],
       [
-       31.4781882,
-       30.0214192
+       31.7453117,
+       30.0117936
       ],
       [
-       31.4782051,
-       30.021419
+       31.7452793,
+       30.0117935
       ],
       [
-       31.4782047,
-       30.021397
+       31.7452799,
+       30.011635
       ],
       [
-       31.4782164,
-       30.0213969
+       31.7452974,
+       30.011635
       ],
       [
-       31.4782156,
-       30.0213476
-      ],
-      [
-       31.4784337,
-       30.0213451
-      ],
-      [
-       31.4784343,
-       30.0213873
-      ],
-      [
-       31.478446,
-       30.0213872
-      ],
-      [
-       31.4784464,
-       30.0214111
-      ],
-      [
-       31.4784598,
-       30.0214109
-      ],
-      [
-       31.478462,
-       30.0215427
+       31.7452977,
+       30.0115567
       ]
      ]
     ]
    },
    "properties": {
     "id": "b045",
-    "code": "NAC-R5-045",
-    "name": "School Building 45",
-    "district": "R5-Residential",
-    "lat": 30.021479,
-    "lon": 31.478324,
-    "floor_area_m2": 2113.3,
-    "roof_area_m2": 704.4,
-    "glazing_area_m2": 602.5,
-    "roof_orientation": "SE",
-    "hvac_type": "package",
-    "hvac_age_yr": 23,
-    "insulation_quality": "good",
-    "occupancy_pattern": "school",
-    "annual_kwh": 247355.0,
-    "osm_way_id": 592095267
+    "code": "NAC-045",
+    "name": "Ministry of Military Production",
+    "district": "New Administrative Capital",
+    "lat": 30.011624,
+    "lon": 31.745745,
+    "floor_area_m2": 8620.5,
+    "roof_area_m2": 4310.2,
+    "glazing_area_m2": 1966.2,
+    "roof_orientation": "FLAT",
+    "hvac_type": "chiller",
+    "hvac_age_yr": 20,
+    "insulation_quality": "fair",
+    "occupancy_pattern": "office",
+    "annual_kwh": 1496889.0,
+    "osm_way_id": 829671321,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -3993,109 +3981,80 @@
     "coordinates": [
      [
       [
-       31.4789356,
-       30.0219543
+       31.7453953,
+       30.0156254
       ],
       [
-       31.4789363,
-       30.021972
+       31.7458956,
+       30.0156236
       ],
       [
-       31.4789625,
-       30.0219712
+       31.7460529,
+       30.0157496
       ],
       [
-       31.478963,
-       30.0219854
+       31.746054,
+       30.015923
       ],
       [
-       31.4790167,
-       30.0219839
+       31.7464207,
+       30.0159212
       ],
       [
-       31.4790236,
-       30.0221631
+       31.7464184,
+       30.0155686
       ],
       [
-       31.4789686,
-       30.0221647
+       31.7462837,
+       30.0154952
       ],
       [
-       31.478969,
-       30.0221757
+       31.7461676,
+       30.0153904
       ],
       [
-       31.4789408,
-       30.0221765
+       31.7460943,
+       30.0153017
       ],
       [
-       31.4789413,
-       30.0221896
+       31.7453937,
+       30.0153043
       ],
       [
-       31.4787979,
-       30.0221936
+       31.7453941,
+       30.0153955
       ],
       [
-       31.4787974,
-       30.0221789
+       31.7453948,
+       30.0155424
       ],
       [
-       31.478772,
-       30.0221797
-      ],
-      [
-       31.4787716,
-       30.0221696
-      ],
-      [
-       31.4787146,
-       30.0221711
-      ],
-      [
-       31.4787079,
-       30.0219824
-      ],
-      [
-       31.4787566,
-       30.0219811
-      ],
-      [
-       31.4787563,
-       30.0219709
-      ],
-      [
-       31.4787838,
-       30.0219701
-      ],
-      [
-       31.4787834,
-       30.0219586
-      ],
-      [
-       31.4789356,
-       30.0219543
+       31.7453953,
+       30.0156254
       ]
      ]
     ]
    },
    "properties": {
     "id": "b046",
-    "code": "NAC-R5-046",
-    "name": "Clinic Building 46",
-    "district": "R5-Residential",
-    "lat": 30.022075,
-    "lon": 31.478865,
-    "floor_area_m2": 2817.2,
-    "roof_area_m2": 704.3,
-    "glazing_area_m2": 453.6,
+    "code": "NAC-046",
+    "name": "Ministry of Housing",
+    "district": "New Administrative Capital",
+    "lat": 30.01557,
+    "lon": 31.745914,
+    "floor_area_m2": 8537.8,
+    "roof_area_m2": 4268.9,
+    "glazing_area_m2": 1162.7,
     "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 15,
-    "insulation_quality": "poor",
-    "occupancy_pattern": "clinic",
-    "annual_kwh": 485500.0,
-    "osm_way_id": 592096571
+    "hvac_type": "package",
+    "hvac_age_yr": 20,
+    "insulation_quality": "fair",
+    "occupancy_pattern": "office",
+    "annual_kwh": 1454361.0,
+    "osm_way_id": 829671335,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -4105,109 +4064,76 @@
     "coordinates": [
      [
       [
-       31.4790611,
-       30.0215496
+       31.4361743,
+       30.0205681
       ],
       [
-       31.4790407,
-       30.0215499
+       31.4353834,
+       30.0206075
       ],
       [
-       31.4790411,
-       30.0215726
+       31.4354179,
+       30.0211276
       ],
       [
-       31.4790247,
-       30.0215728
+       31.4355636,
+       30.0211203
       ],
       [
-       31.4790255,
-       30.0216193
+       31.4357778,
+       30.0210602
       ],
       [
-       31.4788184,
-       30.021622
+       31.4358548,
+       30.0210097
       ],
       [
-       31.4788175,
-       30.0215744
+       31.4358863,
+       30.020998
       ],
       [
-       31.4788048,
-       30.0215745
+       31.4359554,
+       30.02093
       ],
       [
-       31.4788044,
-       30.0215501
+       31.436033,
+       30.0208499
       ],
       [
-       31.4787893,
-       30.0215503
+       31.4360256,
+       30.0207385
       ],
       [
-       31.4787873,
-       30.0214261
+       31.4361851,
+       30.0207305
       ],
       [
-       31.4788042,
-       30.0214259
-      ],
-      [
-       31.4788038,
-       30.0214039
-      ],
-      [
-       31.4788155,
-       30.0214037
-      ],
-      [
-       31.4788148,
-       30.0213544
-      ],
-      [
-       31.4790328,
-       30.021352
-      ],
-      [
-       31.4790334,
-       30.0213942
-      ],
-      [
-       31.4790452,
-       30.0213941
-      ],
-      [
-       31.4790456,
-       30.0214179
-      ],
-      [
-       31.4790589,
-       30.0214178
-      ],
-      [
-       31.4790611,
-       30.0215496
+       31.4361743,
+       30.0205681
       ]
      ]
     ]
    },
    "properties": {
     "id": "b047",
-    "code": "NAC-R5-047",
-    "name": "Clinic Building 47",
-    "district": "R5-Residential",
-    "lat": 30.021486,
-    "lon": 31.478923,
-    "floor_area_m2": 2817.0,
-    "roof_area_m2": 704.3,
-    "glazing_area_m2": 465.3,
+    "code": "NCC-047",
+    "name": "مستشفى شفا",
+    "district": "New Cairo City",
+    "lat": 30.020885,
+    "lon": 31.435842,
+    "floor_area_m2": 20187.5,
+    "roof_area_m2": 3364.6,
+    "glazing_area_m2": 3648.5,
     "roof_orientation": "FLAT",
-    "hvac_type": "split",
-    "hvac_age_yr": 21,
-    "insulation_quality": "fair",
-    "occupancy_pattern": "clinic",
-    "annual_kwh": 537256.0,
-    "osm_way_id": 592095262
+    "hvac_type": "package",
+    "hvac_age_yr": 14,
+    "insulation_quality": "poor",
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 5243383.0,
+    "osm_way_id": 1085309207,
+    "osm_kind": "hospital",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -4217,109 +4143,64 @@
     "coordinates": [
      [
       [
-       31.4789224,
-       30.0237486
+       31.4399031,
+       30.0131803
       ],
       [
-       31.4790485,
-       30.0237481
+       31.4404336,
+       30.0129296
       ],
       [
-       31.4790485,
-       30.023735
+       31.4402921,
+       30.0127266
       ],
       [
-       31.4790925,
-       30.0237348
+       31.4398808,
+       30.0129183
       ],
       [
-       31.4790924,
-       30.023722
+       31.4398572,
+       30.0129614
       ],
       [
-       31.4791312,
-       30.0237219
+       31.4398441,
+       30.0130181
       ],
       [
-       31.4791302,
-       30.0235632
+       31.4398389,
+       30.0130692
       ],
       [
-       31.4790945,
-       30.0235634
+       31.4398559,
+       30.0131066
       ],
       [
-       31.4790944,
-       30.0235508
-      ],
-      [
-       31.4790511,
-       30.023551
-      ],
-      [
-       31.479051,
-       30.0235358
-      ],
-      [
-       31.4789104,
-       30.0235363
-      ],
-      [
-       31.4789105,
-       30.0235523
-      ],
-      [
-       31.478871,
-       30.0235525
-      ],
-      [
-       31.4788711,
-       30.0235671
-      ],
-      [
-       31.4788419,
-       30.0235672
-      ],
-      [
-       31.4788427,
-       30.0237174
-      ],
-      [
-       31.4788828,
-       30.0237173
-      ],
-      [
-       31.4788829,
-       30.023734
-      ],
-      [
-       31.4789223,
-       30.0237339
-      ],
-      [
-       31.4789224,
-       30.0237486
+       31.4399031,
+       30.0131803
       ]
      ]
     ]
    },
    "properties": {
     "id": "b048",
-    "code": "NAC-R5-048",
-    "name": "Admin 24X7 Building 48",
-    "district": "R5-Residential",
-    "lat": 30.023643,
-    "lon": 31.478985,
-    "floor_area_m2": 2344.6,
-    "roof_area_m2": 586.1,
-    "glazing_area_m2": 251.7,
-    "roof_orientation": "SW",
-    "hvac_type": "split",
-    "hvac_age_yr": 22,
+    "code": "NCC-048",
+    "name": "شركة شمال القاهرة لتوزيع الكهرباء - القاهرة الجديدة",
+    "district": "New Cairo City",
+    "lat": 30.012989,
+    "lon": 31.439988,
+    "floor_area_m2": 4381.0,
+    "roof_area_m2": 1460.3,
+    "glazing_area_m2": 576.9,
+    "roof_orientation": "FLAT",
+    "hvac_type": "chiller",
+    "hvac_age_yr": 14,
     "insulation_quality": "poor",
-    "occupancy_pattern": "admin_24x7",
-    "annual_kwh": 533724.0,
-    "osm_way_id": 592098087
+    "occupancy_pattern": "office",
+    "annual_kwh": 797852.0,
+    "osm_way_id": 1436801387,
+    "osm_kind": "government",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -4329,101 +4210,48 @@
     "coordinates": [
      [
       [
-       31.4778726,
-       30.0400399
+       31.3025457,
+       30.1299614
       ],
       [
-       31.477888,
-       30.0400597
+       31.3024155,
+       30.1292935
       ],
       [
-       31.4778907,
-       30.0400893
+       31.3029361,
+       30.129208
       ],
       [
-       31.4778786,
-       30.0401154
+       31.3030819,
+       30.1298699
       ],
       [
-       31.4778779,
-       30.0401433
-      ],
-      [
-       31.4781106,
-       30.0401427
-      ],
-      [
-       31.4781069,
-       30.0400658
-      ],
-      [
-       31.4781217,
-       30.0400666
-      ],
-      [
-       31.4781217,
-       30.0400037
-      ],
-      [
-       31.4781056,
-       30.0400042
-      ],
-      [
-       31.4781073,
-       30.0399314
-      ],
-      [
-       31.4779249,
-       30.0399244
-      ],
-      [
-       31.4779232,
-       30.0399291
-      ],
-      [
-       31.4778743,
-       30.0399291
-      ],
-      [
-       31.4778743,
-       30.0399508
-      ],
-      [
-       31.4778826,
-       30.0399604
-      ],
-      [
-       31.4778883,
-       30.039981
-      ],
-      [
-       31.4778857,
-       30.0400077
-      ],
-      [
-       31.4778726,
-       30.0400399
+       31.3025457,
+       30.1299614
       ]
      ]
     ]
    },
    "properties": {
     "id": "b049",
-    "code": "NAC-R5-049",
-    "name": "School Building 49",
-    "district": "R5-Residential",
-    "lat": 30.040019,
-    "lon": 31.477963,
-    "floor_area_m2": 1057.8,
-    "roof_area_m2": 528.9,
-    "glazing_area_m2": 278.5,
-    "roof_orientation": "S",
-    "hvac_type": "split",
-    "hvac_age_yr": 24,
+    "code": "SAK-049",
+    "name": "Matareya Police Station",
+    "district": "Shubra al Khayma",
+    "lat": 30.129583,
+    "lon": 31.302745,
+    "floor_area_m2": 31171.5,
+    "roof_area_m2": 3896.4,
+    "glazing_area_m2": 8827.9,
+    "roof_orientation": "FLAT",
+    "hvac_type": "chiller",
+    "hvac_age_yr": 17,
     "insulation_quality": "good",
-    "occupancy_pattern": "school",
-    "annual_kwh": 101464.0,
-    "osm_way_id": 1278161270
+    "occupancy_pattern": "admin_24x7",
+    "annual_kwh": 7110027.0,
+    "osm_way_id": 1531391169,
+    "osm_kind": "police",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   },
   {
@@ -4433,93 +4261,48 @@
     "coordinates": [
      [
       [
-       31.4778701,
-       30.0397459
+       31.3369713,
+       30.1653752
       ],
       [
-       31.4778855,
-       30.0397657
+       31.3368233,
+       30.165438
       ],
       [
-       31.4778882,
-       30.0397953
+       31.3364373,
+       30.1644819
       ],
       [
-       31.4778761,
-       30.0398214
+       31.3365911,
+       30.1644518
       ],
       [
-       31.4778754,
-       30.0398492
-      ],
-      [
-       31.4781081,
-       30.0398487
-      ],
-      [
-       31.4781044,
-       30.0397718
-      ],
-      [
-       31.4781192,
-       30.0397726
-      ],
-      [
-       31.4781192,
-       30.0397096
-      ],
-      [
-       31.4781031,
-       30.0397102
-      ],
-      [
-       31.4781048,
-       30.0396374
-      ],
-      [
-       31.4778717,
-       30.0396351
-      ],
-      [
-       31.4778717,
-       30.0396568
-      ],
-      [
-       31.4778801,
-       30.0396664
-      ],
-      [
-       31.4778858,
-       30.039687
-      ],
-      [
-       31.4778831,
-       30.0397137
-      ],
-      [
-       31.4778701,
-       30.0397459
+       31.3369713,
+       30.1653752
       ]
      ]
     ]
    },
    "properties": {
     "id": "b050",
-    "code": "NAC-R5-050",
-    "name": "Clinic Building 50",
-    "district": "R5-Residential",
-    "lat": 30.039737,
-    "lon": 31.477965,
-    "floor_area_m2": 2094.2,
-    "roof_area_m2": 523.6,
-    "glazing_area_m2": 437.4,
-    "roof_orientation": "S",
+    "code": "SAK-050",
+    "name": "Taba School",
+    "district": "Shubra al Khayma",
+    "lat": 30.164937,
+    "lon": 31.336706,
+    "floor_area_m2": 5130.0,
+    "roof_area_m2": 1710.0,
+    "glazing_area_m2": 929.8,
+    "roof_orientation": "FLAT",
     "hvac_type": "package",
-    "hvac_age_yr": 20,
+    "hvac_age_yr": 12,
     "insulation_quality": "poor",
-    "occupancy_pattern": "clinic",
-    "annual_kwh": 367639.0,
-    "osm_way_id": 1278161269
+    "occupancy_pattern": "school",
+    "annual_kwh": 438284.0,
+    "osm_way_id": 1512417524,
+    "osm_kind": "school",
+    "name_source": "openstreetmap",
+    "district_source": "nominatim"
    }
   }
  ]

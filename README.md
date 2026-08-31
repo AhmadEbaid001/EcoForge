@@ -4,7 +4,7 @@
 
 **Budget-constrained retrofit decision support for public-sector building portfolios.**
 
-Given fifty government buildings and a fixed budget, GEMP decides which buildings get
+Given fifty real, named public buildings and a fixed budget, GEMP decides which get
 which retrofit — measuring each one from its own meter rather than assuming it, proving
 the measurements were never altered, and solving the allocation exactly rather than
 approximately.
@@ -163,7 +163,7 @@ No default account ships, by design. The bootstrap command prints a password onc
 | Command | What it does |
 |---|---|
 | `python -m gemp.domain.catalog --validate` | Check the data contract. `--strict` fails on uncited catalog rows. |
-| `python scripts/fetch_osm_buildings.py` | Build the portfolio from **real** OpenStreetMap footprints (New Cairo). Needs network. |
+| `python scripts/fetch_osm_buildings.py` | Build the portfolio from **real, named** OpenStreetMap public buildings — ministries, hospitals, schools, courts, police stations, libraries — across Greater Cairo, each one's district resolved by reverse geocoding its own centroid. Needs network. |
 | `python scripts/gen_buildings.py` | Offline fallback: synthetic footprints, same schema. Produces a *different portfolio*, so published numbers will not reproduce against it. |
 | `python -m gemp.optimize.cli --budget 10000000` | Solve and print an allocation. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats every heuristic. |
@@ -179,43 +179,52 @@ No default account ships, by design. The bootstrap command prints a password onc
 
 ## Results
 
-50 real OSM footprints, New Cairo, 32.7 GWh/yr, budget 10,000,000 EGP. Reproduce with
-`python -m gemp.evaluate`.
+50 named public buildings drawn from OpenStreetMap across Greater Cairo — ministries,
+hospitals, schools, courts, police stations and public libraries, 132.7 GWh/yr — at a
+budget of 50,000,000 EGP. Reproduce with `python -m gemp.evaluate`.
 
 | Solver | Funded | Spent | Life-cycle kgCO₂e | vs equal split |
 |---|---|---|---|---|
-| `equal_split` | 30 | 5,117,794 | 12,526,901 | baseline |
-| `greedy` | 34 | 9,966,764 | 29,923,997 | +139 % |
-| `greedy_upgrade` | 34 | 9,998,550 | 29,965,474 | +139 % |
-| `cpsat` | 24 | 9,999,207 | 32,916,590 | **+163 %** |
+| `equal_split` | 29 | 21,940,122 | 47,054,719 | baseline |
+| `greedy` | 42 | 49,995,739 | 161,355,511 | +243 % |
+| `greedy_upgrade` | 42 | 49,995,739 | 161,355,511 | +243 % |
+| `cpsat` | 15 | 49,969,015 | 201,869,418 | **+329 %** |
 
-With a two-per-district cap, plain greedy spends only 3.55 M of the 10 M — it commits its
-district slots to cheap high-density options and then cannot use the rest.
+CP-SAT funds fifteen buildings where the heuristics fund forty-two, and delivers a
+quarter more carbon for the same money: it is buying deep retrofits of a few
+high-consumption buildings rather than the cheapest option on every building it can
+reach.
+
+With a two-per-district cap, plain greedy spends only 22.9 M of the 50 M — it commits
+its district slots to cheap high-density options and then cannot use the rest.
 
 | Solver | Funded | Spent | Life-cycle kgCO₂e | vs equal split |
 |---|---|---|---|---|
-| `equal_split` | 9 | 1,644,764 | 5,261,983 | baseline |
-| `greedy` | 10 | 3,553,479 | 13,411,548 | +155 % |
-| `greedy_upgrade` | 10 | 9,984,278 | 29,214,174 | +455 % |
-| `cpsat` | 10 | 9,986,292 | 31,368,000 | **+496 %** |
+| `equal_split` | 15 | 11,274,593 | 27,267,857 | baseline |
+| `greedy` | 18 | 22,877,215 | 89,943,629 | +230 % |
+| `greedy_upgrade` | 18 | 49,972,148 | 189,443,583 | +595 % |
+| `cpsat` | 10 | 49,988,795 | 191,517,107 | **+602 %** |
 
 **The headline is quoted against `greedy_upgrade`, never against plain greedy.** Plain
 greedy never revisits a funded building, so once every building holds its cheapest dense
-option — about 16 M EGP here — it stops spending altogether. Its benefit is then flat
+option — about 57 M EGP here — it stops spending altogether. Its benefit is then flat
 while the budget grows, and a comparison against it measures that ceiling rather than the
 value of exact optimization. `greedy_upgrade` adds the obvious repair, spending what is
 left on the best available swap, and is the baseline CP-SAT has to beat.
 
-Over 40 budget/objective instances from 2 M to 40 M EGP: **CP-SAT wins by a median of
-1.4 % unconstrained and 20.1 % under a district cap of 2.** The unconstrained advantage
-peaks at 11.5 % around 14 M EGP, where the budget binds hardest and the choice of which
-building to skip actually matters, then decays toward zero as the budget grows enough to
-fund everything worth funding. The capped advantage does the opposite, climbing to 35 %
-at 40 M. The unconstrained gap is small because a good heuristic is near-optimal on a
-plain knapsack — that is reported rather than hidden. The cap is where exact optimization
-earns its place, and it is also the realistic case.
+Over 40 budget/objective instances from 10 M to 200 M EGP: **CP-SAT wins by a median of
+1.2 % unconstrained and 8.1 % under a district cap of 2 — a factor of 6.5.** Neither
+median is the whole story, and the shapes differ. The unconstrained advantage peaks at
+**25 % at 50 M EGP**, where the budget binds hardest and the choice of which building to
+skip decides the answer, then decays to nothing above 140 M once there is enough money
+to fund everything worth funding. The capped advantage does the opposite: it grows with
+the budget, to 14.6 % at 200 M, because the cap keeps binding after the budget has
+stopped. The median is small only because most of the range is budgets where a good
+heuristic is near-optimal on a plain knapsack — that is reported rather than hidden. The
+cap is also the realistic case: no ministry funds nine buildings in one district and
+none in the next.
 
-Dominance pruning removes 60 % of the candidate set (1367 → 540) before solving. Provably
+Dominance pruning removes 62 % of the candidate set (1448 → 547) before solving. Provably
 safe — any solution using a dominated option can be rewritten to use its dominator — and
 `test_pruning_does_not_change_any_solver_result` checks that across every solver ×
 objective × budget combination.
@@ -399,11 +408,21 @@ Stated here as they are stated on the screens that present them.
 2. **Integrity is not accuracy** — a verified chain says nobody altered what the meter
    sent. Whether the meter itself behaved is a separate question, and one the alert inbox
    answers.
-3. **No per-building error figure is published** — the platform reports which model was
+3. **The portfolio is drawn from OSM public-amenity tags** — which in Egypt do not
+   mark a private school as private or a professional syndicate as anything but
+   `building=public`. Those are excluded here by words in the name
+   (`EXCLUDE_NAME_HINTS`), which is blunt in both directions: it would keep a private
+   school whose name does not say so. Every building carries its `osm_way_id` and its
+   name is the one OSM holds for that way, so any of them can be checked in a browser.
+4. **Districts are OSM administrative units, not neighbourhood names** — each is
+   whatever Nominatim resolves that building's own centroid to at city level, so a
+   building a Cairene would place in Maadi is recorded under Helwan, the boundary it
+   actually falls inside.
+5. **No per-building error figure is published** — the platform reports which model was
    selected and draws both lines, rather than inventing a metric it does not measure.
-4. **Some rates are still uncited** — marked as such wherever they appear, including on
+6. **Some rates are still uncited** — marked as such wherever they appear, including on
    the printed bill of quantities, and they must be sourced before tender.
-5. **The data is simulated** — fifty real buildings, a real street network and a real
+7. **The data is simulated** — fifty real, named buildings, a real street network and a real
    catalog structure, driven by a simulator rather than by fifty real meters.
 
 ---

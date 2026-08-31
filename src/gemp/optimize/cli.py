@@ -1,8 +1,8 @@
 """Phase 0 exit gate: a real allocation from the command line, with no infrastructure.
 
-    python -m gemp.optimize.cli --budget 10000000
-    python -m gemp.optimize.cli --budget 10000000 --compare
-    python -m gemp.optimize.cli --budget 10000000 --objective raw_kwh --district-cap 4
+    python -m gemp.optimize.cli --budget 50000000
+    python -m gemp.optimize.cli --budget 50000000 --compare
+    python -m gemp.optimize.cli --budget 50000000 --objective raw_kwh --district-cap 4
 
 No database, no MQTT broker, no containers. If the pipeline slips, this still runs
 and still produces the artifact the project is judged on.
@@ -102,7 +102,7 @@ def print_comparison(results: dict[str, Allocation], objective: str) -> None:
     print(f"  CP-SAT over greedy_upgrade: {strong:+.2f}%   (over plain greedy: {plain:+.2f}%)")
     print(
         "  The first number is the honest one. Plain greedy never revisits a funded\n"
-        "  building, so above roughly 16 M EGP it stops spending and the gap against it\n"
+        "  building, so above roughly 57 M EGP it stops spending and the gap against it\n"
         "  measures its ceiling rather than the value of exact optimization. A small gap\n"
         "  against greedy_upgrade is expected: on an unconstrained knapsack a good\n"
         "  heuristic is near-optimal. Exact optimization earns its place through side\n"
@@ -114,7 +114,7 @@ def print_comparison(results: dict[str, Allocation], objective: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--budget", type=float, default=10_000_000, help="EGP")
+    parser.add_argument("--budget", type=float, default=50_000_000, help="EGP")
     parser.add_argument("--solver", choices=sorted(SOLVERS), default="cpsat")
     parser.add_argument("--objective", choices=sorted(OBJECTIVES), default="lca_carbon")
     parser.add_argument("--district-cap", type=int, default=None,

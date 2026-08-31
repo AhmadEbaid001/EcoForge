@@ -1730,9 +1730,11 @@ export const admin = {
           <div class="posture-verdict ${warnings.length ? 'bad' : 'good'}">
             <span class="verdict-shield">${icon(warnings.length ? 'warning' : 'integrity')}</span>
             <span class="verdict-text">
-              <span class="verdict-word">${warnings.length
-                ? t('ad.toFix', { n: warnings.length })
-                : t('ad.nothingOutstanding')}</span>
+              <span class="verdict-word">${warnings.length === 1
+                ? t('ad.toFixOne')
+                : warnings.length
+                  ? t('ad.toFix', { n: warnings.length })
+                  : t('ad.nothingOutstanding')}</span>
               <span class="verdict-gloss">${warnings.length
                 ? t('ad.postureBad') : t('ad.postureGood')}</span>
             </span>

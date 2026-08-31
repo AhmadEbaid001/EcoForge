@@ -31,7 +31,12 @@ log = logging.getLogger("gemp.evaluate")
 # run. The top of the range matters: the first version stopped at 20 M EGP, which is
 # below the point where plain greedy saturates, so two claims reported failures that
 # were artifacts of the grid rather than findings about the solvers.
-QUICK_BUDGETS = (5_000_000.0, 15_000_000.0, 25_000_000.0, 40_000_000.0)
+# Four points spanning the portfolio's whole decision range: 25 M funds twelve
+# of the fifty buildings, 100 M funds thirty-six, 175 M is past the point plain
+# greedy stops spending. The old set topped out at 40 M, which on a portfolio of
+# public buildings is still the steep part of the curve, so the saturation claim
+# could only ever SKIP under --quick.
+QUICK_BUDGETS = (25_000_000.0, 75_000_000.0, 125_000_000.0, 175_000_000.0)
 
 
 def write_claims_csv(claims: list[ClaimResult], path: Path) -> Path:

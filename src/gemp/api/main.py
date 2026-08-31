@@ -372,7 +372,7 @@ async def _unhandled_errors_are_named(_request, exc: Exception) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-# Funding the entire portfolio costs about 40 M EGP. A trillion is far past any
+# Funding the entire portfolio costs about 200 M EGP. A trillion is far past any
 # defensible input and still leaves CP-SAT's integer coefficients well inside range;
 # the point of the bound is to turn nonsense into a 422 rather than a 500.
 MAX_BUDGET_EGP = 1e12
@@ -1169,7 +1169,7 @@ def compare_solvers(
             for name, allocation in results.items()
         },
         # The honest headline. Plain greedy never revisits a funded building, so above
-        # roughly 16 M EGP it stops spending and any gap measured against it is its
+        # roughly 57 M EGP it stops spending and any gap measured against it is its
         # saturation rather than the value of exact optimization. Both are returned so
         # the difference is visible instead of a matter of which key was chosen.
         "cpsat_vs_greedy_upgrade_pct": _comparable(improvement_pct(

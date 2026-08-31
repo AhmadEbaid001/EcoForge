@@ -225,7 +225,7 @@ function showLanding() {
           <p class="lp-badge">Team Ecoforge &middot; RoboDam 2026</p>
           <h1>A fixed budget.<br>Fifty public buildings.<br>
             <span class="lp-accent">Evidence for every choice.</span></h1>
-          <p class="lp-standfirst">GEMP decides which public buildings in New Cairo get
+          <p class="lp-standfirst">GEMP decides which public buildings across Greater Cairo get
           retrofitted and with what &mdash; measuring each one rather than assuming it,
           proving the measurements were never altered, and solving the allocation
           exactly rather than approximately.</p>
@@ -677,8 +677,8 @@ function showLogin(message = '') {
           <div class="login-scene-art">${signInArtwork()}</div>
           <div class="login-scene-body">
             <p class="lede" id="signin-lede">Allocates a fixed budget across fifty public
-            buildings in New Cairo, and shows the evidence for every building it
-            chose.</p>
+            buildings across Greater Cairo, and shows the evidence for every building
+            it chose.</p>
             <ul class="login-points">
               <li>${icon('integrity')}<span>Every reading signed on arrival, and
                 re-verifiable one building at a time.</span></li>

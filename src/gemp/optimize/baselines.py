@@ -16,7 +16,7 @@ what the proposal's heuristic actually described.
 straw man, and a straw man is worth less than an honest small gap. This is a
 MULTIPLE-CHOICE knapsack: at most one option per building. Plain greedy takes each
 building's best-density option and can never revisit it, so once every building holds
-its cheapest dense option - about 16 M EGP on this portfolio - it stops spending
+its cheapest dense option - about 57 M EGP on this portfolio - it stops spending
 entirely. Its benefit then flatlines while the budget grows, and by 30 M EGP it is
 beaten by equal split. The resulting "CP-SAT wins by 127%" is an artifact of a
 baseline that leaves 60% of the money unspent, not a property of exact optimization.

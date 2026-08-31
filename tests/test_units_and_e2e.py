@@ -165,20 +165,46 @@ def test_lca_adjustment_barely_changes_the_funded_set(portfolio):
 
 
 def test_optimizer_declines_options_whose_embodied_carbon_exceeds_their_savings(portfolio):
-    """The LCA layer's one unambiguous win in this portfolio.
+    """A net-negative option must never be funded by the carbon objective.
 
-    At least one glazing option saves real energy but emits more carbon to
-    manufacture than it avoids over thirty years. A raw-kWh ranking would treat it as
-    a benefit; the carbon objective must never fund it.
+    This asserted that the portfolio CONTAINED such an option, and it did: on the
+    old fixture at least one glazing candidate emitted more to manufacture than it
+    avoided over thirty years, and `docs/FINDINGS.md` cited that as the life-cycle
+    layer's one unambiguous win.
+
+    The portfolio is now real public buildings rather than the apartment blocks
+    that fixture turned out to be, and they are large enough that glazing always
+    pays its embodied carbon back. So the case no longer occurs naturally - which
+    is a finding about the portfolio, not a licence to weaken the check.
+
+    The property worth testing was always the optimizer's, not the fixture's, so
+    the option is constructed here: whatever the portfolio happens to contain, a
+    candidate that costs more carbon than it saves must not be bought with a carbon
+    budget. Written this way it also keeps working when the portfolio changes again.
     """
     _params, _catalog, buildings, candidates = portfolio
 
-    negative = [c for c in candidates if c.lifetime_benefit_kgco2e <= 0]
-    assert negative, "expected at least one net-negative option in the fixture"
-    assert all(c.annual_kwh_saving > 0 for c in negative)
+    natural = [c for c in candidates if c.lifetime_benefit_kgco2e <= 0]
+    assert all(c.annual_kwh_saving > 0 for c in natural), (
+        "a net-negative option should still save energy - it is the CARBON that "
+        "does not pay back, and that distinction is the whole point of the layer"
+    )
 
-    funded = {
-        i.candidate_key
-        for i in solve(candidates, buildings, 80_000_000, objective="lca_carbon").items
-    }
-    assert not (funded & {c.key for c in negative})
+    # A cheap option that saves energy and loses carbon. Cheap so that a budget
+    # this size could not plausibly decline it on price.
+    donor = min(candidates, key=lambda c: c.cost_egp)
+    poisoned = donor.model_copy(update={
+        "key": f"{donor.key}::net-negative-probe",
+        "cost_egp": 1_000.0,
+        "annual_kwh_saving": max(donor.annual_kwh_saving, 1.0),
+        "lifetime_benefit_kgco2e": -1_000.0,
+    })
+
+    result = solve([*candidates, poisoned], buildings, 80_000_000,
+                   objective="lca_carbon")
+    funded = {i.candidate_key for i in result.items}
+
+    assert poisoned.key not in funded, (
+        "the carbon objective funded an option that emits more than it avoids"
+    )
+    assert not (funded & {c.key for c in natural})

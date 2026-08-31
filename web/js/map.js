@@ -38,11 +38,15 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
 
       <div class="field">
         <label for="budget">${t('map.budget')}</label>
-        <output id="budget-out" for="budget">10,000,000</output>
+        <output id="budget-out" for="budget">50,000,000</output>
         <div class="field-unit" id="budget-unit">EGP</div>
-        <input type="range" id="budget" min="1000000" max="30000000" step="250000"
-               value="10000000" aria-valuetext="10,000,000 Egyptian pounds">
-        <div class="scale"><span>1,000,000</span><span>30,000,000</span></div>
+        <!-- Sized to the portfolio: 25 M funds 12 of the fifty, 50 M funds 22,
+             100 M funds 36 and 200 M funds all of them. The range has to span the
+             point where the decision stops being obvious, which is where a reader
+             should be able to put the slider and watch the allocation change. -->
+        <input type="range" id="budget" min="5000000" max="200000000" step="1000000"
+               value="50000000" aria-valuetext="50,000,000 Egyptian pounds">
+        <div class="scale"><span>5,000,000</span><span>200,000,000</span></div>
         <p class="note" id="solve-note">${t('map.budgetNote')}</p>
       </div>
 
@@ -887,17 +891,16 @@ async function selectBuilding(id) {
   const rows = data.options.map((o, i) => {
     const negative = o.lifetime_benefit_kgco2e <= 0;
     const life = o.service_life_yr
-      ? `${o.service_life_yr} yr life`
-      : 'life not stated';
+      ? t('det.lifeYr', { n: o.service_life_yr })
+      : t('det.lifeUnknown');
     return `
     <tr class="${o.chosen ? 'is-chosen' : ''} ${negative ? 'is-negative' : ''}">
       <td class="opt-name">
         <span class="opt-mark" aria-hidden="true">${o.chosen ? mark('check', { size: 12 }) : negative ? mark('cross', { size: 12 }) : mark('dash', { size: 12 })}</span>
         <span class="opt-label">${escapeHtml(o.label)}</span>
         <span class="opt-sub">#${i + 1} &middot; ${escapeHtml(life)} &middot;
-          ${compact(o.lifetime_benefit_kgco2e)} kgCO&#8322;e over its lifetime</span>
-        ${negative ? `<span class="opt-why">Embodied carbon exceeds the saving, so this
-          can never be chosen.</span>` : ''}
+          ${t('det.overLifetime', { n: compact(o.lifetime_benefit_kgco2e) })}</span>
+        ${negative ? `<span class="opt-why">${t('det.negative')}</span>` : ''}
       </td>
       <td class="num">${compact(o.cost_egp)}</td>
       <td class="num">${compact(o.annual_kwh_saving)}</td>
@@ -916,13 +919,13 @@ async function selectBuilding(id) {
    * from an assertion into an argument, and it is the sentence the whole
    * building-specific claim rests on. */
   const why = chosen
-    ? `<p class="detail-why">${escapeHtml(chosen.label)} wins here because this
-       building has a ${b.hvac_age_yr}-year-old ${escapeHtml(pretty(b.hvac_type) || 'HVAC')}
-       system and ${escapeHtml(b.insulation_quality)} insulation. Change the budget or the
-       district cap and this row can change &mdash; the ranking is per building, not a
-       portfolio-wide priority list.</p>`
-    : `<p class="detail-why">Nothing was funded here under the current budget, method
-       and cap. The ranking below is still what the optimizer weighed.</p>`;
+    ? `<p class="detail-why">${t('det.why', {
+        label: escapeHtml(chosen.label),
+        age: b.hvac_age_yr,
+        hvac: hvacName(b.hvac_type),
+        insulation: insulationName(b.insulation_quality),
+      })}</p>`
+    : `<p class="detail-why">${t('det.whyNone')}</p>`;
 
   $('detail-empty').hidden = true;
   const body = $('detail-body');
@@ -932,40 +935,36 @@ async function selectBuilding(id) {
       <h2>${escapeHtml(b.name)}</h2>
       <span class="chip ${chosen ? 'funded' : 'unfunded'}">
         <span aria-hidden="true">${chosen ? mark('check', { size: 12 }) : mark('dash', { size: 12 })}</span>
-        ${chosen ? 'Funded' : 'Not funded'}</span>
+        ${chosen ? t('map.funded') : t('map.notFunded')}</span>
     </div>
     <div class="code">${escapeHtml(b.code)} &middot; ${escapeHtml(b.district)}</div>
 
     ${anomalies ? `<p class="detail-alert" role="note">
       <span aria-hidden="true">${mark('critical', { size: 12 })}</span>
-      ${anomalies} open ${anomalies === 1 ? 'alert' : 'alerts'} on this meter. Its
-      metered consumption is what every figure below is costed against, so treat them
-      as provisional until the alerts are resolved.</p>` : ''}
+      ${anomalies === 1 ? t('det.alertOne') : t('det.alerts', { n: anomalies })}</p>` : ''}
 
     <div class="facts">
-      <div><span>Use</span>${escapeHtml(pretty(b.occupancy_pattern))}</div>
-      <div><span>Insulation</span>${escapeHtml(pretty(b.insulation_quality))}</div>
-      <div><span>HVAC age</span>${b.hvac_age_yr} yr${b.hvac_type ? ` &middot; ${escapeHtml(pretty(b.hvac_type))}` : ''}</div>
-      <div><span>Roof</span>${fmt(b.roof_area_m2)} m&sup2;</div>
-      <div><span>Floor</span>${fmt(b.floor_area_m2)} m&sup2;</div>
-      <div><span>Annual energy</span>${compact(b.annual_kwh)} kWh/yr</div>
+      <div><span>${t('det.use')}</span>${occupancyName(b.occupancy_pattern)}</div>
+      <div><span>${t('det.insulation')}</span>${insulationName(b.insulation_quality)}</div>
+      <div><span>${t('det.hvacAge')}</span>${t('det.years', { n: b.hvac_age_yr })}${b.hvac_type ? ` &middot; ${hvacName(b.hvac_type)}` : ''}</div>
+      <div><span>${t('det.roof')}</span>${fmt(b.roof_area_m2)} m&sup2;</div>
+      <div><span>${t('det.floor')}</span>${fmt(b.floor_area_m2)} m&sup2;</div>
+      <div><span>${t('det.annualEnergy')}</span>${t('det.kwhYr', { n: compact(b.annual_kwh) })}</div>
     </div>
 
-    <h3 class="section-label">Every option the optimizer weighed
+    <h3 class="section-label">${t('det.everyOption')}
       <span class="count">${data.options.length}</span></h3>
-    <p class="detail-method">Benefit is kWh saved &times; the option&rsquo;s lifetime
-      &times; ${GRID_FACTOR} kgCO&#8322;e/kWh, less the embodied carbon of the works.
-      These are estimates, not measured savings.</p>
+    <p class="detail-method">${t('det.method', { factor: GRID_FACTOR })}</p>
 
     <div class="opt-table-wrap">
       <table class="opt-table">
         <thead><tr>
-          <th scope="col">Option</th>
-          <th scope="col" class="num">Cost EGP</th>
-          <th scope="col" class="num">kWh/yr</th>
-          <th scope="col" class="num">Benefit /k EGP</th>
+          <th scope="col">${t('det.colOption')}</th>
+          <th scope="col" class="num">${t('det.colCost')}</th>
+          <th scope="col" class="num">${t('det.colKwh')}</th>
+          <th scope="col" class="num">${t('det.colBenefit')}</th>
         </tr></thead>
-        <tbody>${rows || '<tr><td colspan="4">No applicable interventions.</td></tr>'}</tbody>
+        <tbody>${rows || `<tr><td colspan="4">${t('det.noOptions')}</td></tr>`}</tbody>
       </table>
     </div>
     ${why}`;
@@ -1039,7 +1038,7 @@ async function compare() {
   }).join('');
 
   // Quoted against greedy + upgrade, never against plain greedy. Plain greedy never
-  // revisits a funded building, so above roughly 16 M EGP it stops spending and the
+  // revisits a funded building, so above roughly 57 M EGP it stops spending and the
   // gap against it measures its ceiling rather than the value of exact optimization.
   const gap = data.cpsat_vs_greedy_upgrade_pct;
   const capped = data.max_funded_per_district;
@@ -1127,6 +1126,16 @@ const pretty = (value) => String(value || '')
   .replace(/_/g, ' ')
   .replace(/24x7/gi, '24×7')
   .replace(/^./, (c) => c.toUpperCase());
+
+/* The three enums the detail panel puts on screen, named in the reader's own
+ * language. `pretty` alone leaves "Office" and "Chiller" in an otherwise Arabic
+ * panel, which reads as strings someone forgot rather than as data; an enum the
+ * catalog grows later falls back to `pretty` rather than to nothing. */
+const localised = (translated, key, value) =>
+  (translated === key ? escapeHtml(pretty(value)) : translated);
+const occupancyName = (v) => localised(t(`occ.${v}`), `occ.${v}`, v);
+const insulationName = (v) => localised(t(`ins.${v}`), `ins.${v}`, v);
+const hvacName = (v) => (v ? localised(t(`hv.${v}`), `hv.${v}`, v) : t('hv.unknown'));
 
 async function narrative() {
   const modal = $('narrative-modal');

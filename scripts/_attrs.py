@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 
 METERS_PER_DEG_LAT = 111_320.0
 
@@ -75,6 +76,22 @@ def square_footprint(lat: float, lon: float, area_m2: float) -> list[list[float]
     ]
 
 
+def district_code(district: str) -> str:
+    """A short asset-register prefix for a district name.
+
+    Multi-word districts become their initials (New Administrative Capital -> NAC),
+    single-word ones their first three letters (Helwan -> HEL). The old version
+    prefixed every code with NAC regardless of where the building was, which read as
+    an asset register from one city describing buildings in nine.
+    """
+    words = [w for w in re.split(r"[^A-Za-z]+", district) if w]
+    if not words:
+        return "GC"
+    if len(words) == 1:
+        return words[0][:3].upper()
+    return "".join(w[0] for w in words[:4]).upper()
+
+
 def make_properties(
     rng: random.Random,
     index: int,
@@ -83,9 +100,17 @@ def make_properties(
     lat: float,
     lon: float,
     osm_id: int | None = None,
+    occupancy: str | None = None,
 ) -> dict:
-    """Everything the domain model needs, given a footprint."""
-    occupancy = weighted_choice(rng, [(o[0], o[1]) for o in OCCUPANCY_MIX])
+    """Everything the domain model needs, given a footprint.
+
+    `occupancy` is passed in when the caller knows what the building is: the OSM
+    fetcher reads it off the amenity tag, so a school is modelled as a school and a
+    hospital carries a 24x7 load. It falls back to the mix only for the synthetic
+    generator, which has no tag to read it from.
+    """
+    if occupancy is None:
+        occupancy = weighted_choice(rng, [(o[0], o[1]) for o in OCCUPANCY_MIX])
     spec = next(o for o in OCCUPANCY_MIX if o[0] == occupancy)
     eui_lo, eui_hi = spec[2]
     floors_lo, floors_hi = spec[3]
@@ -97,7 +122,7 @@ def make_properties(
 
     props = {
         "id": f"b{index + 1:03d}",
-        "code": f"NAC-{district.split('-')[0]}-{index + 1:03d}",
+        "code": f"{district_code(district)}-{index + 1:03d}",
         "name": f"{occupancy.replace('_', ' ').title()} Building {index + 1}",
         "district": district,
         "lat": round(lat, 6),
