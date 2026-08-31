@@ -79,23 +79,35 @@ fi
 
 log "reseeding ${MONTHS} month(s) of history, ending now"
 
-# The simulator is stopped first and started last. It publishes readings
-# continuously, and a node writing into the table while the seeder is deleting from
-# it produces exactly the discontinuity this operation exists to remove.
-log "stopping the simulator"
-docker compose stop sim 2>&1 | tee -a "${LOG}" || log "sim was not running"
+# BOTH writers stop, not just the simulator, and this is the correction that cost
+# an afternoon to find.
+#
+# `core` runs the ingest consumer. The consumer holds each chain's head in memory
+# and writes it to the external anchor once a minute. Stopping only `sim` leaves it
+# running while the table is emptied and rebuilt underneath it, and the two ends of
+# the integrity check then describe different worlds: measured on this host after a
+# reseed, the anchor claimed sequence 69,066 for b001 while the table stopped at
+# 69,063, and F5-b failed with "the tail has been deleted" - the alarm firing
+# correctly at a discrepancy this operation had created.
+#
+# The API is therefore down for the length of the seed. That is the honest trade:
+# an operation that rebuilds the entire reading history is not one to serve
+# requests through, and the alternative is an integrity report nobody can trust.
+log "stopping the simulator and the API"
+docker compose stop sim core 2>&1 | tee -a "${LOG}" || log "they were not running"
 
 if ! GEMP_IMAGE="${IMAGE}" docker compose run --rm --no-deps \
       core python -m gemp.seed --months "${MONTHS}" --force 2>&1 | tee -a "${LOG}"; then
-  log "the seeder failed; starting the simulator again and leaving the data as it is"
-  docker compose start sim 2>&1 | tee -a "${LOG}" || true
+  log "the seeder failed; starting the services again and leaving the data as it is"
+  docker compose start core sim 2>&1 | tee -a "${LOG}" || true
   die "reseed failed"
 fi
 
-# The API warms its anomaly window from the readings at start-up, so it has to be
-# restarted or it keeps scoring against a month of history that no longer exists.
-log "restarting the API and the simulator"
-docker compose restart core 2>&1 | tee -a "${LOG}" || die "the API would not restart"
+# Started rather than restarted: they have been down since before the wipe, so the
+# consumer loads its chain heads from the history the seeder just wrote, and the
+# detector warms its window from the same.
+log "starting the API and the simulator"
+docker compose start core 2>&1 | tee -a "${LOG}" || die "the API would not start"
 docker compose start sim 2>&1 | tee -a "${LOG}" || die "the simulator would not start"
 
 # Same check the deploy uses, for the same reason: a restart that comes back

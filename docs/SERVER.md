@@ -279,12 +279,18 @@ Or on the host, if you are already there:
 infra/deploy/reseed.sh 6
 ```
 
-It stops the simulator, wipes the readings and everything derived from them - the
-integrity checkpoints, the anomalies and the forecasts - re-imports the portfolio and
-the catalog over the existing rows, generates a fresh window that ends at this moment,
-restarts the API so its anomaly window warms from the new history, starts the simulator
-again, and health-checks before it reports success. Accounts, sessions, the audit log
-and stored allocations survive it.
+It stops **both** the simulator and the API, wipes the readings and everything derived
+from them - the integrity checkpoints, the anomalies and the forecasts - re-imports the
+portfolio and the catalog over the existing rows, generates a fresh window that ends at
+this moment, starts the API so its chain heads and its anomaly window come from the new
+history, starts the simulator again, and health-checks before it reports success.
+Accounts, sessions, the audit log and stored allocations survive it.
+
+**The site is down for the length of the seed** - about nine minutes for 24 months.
+That is deliberate. The API runs the ingest consumer, which holds each chain's head in
+memory and mirrors it to the external anchor once a minute; leaving it up while the
+table is rebuilt underneath it leaves the anchor claiming a sequence the table does not
+reach, and the integrity check then reports a deleted tail that nobody deleted.
 
 Two things worth knowing before running it during a demonstration week:
 
