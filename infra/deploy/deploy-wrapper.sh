@@ -39,6 +39,24 @@ REF="${2:-}"
 SHA="${3:-}"
 
 [ "$#" -le 3 ] || deny "too many arguments"
+
+# reseed.sh is the one request that is not about an image. It takes a number of
+# months and nothing else, so it is validated and dispatched here rather than
+# falling through the image-reference checks below, which it would never pass.
+#
+# It is in this file at all because the alternative is worse: the operation needs
+# `docker compose run` on the host, and the only other way to reach that is an
+# interactive shell for the deploy key. A fixed vocabulary of three scripts, each
+# with a validated argument, is the smaller privilege.
+if [ "${SCRIPT##*/}" = "reseed.sh" ]; then
+  MONTHS="${REF:-6}"
+  case "${MONTHS}" in
+    ''|*[!0-9]*) deny "reseed takes a whole number of months, got ${MONTHS}" ;;
+  esac
+  [ "${MONTHS}" -ge 1 ] && [ "${MONTHS}" -le 120 ] || deny "reseed months out of range: ${MONTHS}"
+  exec "${APP_DIR}/infra/deploy/reseed.sh" "${MONTHS}"
+fi
+
 [ -n "${REF}" ] || deny "no image reference given"
 
 # The commit is optional, and when present it is a hex object name and nothing else.
@@ -71,5 +89,5 @@ esac
 case "${SCRIPT}" in
   */deploy.sh)   exec "${APP_DIR}/infra/deploy/deploy.sh" "${REF}" "${SHA}" ;;
   */rollback.sh) exec "${APP_DIR}/infra/deploy/rollback.sh" "${REF}" ;;
-  *) deny "only deploy.sh and rollback.sh may be run with this key" ;;
+  *) deny "only deploy.sh, rollback.sh and reseed.sh may be run with this key" ;;
 esac

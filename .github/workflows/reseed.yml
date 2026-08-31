@@ -1,0 +1,104 @@
+# Rebuild the deployed history so it ends now.
+#
+# Manual only, and deliberately so: it destroys every stored reading and generates
+# a fresh window in their place. Nothing triggers it automatically, and it is a
+# separate workflow from `deploy` rather than a flag on it, because a deploy that
+# could wipe the readings depending on an input is a deploy nobody can run without
+# reading the form twice.
+#
+# It exists because two things drift on a long-running deployment and both are
+# fixed the same way: the simulator advances data time faster than the clock, so
+# history ends wherever that ratchet took it; and a portfolio replaced in the
+# repository does not reach the database until something re-imports it.
+#
+# The `production` environment is where the human gate lives. Give it a required
+# reviewer in Settings > Environments and this waits for an approval.
+name: reseed
+
+on:
+  workflow_dispatch:
+    inputs:
+      months:
+        description: "Months of history to generate, ending now"
+        required: true
+        default: "6"
+        type: string
+      target:
+        description: "Which host to reseed"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  reseed:
+    name: reseed
+    runs-on: ubuntu-latest
+    # Generating five years of half-hourly readings for fifty buildings is minutes
+    # of work, and the job should not be killed halfway through a wipe-and-rebuild.
+    timeout-minutes: 60
+    environment:
+      name: ${{ inputs.target }}
+      url: ${{ vars.GEMP_URL }}
+
+    steps:
+      - name: Check the input before anything connects
+        # The host validates this too. Doing it here as well means a typo fails in
+        # two seconds rather than after an approval and an SSH round trip.
+        run: |
+          set -euo pipefail
+          case "${MONTHS}" in
+            ''|*[!0-9]*) echo "months must be a whole number, got '${MONTHS}'" >&2; exit 1 ;;
+          esac
+          if [ "${MONTHS}" -lt 1 ] || [ "${MONTHS}" -gt 120 ]; then
+            echo "months must be between 1 and 120, got ${MONTHS}" >&2
+            exit 1
+          fi
+          echo "reseeding ${MONTHS} month(s) on ${{ inputs.target }}"
+        env:
+          MONTHS: ${{ inputs.months }}
+
+      - name: Join the private network
+        if: vars.GEMP_USE_TAILSCALE == 'true'
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          version: latest
+
+      - name: Reseed over SSH
+        # Same key, same pinned host key, same forced command as the deploy. The
+        # wrapper on the far end recognises reseed.sh and validates the month count
+        # again before it runs anything.
+        run: |
+          set -euo pipefail
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${SSH_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/id_ed25519 \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=15 \
+              -p "${SSH_PORT:-22}" \
+              "${SSH_USER}@${SSH_HOST}" \
+              -- "${REMOTE_DIR}/infra/deploy/reseed.sh" "${MONTHS}"
+        env:
+          SSH_KEY: ${{ secrets.GEMP_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.GEMP_SSH_KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.GEMP_SSH_USER }}
+          SSH_HOST: ${{ secrets.GEMP_SSH_HOST }}
+          SSH_PORT: ${{ vars.GEMP_SSH_PORT }}
+          REMOTE_DIR: ${{ vars.GEMP_REMOTE_DIR }}
+          MONTHS: ${{ inputs.months }}

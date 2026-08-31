@@ -375,6 +375,20 @@ fails the build on its own, which is the point.
 Code changes need `docker compose build core sim`, not a restart — `src/` is baked into
 the image.
 
+**Refreshing the deployed history.** Two things drift on a long-running deployment: the
+simulator advances data time faster than the clock, so history ends wherever that
+ratchet took it, and a portfolio replaced in this repository does not reach the database
+until something re-imports it. Both are fixed by the same operation.
+
+```bash
+gh workflow run reseed -f months=6 -f target=production
+```
+
+It wipes every stored reading and generates a fresh window ending now, keeping accounts,
+the audit log and stored allocations. Manual only, gated by the environment's reviewer,
+and separate from `deploy` so that no ordinary release can destroy data by accident. On
+the host itself it is `infra/deploy/reseed.sh 6`.
+
 ---
 
 ## Status

@@ -262,6 +262,38 @@ The verify restores into a scratch database, counts rows *and constraints*, and 
 it. It fails loudly if the dump is not loadable — which is how the TimescaleDB
 restore bug in this repository was found.
 
+## Refreshing the history on the server
+
+The simulator advances data time at `GEMP_SIM_SPEED`, so a host left running for weeks
+holds readings that end wherever that ratchet took it rather than at today. And the
+portfolio in `data/buildings.geojson` reaches the database only when something imports
+it, which is the seeder. One operation fixes both:
+
+```bash
+gh workflow run reseed -f months=6 -f target=production
+```
+
+Or on the host, if you are already there:
+
+```bash
+infra/deploy/reseed.sh 6
+```
+
+It stops the simulator, wipes the readings and the integrity checkpoints, re-imports the
+portfolio and the catalog, generates a fresh window that ends at this moment, restarts
+the API so its anomaly window warms from the new history, starts the simulator again,
+and health-checks before it reports success. Accounts, sessions, the audit log and
+stored allocations survive it.
+
+Two things worth knowing before running it during a demonstration week:
+
+- **It destroys the readings.** A stored allocation still verifies against its own input
+  hash, but the meter history those readings represented is gone. Take a backup first if
+  the current history matters: `make backup` on the host.
+- **It takes minutes, not seconds.** Six months is about nine hundred thousand signed
+  readings for fifty buildings; sixty months is ten times that. The workflow allows an
+  hour, and the API is down only for the restart at the end.
+
 ## What this does not change
 
 The demonstration still runs on the laptop, air-gapped, per the existing plan. This
