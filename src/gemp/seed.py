@@ -25,6 +25,8 @@ from sqlalchemy import delete, func, select
 
 from gemp.config import get_settings
 from gemp.db import (
+    AnomalyRow,
+    ForecastRow,
     IntegrityCheckpointRow,
     ReadingRow,
     get_engine,
@@ -133,9 +135,26 @@ def already_seeded() -> int:
 
 
 def wipe_readings() -> None:
+    """Delete the readings and everything that was derived from them.
+
+    Anomalies and forecasts are not incidental rows: an anomaly names a reading by
+    (building, timestamp) and a forecast is fit to a window of them. Leaving them
+    behind after a re-seed leaves the alert inbox holding tens of thousands of open
+    alerts about readings that no longer exist, each one un-openable, and the
+    forecast panel drawing a line fit to deleted history.
+
+    Measured on the staging host: a re-seed that kept them left 76,942 anomalies
+    pointing into an empty table.
+
+    What survives, deliberately: accounts, sessions, the audit log, stored
+    allocations and the catalog. A stored allocation is a record of what was decided
+    and still verifies against its own input hash.
+    """
     with session_scope() as session:
         session.execute(delete(ReadingRow))
         session.execute(delete(IntegrityCheckpointRow))
+        session.execute(delete(AnomalyRow))
+        session.execute(delete(ForecastRow))
 
 
 def main(argv: list[str] | None = None) -> int:

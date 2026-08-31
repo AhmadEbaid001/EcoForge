@@ -110,3 +110,45 @@ def test_replacing_resets_consumption_to_the_fixture_profile(session):
     row = one(session)
     assert row.annual_kwh == 2_500_000.0
     assert row.annual_kwh_source == "profile"
+
+
+# ------------------------------------------------------- what a reseed removes
+
+
+def test_a_reseed_removes_what_was_derived_from_the_readings(monkeypatch, session):
+    """An anomaly names a reading by (building, timestamp) and a forecast is fit to a
+    window of them. A re-seed that keeps them leaves the alert inbox holding open
+    alerts about readings that no longer exist - 76,942 of them, on the staging host,
+    before this was fixed."""
+    from contextlib import contextmanager
+    from datetime import UTC, datetime
+
+    from gemp import seed as seed_module
+    from gemp.db import AnomalyRow, ForecastRow, IntegrityCheckpointRow, ReadingRow
+
+    import_portfolio(session, collection("Ministry of Health", "Cairo"))
+    when = datetime(2026, 8, 31, 9, 0, tzinfo=UTC)
+    session.add_all([
+        ReadingRow(building_id="b001", ts=when, kw=42.0, source="seed", seq=0, sig=b"x" * 32),
+        IntegrityCheckpointRow(building_id="b001", ts=when, last_seq=0, head_sig=b"x" * 32),
+        AnomalyRow(building_id="b001", ts=when, observed_kw=42.0, expected_kw=10.0,
+                   residual=32.0, robust_z=9.0, severity="critical", acknowledged=False),
+        ForecastRow(building_id="b001", ts=when, yhat=10.0, model_version="hgbr-2",
+                    made_at=when),
+    ])
+    session.flush()
+
+    @contextmanager
+    def scope():
+        yield session
+
+    monkeypatch.setattr(seed_module, "session_scope", scope)
+    seed_module.wipe_readings()
+
+    for table in (ReadingRow, IntegrityCheckpointRow, AnomalyRow, ForecastRow):
+        remaining = session.execute(select(table)).scalars().all()
+        assert not remaining, f"{table.__tablename__} survived the wipe"
+
+    # And the building itself did not go with them: the fixture is re-imported, not
+    # rebuilt, and everything else that references a building would break.
+    assert session.execute(select(BuildingRow)).scalars().all()
