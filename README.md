@@ -229,9 +229,14 @@ safe — any solution using a dominated option can be rewritten to use its domin
 `test_pruning_does_not_change_any_solver_result` checks that across every solver ×
 objective × budget combination.
 
-Forecasting reads a **median MAPE of 3.40 %** against a seasonal-naive baseline's 8.62 %,
-with the learned model beating the baseline on all 50 buildings. Episode-level anomaly
-detection reads **precision 0.83 at recall 0.88**, against review gates of 0.6 and 0.8.
+Forecasting reads a **median MAPE of 3.4 %** against a seasonal-naive baseline's 5.8 %,
+with the learned model beating the baseline on 49 of the 50 buildings — the fiftieth
+keeps the baseline, because the selector reports it when it wins rather than pretending
+otherwise. Episode-level anomaly detection reads **precision 0.79 at recall 0.89**,
+against review gates of 0.6 and 0.8.
+
+Both are measured against the current portfolio and the history the deployment is
+serving, by `python -m gemp.evaluate --with-db`, not carried over from an earlier one.
 
 ---
 
