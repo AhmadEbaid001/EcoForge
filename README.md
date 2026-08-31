@@ -384,8 +384,9 @@ until something re-imports it. Both are fixed by the same operation.
 gh workflow run reseed -f months=6 -f target=production
 ```
 
-It wipes every stored reading and generates a fresh window ending now, keeping accounts,
-the audit log and stored allocations. Manual only, gated by the environment's reviewer,
+It wipes every stored reading and everything derived from it - checkpoints, anomalies,
+forecasts - re-imports the portfolio over the existing rows, and generates a fresh
+window ending now. Accounts, the audit log and stored allocations are kept. Manual only, gated by the environment's reviewer,
 and separate from `deploy` so that no ordinary release can destroy data by accident. On
 the host itself it is `infra/deploy/reseed.sh 6`.
 

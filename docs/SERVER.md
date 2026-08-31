@@ -279,11 +279,12 @@ Or on the host, if you are already there:
 infra/deploy/reseed.sh 6
 ```
 
-It stops the simulator, wipes the readings and the integrity checkpoints, re-imports the
-portfolio and the catalog, generates a fresh window that ends at this moment, restarts
-the API so its anomaly window warms from the new history, starts the simulator again,
-and health-checks before it reports success. Accounts, sessions, the audit log and
-stored allocations survive it.
+It stops the simulator, wipes the readings and everything derived from them - the
+integrity checkpoints, the anomalies and the forecasts - re-imports the portfolio and
+the catalog over the existing rows, generates a fresh window that ends at this moment,
+restarts the API so its anomaly window warms from the new history, starts the simulator
+again, and health-checks before it reports success. Accounts, sessions, the audit log
+and stored allocations survive it.
 
 Two things worth knowing before running it during a demonstration week:
 
