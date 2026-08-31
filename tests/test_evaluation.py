@@ -372,3 +372,41 @@ def test_the_writable_copy_wins_when_both_exist(tmp_path, monkeypatch):
     (data / "ground_truth.csv").write_text(HEADER, encoding="utf-8")
     (anchor / "ground_truth.csv").write_text(HEADER, encoding="utf-8")
     assert ground_truth_read_path() == anchor / "ground_truth.csv"
+
+
+# ------------------------------------------------------- picking the row the
+# paper quotes
+
+
+def _scores(k: float):
+    from gemp.ml.evaluate import Scores
+
+    return Scores(k=k, flagged=10, episodes=4, events=5, events_found=4,
+                  true_positives=3, flag_rate=0.01)
+
+
+def test_the_measurement_returns_the_row_for_the_configured_threshold():
+    """`anomaly_k` is a parameter, and the sweep is measured at several values. The
+    claim is quoted at the configured one, so picking the wrong row would report a
+    precision the deployment does not run at."""
+    from gemp.evaluate.measured import Measurement
+
+    measurement = Measurement(buildings=50, model_median_mape=3.2,
+                              baseline_median_mape=8.6, beat_baseline=50,
+                              scores=[_scores(3.0), _scores(5.0), _scores(7.0)])
+    assert measurement.scores_at(5.0).k == 5.0
+
+
+def test_asking_for_a_threshold_that_was_not_swept_says_what_was():
+    """A KeyError naming the sweep is the difference between "the harness is broken"
+    and "params.yaml moved anomaly_k and the sweep did not follow"."""
+    import pytest
+
+    from gemp.evaluate.measured import Measurement
+
+    measurement = Measurement(buildings=50, model_median_mape=3.2,
+                              baseline_median_mape=8.6, beat_baseline=50,
+                              scores=[_scores(3.0), _scores(5.0)])
+    with pytest.raises(KeyError) as caught:
+        measurement.scores_at(4.0)
+    assert "3.0" in str(caught.value) and "5.0" in str(caught.value)
