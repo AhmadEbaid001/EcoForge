@@ -343,9 +343,10 @@ function showLanding() {
             <div class="built-fig">${builtFigure('offline')}</div>
             <div class="built-body">
               <h3>It works with the network unplugged</h3>
-              <p>No CDN, no web fonts, no map tiles, no charting library. The
-              allocation map is schematic SVG over local geometry and every chart is
-              drawn by hand, so a demonstration does not depend on conference wifi.</p>
+              <p>No CDN, no web fonts, no tile server, no charting library. The
+              allocation map is SVG over local geometry - satellite imagery included,
+              committed as a file rather than fetched - and every chart is drawn by
+              hand, so a demonstration does not depend on conference wifi.</p>
             </div>
           </article>
           <article class="built-card">

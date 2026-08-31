@@ -3091,6 +3091,58 @@ tbody tr.denied-row td { font-weight: 600; }
 .ctx-road.mid   { stroke-width: 1.4; }
 .ctx-road.minor { stroke-width: 1; }
 
+/* ---- the ground ----------------------------------------------------- */
+
+/* Three of them, chosen with the segmented control above the map and applied
+   through `data-basemap` rather than by re-rendering: the layers are all in the
+   markup, so switching is a repaint and cannot lose the reader's pan and zoom.
+
+   streets    the drawing this map has always been - roads, water, parks and the
+              neighbouring footprints, in the palette of the rest of the product
+   satellite  10 m Sentinel-2 imagery underneath, the vector footprints on top.
+              The context polygons go: they are the same buildings the imagery
+              already shows, drawn a second time in flat grey over their own
+              roofs. The arterials stay, thinner and dimmed, because a road is
+              easier to follow as a line than as a strip of tarmac
+   plain      neither. For a projector in a lit room, and for print, where a
+              photograph behind fifty marks is a grey wash that hides them
+
+   The imagery is magnified well past its 10 m native resolution at close zoom.
+   `image-rendering: auto` lets it blur there, which is honest: crisp pixel
+   edges would advertise a resolution this image does not have. */
+.basemap { pointer-events: none; image-rendering: auto; }
+
+#map:not([data-ground="satellite"]) .basemap { display: none; }
+
+#map[data-ground="satellite"] .ctx-building,
+#map[data-ground="satellite"] .ctx-water,
+#map[data-ground="satellite"] .ctx-park { display: none; }
+#map[data-ground="satellite"] .ctx-road { opacity: .5; }
+#map[data-ground="satellite"] .ctx-road.major { stroke-width: 1.6; }
+
+/* The district labels sit on photography rather than on a flat panel, so they
+   need their own ground to stay legible over both desert and city. */
+#map[data-ground="satellite"] .district-label {
+  paint-order: stroke fill;
+  stroke: var(--panel);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+#map[data-ground="plain"] .ctx { display: none; }
+
+.map-basemaps { margin-inline-start: auto; }
+/* The legend follows the switcher rather than claiming the free space, so the
+   two do not fight over `margin-inline-start: auto` and wrap unpredictably. */
+.map-basemaps + .map-legend { margin-inline-start: 0; }
+
+.map-attribution {
+  /* Inside .map-foot, which already sets the caption size and the muted ink;
+     this only has to take the far end of the row from the note beside it. */
+  width: 100%;
+  color: var(--ink3);
+}
+
 /* Detail by zoom. At the opening view the minor streets are a grey wash that
    hides the ones anybody would navigate by, and the neighbouring footprints
    are specks — so neither is drawn until they mean something. */

@@ -78,8 +78,14 @@ carbon, time-of-use carbon, first-year energy or first-year money; solve with CP
 either greedy heuristic, or the equal-split status quo. A district cap is available
 because no ministry funds nine buildings in one district and none in the next.
 
-The map is inline SVG over local geometry. No mapping library and no tile server, so it
-draws with the network unplugged.
+Three grounds, switchable: **Streets** draws roads, water and neighbouring footprints
+from local OpenStreetMap geometry; **Satellite** puts 10 m Sentinel-2 imagery underneath
+them; **Plain** is neither, for a projector in a lit room.
+
+The map is inline SVG throughout. No mapping library, and **no tile server** — the
+imagery is one JPEG in this repository, fetched by `scripts/fetch_basemap.py` and
+refreshed by hand. Nothing on this screen makes a network request at runtime, so it
+draws with the cable out.
 
 <img src="docs/images/allocation-map.png" alt="Allocation map" width="900">
 
@@ -164,6 +170,7 @@ No default account ships, by design. The bootstrap command prints a password onc
 |---|---|
 | `python -m gemp.domain.catalog --validate` | Check the data contract. `--strict` fails on uncited catalog rows. |
 | `python scripts/fetch_osm_buildings.py` | Build the portfolio from **real, named** OpenStreetMap public buildings — ministries, hospitals, schools, courts, police stations, libraries — across Greater Cairo, each one's district resolved by reverse geocoding its own centroid. Needs network. |
+| `python scripts/fetch_basemap.py` | Bake the satellite basemap into `web/data/`. Sentinel-2 cloudless, CC BY 4.0, about 6 MB. Needs network; run by hand when the imagery should be refreshed. |
 | `python scripts/gen_buildings.py` | Offline fallback: synthetic footprints, same schema. Produces a *different portfolio*, so published numbers will not reproduce against it. |
 | `python -m gemp.optimize.cli --budget 10000000` | Solve and print an allocation. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats every heuristic. |
@@ -269,8 +276,9 @@ fixtures with no containers.
 
 **Stack:** Python 3.11, FastAPI, TimescaleDB (PostgreSQL 16), OR-Tools CP-SAT,
 scikit-learn, Eclipse Mosquitto (MQTT), nginx, Docker Compose. The front end is vanilla
-ES modules — no framework, no build step, no CDN, no web fonts, no map tiles and no
-charting library, so the demonstration survives an unplugged network cable.
+ES modules — no framework, no build step, no CDN, no web fonts, no tile server and no
+charting library, so the demonstration survives an unplugged network cable. The satellite
+basemap is a JPEG committed to the repository, not a layer fetched at runtime.
 
 ---
 

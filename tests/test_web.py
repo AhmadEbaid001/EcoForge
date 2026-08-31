@@ -446,3 +446,41 @@ def test_a_line_breaks_on_missing_time_not_on_the_other_series():
     assert "point.t - previous.t > limit" in body, (
         "a break must be decided by elapsed time between this series' own points"
     )
+
+
+def test_the_map_fetches_nothing_from_off_origin():
+    """F13, and the one feature most likely to break it quietly.
+
+    A satellite basemap is the obvious place for someone to reach for a tile
+    server: one line, and the map looks better on the laptop of whoever wrote it.
+    It would also be blocked by the Content-Security-Policy in front of a judge,
+    and blank on a demonstration machine with the cable out.
+
+    So the imagery is a file in this repository. Every URL the map asks for is
+    relative, and the manifest names a local image.
+    """
+    import json
+    import re
+
+    source = (WEB / "js" / "map.js").read_text(encoding="utf-8")
+
+    fetched = re.findall(r"""(?:fetch|href=)["'`]([^"'`$)]+)""", source)
+    off_origin = [u for u in fetched if u.startswith(("http://", "https://", "//"))]
+    assert not off_origin, f"the map reaches off-origin: {off_origin}"
+
+    manifest_path = WEB / "data" / "basemap.json"
+    if not manifest_path.exists():
+        return  # a checkout that has not run scripts/fetch_basemap.py yet
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert not str(manifest["image"]).startswith(("http", "//")), (
+        "the manifest points the map at a remote image"
+    )
+    assert (WEB / "data" / manifest["image"]).exists(), (
+        f"the manifest names {manifest['image']}, which is not in web/data"
+    )
+    # CC BY 4.0 is a condition, not a suggestion: the credit has to be carried and
+    # the map has to render it.
+    assert manifest.get("attribution"), "imagery with no attribution recorded"
+    assert manifest.get("licence"), "imagery with no licence recorded"
+    assert "map-attribution" in source, "the map never renders the credit it owes"

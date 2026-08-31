@@ -132,6 +132,15 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
   <section class="panel mapwrap" aria-labelledby="map-h">
     <header>
       <h3 id="map-h">${t('map.header')}</h3>
+      <!-- Three grounds, and the choice is remembered. Streets is the drawing
+           this map has always been; Satellite puts the imagery under it, which
+           is what answers "where IS this" for somebody who does not know Cairo;
+           Plain is neither, for a projector in a bright room and for print. -->
+      <div class="map-basemaps segmented" role="group" aria-label="${t('map.basemap')}">
+        <button type="button" class="seg-btn" data-basemap="streets" aria-pressed="true">${t('map.basemapStreets')}</button>
+        <button type="button" class="seg-btn" data-basemap="satellite" aria-pressed="false">${t('map.basemapSatellite')}</button>
+        <button type="button" class="seg-btn" data-basemap="plain" aria-pressed="false">${t('map.basemapPlain')}</button>
+      </div>
       <div class="map-legend">
         <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" fill="var(--accent)" stroke="var(--accentLine)" stroke-width="1.4"/><path d="M4 7.2l2 2 4-4.4" fill="none" stroke="var(--accentInk)" stroke-width="1.4"/></svg>${t('map.funded')}</span>
         <span class="key"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" fill="var(--bldg)" stroke="var(--lineStrong)" stroke-width="1.4"/></svg>${t('map.notFunded')}</span>
@@ -188,6 +197,10 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
     <footer class="map-foot" id="map-help">
       <span>${t('map.keyboard')}</span>
       <span class="map-foot-note">${t('map.footNote')}</span>
+      <!-- CC BY 4.0 requires the credit to travel with the pixels. Shown only
+           when the imagery is on screen, because crediting a layer nobody is
+           looking at is noise rather than attribution. -->
+      <span class="map-attribution" id="map-attribution" hidden></span>
     </footer>
   </section>
 
@@ -265,6 +278,16 @@ export const mapView = {
   async render(root, ctx) {
     canSolve = atLeast(ctx?.user?.role || 'viewer', 'analyst');
 
+    /* `#/map?ground=satellite` opens on that ground and remembers it. The rest of
+     * the product already treats the address as state - the inbox opens filtered
+     * to one building the same way - and "look at this on the imagery" is a link
+     * somebody sends. */
+    const asked = ctx?.params?.get('ground');
+    if (BASEMAPS.includes(asked)) {
+      state.basemapStyle = asked;
+      try { window.localStorage.setItem(BASEMAP_KEY, asked); } catch { /* private mode */ }
+    }
+
     root.innerHTML = `
       ${pageHead({ root, title: t('map.title') })}
       <div class="map-layout">${MAP_HTML()}</div>${MODAL_HTML()}`;
@@ -295,12 +318,30 @@ function makeReadOnly(root) {
 
 const API = '/api/v1';
 
+const BASEMAP_KEY = 'gemp-basemap';
+const BASEMAPS = ['streets', 'satellite', 'plain'];
+
+/* Remembered, because it is a preference about how somebody reads a map rather
+ * than a state of the data. A reviewer who turned the imagery on does not want
+ * it off again on the next visit. */
+function storedBasemap() {
+  try {
+    const stored = window.localStorage.getItem(BASEMAP_KEY);
+    return BASEMAPS.includes(stored) ? stored : 'streets';
+  } catch {
+    return 'streets';
+  }
+}
+
 const state = {
   geo: null,          // FeatureCollection
   run: null,          // most recent allocation response
   selected: null,     // building id
   view: { x: 0, y: 0, k: 1 },
   projected: [],      // [{id, props, points:[[x,y]...], cx, cy}]
+  basemap: undefined, // the imagery manifest; null once we know there is none
+  basemapRect: null,  // where it lands in the current projection
+  basemapStyle: storedBasemap(),
 };
 
 /* ------------------------------------------------------------------ utils */
@@ -429,6 +470,17 @@ function buildGeometry() {
     return { id: props.id, props, cx: x, cy: y, side, ring };
   });
 
+  /* The imagery is a rectangle in the same projection as everything else, so it
+   * is placed by its own corners rather than assumed to fill the frame: the
+   * fetch script covers whole tiles, which is always a little larger than the
+   * portfolio's extent and never the same aspect ratio. */
+  if (state.basemap) {
+    const b = state.basemap.bbox;
+    const [x0, y0] = toScreen([b.west, b.north]);
+    const [x1, y1] = toScreen([b.east, b.south]);
+    state.basemapRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
   /* Metres per screen pixel at k = 1, for the scale bar. One degree of latitude
    * is 111,320 m closely enough over a district. */
   state.metresPerPx = 111320 / scale;
@@ -483,6 +535,29 @@ function buildContext(toScreen) {
   parts.push('<g class="ctx" aria-hidden="true">', water.join(''),
              buildings.join(''), roads.join(''), '</g>');
   state.contextMarkup = parts.join('');
+}
+
+/* The satellite ground, baked into the repository by scripts/fetch_basemap.py.
+ *
+ * A tile server would be an off-origin request - refused by the
+ * Content-Security-Policy - and a map that goes blank when the cable comes out
+ * is not a map this project may ship (F13). So the imagery is one JPEG served
+ * from this origin, and the manifest beside it says what it covers and who it
+ * belongs to.
+ *
+ * Absent is a supported state: no manifest, no Satellite button, and the map
+ * draws exactly what it drew before this layer existed. */
+async function loadBasemap() {
+  if (state.basemap !== undefined) return;
+  state.basemap = null;
+  try {
+    const response = await fetch('data/basemap.json', { credentials: 'same-origin' });
+    if (!response.ok) return;
+    const manifest = await response.json();
+    if (manifest?.bbox && manifest?.image) state.basemap = manifest;
+  } catch {
+    state.basemap = null;
+  }
 }
 
 async function loadContext() {
@@ -541,10 +616,28 @@ function render() {
    * than by rebuilding the markup: at the opening zoom the minor roads are a
    * grey wash that hides the streets someone would actually navigate by. */
   svg.dataset.zoom = k >= 6 ? 'close' : k >= 2.5 ? 'mid' : 'far';
+  /* Which ground is showing is a CSS question, not a rebuild: the layers are all
+   * in the markup and the attribute decides what is painted. Switching is then
+   * instant and cannot lose the pan and zoom the reader had set up. */
+  /* `data-ground` on the svg, `data-basemap` on the buttons: one selector must
+   * not match both, or `querySelectorAll('[data-basemap]')` returns the map
+   * itself alongside the three controls. */
+  svg.dataset.ground = state.basemapStyle;
   updateScaleBar();
 
+  /* Under everything, and only in the markup when there is something to draw.
+   * `image-rendering: auto` is deliberate at the far zooms and the CSS says so:
+   * this is 10 m imagery being magnified, and crisp pixel edges would advertise
+   * a resolution it does not have. */
+  const ground = (state.basemap && state.basemapRect)
+    ? `<image class="basemap" href="data/${escapeHtml(state.basemap.image)}"
+         x="${state.basemapRect.x.toFixed(1)}" y="${state.basemapRect.y.toFixed(1)}"
+         width="${state.basemapRect.w.toFixed(1)}" height="${state.basemapRect.h.toFixed(1)}"
+         preserveAspectRatio="none" aria-hidden="true"/>`
+    : '';
+
   const parts = [`<g id="map-root" transform="translate(${x},${y}) scale(${k})">`,
-                 state.contextMarkup || ''];
+                 ground, state.contextMarkup || ''];
 
   /* District labels, one per cluster, uppercase.
    *
@@ -1296,6 +1389,43 @@ function centreOnSelection() {
   render();
 }
 
+/* The switcher, the credit, and what to do when there is no imagery to switch
+ * to: the Satellite button is removed rather than disabled. A control that
+ * cannot do anything is a question the reader has to answer for themselves. */
+function wireBasemaps(signal) {
+  const group = document.querySelector('.map-basemaps');
+  if (!group) return;
+
+  if (!state.basemap) {
+    group.querySelector('[data-basemap="satellite"]')?.remove();
+    if (state.basemapStyle === 'satellite') state.basemapStyle = 'streets';
+  }
+
+  const paint = () => {
+    group.querySelectorAll('[data-basemap]').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.basemap === state.basemapStyle));
+    });
+    const credit = $('map-attribution');
+    if (credit) {
+      credit.hidden = !(state.basemapStyle === 'satellite' && state.basemap);
+      credit.textContent = state.basemap
+        ? `${state.basemap.attribution} · ${state.basemap.licence}`
+        : '';
+    }
+  };
+
+  group.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-basemap]');
+    if (!button) return;
+    state.basemapStyle = button.dataset.basemap;
+    try { window.localStorage.setItem(BASEMAP_KEY, state.basemapStyle); } catch { /* private mode */ }
+    paint();
+    render();
+  }, { signal });
+
+  paint();
+}
+
 function wire(signal) {
   /* The solve controls only exist when the caller may solve. Zoom, pan and the
    * building detail are wired either way - reading the allocation is the part a
@@ -1363,7 +1493,9 @@ function wireModal(modalId, closeId, opener, onOpen) {
 async function main(signal) {
   wire(signal);
   attachPanZoom(signal);
-  await loadContext();      // before the first geometry pass, so it is there on paint 1
+  await loadBasemap();      // both before the first geometry pass, so they are
+  await loadContext();      // there on paint 1 rather than appearing a beat later
+  wireBasemaps(signal);     // after the manifest, so it knows whether to offer it
   await loadMap();
 
   if (canSolve) {
