@@ -416,3 +416,33 @@ def test_every_translation_key_the_ui_uses_exists_in_every_language():
     }
     dead = sorted(languages["en"] - covered)
     assert not dead, f"translated but never used: {dead}"
+
+
+def test_a_line_breaks_on_missing_time_not_on_the_other_series():
+    """Two series on one axis rarely share a sampling grid.
+
+    The forecast panel draws readings the API has thinned to every 45 minutes
+    against forecasts written every hour. The path builder used to walk the UNION of
+    both series' timestamps and lift the pen wherever this series had no point -
+    which is nearly every position when the grids differ. Measured on the live
+    payload: the metered line came out as 225 subpaths, 113 of them single points,
+    and the forecast line as 336 subpaths of ONE point each. A one-point subpath
+    draws nothing, so the forecast was absent from a panel whose legend and data
+    table both listed 336 values.
+
+    A break has to mean missing time. The threshold is each series' own median step,
+    so a series is drawn continuously at whatever rate it was sampled.
+    """
+    charts = (WEB / "js" / "charts.js").read_text(encoding="utf-8")
+
+    assert "GAP_FACTOR" in charts, "no gap threshold: the line either joins holes or shatters"
+    assert "own:" in charts, (
+        "the path has to be built from each series' own points; walking the union is "
+        "what shattered it"
+    )
+    body = charts[charts.index("const paths = resolved.map"):]
+    body = body[:body.index("}).join('')")]
+    assert "s.own" in body, "the path is still built from the union-indexed array"
+    assert "point.t - previous.t > limit" in body, (
+        "a break must be decided by elapsed time between this series' own points"
+    )

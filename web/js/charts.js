@@ -145,6 +145,12 @@ const exact = (n) => (n === null || n === undefined || Number.isNaN(n))
 
 const PAD = { top: 16, right: 18, bottom: 30, left: 56 };
 
+/* How far apart two of a series' own points may be before the line breaks,
+   as a multiple of that series' median step. Low enough that one missing
+   reading is visible; high enough that the jitter in an irregular series is
+   not read as a hole. */
+const GAP_FACTOR = 2.5;
+
 /* Marks are thin and the surface shows between them: a 2px gap around every filled
  * segment is what stops a stack reading as one striped block. */
 const SEGMENT_GAP = 2;
@@ -695,6 +701,12 @@ function drawLine(series, { width = DEFAULT_WIDTH, height = 240, unit = '' } = {
     const byTime = new Map(s.points.map((p) => [Date.parse(p[0]), p[1]]));
     return {
       label: s.label,
+      /* This series' own points, in its own time order. `at` below is indexed by
+       * the union of every series' timestamps and is what the crosshair reads;
+       * the line is drawn from this. */
+      own: [...byTime.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([t, v]) => ({ t, sx: +x(t).toFixed(2), sy: +y(v).toFixed(2), v })),
       at: times.map((t, i) => byTime.has(t)
         ? { sx: xs[i], sy: +y(byTime.get(t)).toFixed(2), v: byTime.get(t) }
         : null),
@@ -703,14 +715,32 @@ function drawLine(series, { width = DEFAULT_WIDTH, height = 240, unit = '' } = {
 
   /* A gap in one series breaks its line rather than drawing a straight segment
    * across the missing hours - a forecast that stops has stopped, and joining the
-   * ends invents the part nobody computed. */
+   * ends invents the part nobody computed.
+   *
+   * A break has to mean MISSING TIME, though, and it used to mean "the other
+   * series owns this timestamp". Two series on their own grids - hourly forecasts
+   * beside readings the API thins to every 45 minutes - share almost no
+   * timestamps, so each was null at nearly every position in the union and both
+   * lines were drawn as a comb of one-point fragments. A subpath of one point
+   * renders NOTHING, which is why the forecast line was missing from the panel
+   * altogether while its legend and its data table both showed 336 points.
+   *
+   * So the threshold is each series' own median step. Median rather than mean
+   * because one real hole would otherwise raise the bar enough to hide the next
+   * one. */
   const paths = resolved.map((s, i) => {
+    const steps = s.own.slice(1)
+      .map((point, j) => point.t - s.own[j].t)
+      .sort((a, b) => a - b);
+    const typical = steps.length ? steps[Math.floor(steps.length / 2)] : 0;
+    const limit = typical > 0 ? typical * GAP_FACTOR : Infinity;
+
     let d = '';
-    let pen = false;
-    for (const point of s.at) {
-      if (!point) { pen = false; continue; }
-      d += `${pen ? 'L' : 'M'}${point.sx},${point.sy}`;
-      pen = true;
+    let previous = null;
+    for (const point of s.own) {
+      const broken = previous === null || point.t - previous.t > limit;
+      d += `${broken ? 'M' : 'L'}${point.sx},${point.sy}`;
+      previous = point;
     }
     return `<path class="series s${i}" d="${d}" fill="none"/>`;
   }).join('');
