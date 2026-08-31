@@ -40,7 +40,7 @@ allocation would deliver, across those 20 budgets.
 
 ## Closed finding: the anomaly precision target, and what it took to reach it
 
-Episode-level detection reads **precision 0.79 at recall 0.89** (k = 5), against gates
+Episode-level detection reads **precision 0.80 at recall 0.89** (k = 5), against gates
 of 0.6 and 0.8 in the technical review. Both are met. (It read 0.83 at 0.88 on the
 previous portfolio; the figures here are re-measured on the buildings and the history
 the deployment currently holds, which is the only reading worth quoting.) The route there is worth more
