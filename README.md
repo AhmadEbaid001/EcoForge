@@ -303,7 +303,9 @@ python -m gemp.domain.catalog --validate --strict
 ```
 
 Values still marked `TODO(Nada): cite` ship as placeholders. `--strict` fails while any
-remain, and gates submission.
+remain, and gates submission. Every catalog row has carried a source since 1 September,
+so this gate is green and a row that loses its source now fails the run rather than
+being counted as a documented exception.
 
 ---
 
@@ -454,8 +456,11 @@ Stated here as they are stated on the screens that present them.
    actually falls inside.
 5. **No per-building error figure is published** — the platform reports which model was
    selected and draws both lines, rather than inventing a metric it does not measure.
-6. **Some rates are still uncited** — marked as such wherever they appear, including on
-   the printed bill of quantities, and they must be sourced before tender.
+6. **Two parameters carry a reference that is not yet checkable, and one is still
+   uncited** — every catalog rate now names a source, but five of them need a page or a
+   table number before a reviewer could verify the figure, and the 24-hour marginal
+   emission profile behind the TOU objective remains a placeholder. Both are marked as
+   such wherever they appear, including on the printed bill of quantities.
 7. **The data is simulated** — fifty real, named buildings, a real street network and a real
    catalog structure, driven by a simulator rather than by fifty real meters.
 

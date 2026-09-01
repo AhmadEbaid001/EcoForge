@@ -130,10 +130,24 @@ def test_the_lca_claim_measures_carbon_at_stake_not_set_identity():
     assert "identical funded set at 0/1" in result.measured
 
 
-def test_uncited_catalog_rows_are_reported_as_known_open():
+def test_an_uncited_catalog_row_blocks_the_run():
+    """Closed 1 September: this was the last known-open claim.
+
+    Every row in the shipped catalog carries a source now, so a row that loses one
+    is a regression rather than a documented exception, and the harness has to exit
+    non-zero for it. The claim is kept instead of retired precisely so that it can.
+    """
     result = claim_catalog_rows_are_cited(_instance(uncited=True), [])
     assert result.verdict is Verdict.FAIL
-    assert result.known_open
+    assert not result.known_open
+    assert result.blocking
+    assert "hvac_a" in result.detail
+
+
+def test_a_fully_cited_catalog_passes():
+    result = claim_catalog_rows_are_cited(_instance(), [])
+    assert result.verdict is Verdict.PASS
+    assert not result.blocking
 
 
 def test_a_bundle_exceeding_the_sum_of_its_parts_is_caught():

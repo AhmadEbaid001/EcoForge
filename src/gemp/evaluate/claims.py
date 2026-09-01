@@ -2,9 +2,9 @@
 
 A claim here is not a test. A test pins behaviour that must never change; a claim
 re-measures something already asserted in prose, so that the prose can be corrected
-when the measurement moves. Two of them are expected to fail today - the uncited
-catalog and the anomaly precision target - and they are listed rather than omitted,
-because a harness that only reports what already works is a marketing document.
+when the measurement moves. Claims that are expected to fail are listed rather than
+omitted, because a harness that only reports what already works is a marketing
+document; as of 1 September there are none, and every claim here is blocking.
 
 Claim ids track the technical review's findings (F1, F2 ...) where one exists.
 """
@@ -626,10 +626,11 @@ def claim_bundling_is_multiplicative(
 def claim_catalog_rows_are_cited(
     instance: Instance, rows: Sequence[SweepRow]
 ) -> ClaimResult:
-    """The one open item code cannot close.
+    """Closed on 1 September; kept as a gate rather than retired.
 
-    Every number the platform reports derives from these six rows. Listing it here
-    keeps it in front of whoever runs the harness, instead of only in a TODO.
+    Every number the platform reports derives from these six rows. This was the last
+    known-open claim, and it is a blocking one now: a row that loses its citation
+    fails the run instead of being counted as a documented exception.
     """
     uncited = [iv.id for iv in instance.catalog if "TODO" in iv.source_ref.upper()]
     return _result(
@@ -638,7 +639,6 @@ def claim_catalog_rows_are_cited(
         not uncited,
         f"{len(instance.catalog) - len(uncited)}/{len(instance.catalog)} rows cited",
         detail=", ".join(uncited),
-        known_open=True,
     )
 
 

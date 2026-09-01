@@ -1,10 +1,9 @@
 """    python -m gemp.evaluate [--with-db] [--quick] [--out DIR]
 
 Exit status is the point. 0 means every claim the paper makes still holds; 1 means
-one of them has stopped holding and a sentence somewhere needs rewriting. Claims
-already documented as open (the uncited catalog, the anomaly precision target)
-report FAIL and are counted separately, because a gate that is permanently red
-teaches everyone to ignore the gate.
+one of them has stopped holding and a sentence somewhere needs rewriting. A claim
+documented as open reports FAIL and is counted separately, because a gate that is
+permanently red teaches everyone to ignore the gate. There are none open today.
 """
 
 from __future__ import annotations

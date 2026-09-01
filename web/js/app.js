@@ -424,10 +424,12 @@ function showLanding() {
             <li>
               <span class="limit-n">04</span>
               <div class="limit-body">
-                <h3>Some rates are still uncited</h3>
-                <p class="limit-where">Stored allocations &middot; BOQ</p>
-                <p>Marked as such wherever they appear, including on the printed bill
-                of quantities, and they must be sourced before tender.</p>
+                <h3>One input is still a placeholder</h3>
+                <p class="limit-where">TOU objective &middot; BOQ</p>
+                <p>Every costing rate now names a source. The 24-hour marginal emission
+                profile behind the time-of-use objective does not, and is marked as a
+                placeholder wherever it appears. Rates that lose a source are labelled
+                on the printed bill of quantities.</p>
               </div>
             </li>
             <li>

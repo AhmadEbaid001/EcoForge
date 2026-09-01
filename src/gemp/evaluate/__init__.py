@@ -5,9 +5,8 @@
 
 The point is not to produce numbers. It is to produce numbers that can be checked
 against what has already been written down. Every claim carries the gate it has to
-clear, and a claim that stops clearing its gate fails the run - including the two
-claims that are currently expected to fail, which are reported as known-open rather
-than quietly excluded.
+clear, and a claim that stops clearing its gate fails the run. A claim known to be
+open is reported as such rather than quietly excluded; there are none open today.
 """
 
 from __future__ import annotations

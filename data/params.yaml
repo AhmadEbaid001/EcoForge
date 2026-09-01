@@ -16,7 +16,15 @@
 horizon_yr: 30
 
 # Grid emission factor, kgCO2e per kWh delivered.
-# TODO(Nada): cite. Egyptian grid, gas-dominated. Proposal used 0.45.
+# CITE: pending. 0.45 is the IEA figure this project has used throughout and is
+# what every published number is currently measured against.
+#
+# PROPOSED (1 Sep, Nada): 0.563, from Ember (2024) Egypt Power Sector Overview.
+# Held rather than adopted until the reference names the dataset, the year of data
+# and the table - it multiplies every carbon figure in the paper, the README and
+# the screens by 1.25, and re-measuring all of them is worth doing exactly once.
+# If it is adopted, tou.profile below MUST be rescaled by the same ratio; see the
+# note there.
 # Open question: is a CONSTANT factor over 30 years defensible given
 # Egypt's renewable build-out? A declining trajectory would reduce the
 # credited benefit of every long-life measure.
@@ -34,7 +42,19 @@ grid_emission_factor: 0.45
 #
 # TODO(Nada): cite a marginal-displacement source (e.g. UNFCCC CDM/Article 6
 # grid emission factor studies for Egypt, or an Egyptian EEA/HSP dispatch
-# analysis). Values below are PLACEHOLDER v0 and illustrative until cited.
+# analysis). Values below are PLACEHOLDER v0 and illustrative until cited. This is
+# the LAST uncited item in the project and it is asked as task 1 in the 1 September
+# brief; "it cannot be sourced, here is where I looked" is an acceptable answer and
+# changes what the paper claims.
+#
+# IF grid_emission_factor CHANGES, THESE 24 VALUES MUST BE RESCALED BY THE SAME
+# RATIO. They are scaled to average it exactly, which is what makes a building with
+# no measured shape cost the same under both objectives; break that and the same
+# building gets two different answers depending on which objective is selected. For
+# the proposed 0.563 the ratio is 1.2513 and the rescaled profile is:
+#   [0.442, 0.419, 0.408, 0.408, 0.419, 0.442, 0.464, 0.508, 0.552, 0.574, 0.586,
+#    0.596, 0.607, 0.618, 0.641, 0.662, 0.696, 0.728, 0.750, 0.718, 0.662, 0.607,
+#    0.531, 0.474]
 #
 # What they actually encode: a 02:00 trough (0.326) rising monotonically to an
 # 18:00 gas peak (0.600), 1.84x trough-to-peak. There is deliberately NO midday
@@ -61,7 +81,11 @@ discount_rate: 0.0
 # reporting payback alongside carbon. A budget holder optimises this; a climate
 # target optimises carbon. They do not always agree, which is why the platform
 # exposes both rather than picking one silently.
-# TODO(Nada): cite. Egyptian public-sector / government tariff band.
+# CITE: pending, same treatment as the grid factor above.
+#
+# PROPOSED (1 Sep, Nada): 2.34, from the EgyptERA official tariff of September 2024,
+# "Other Consumers" bracket. Held until the citation carries the publication date
+# and the bracket name as EgyptERA prints it; it moves every money figure by 26%.
 electricity_tariff_egp_per_kwh: 1.85
 
 # --- F9: anomaly detection ------------------------------------------
@@ -120,8 +144,8 @@ anomaly_window_days: 30          # evaluated in DATA time, never wall time
 # end use. This is the bridge from a whole-building meter reading to a
 # per-intervention saving estimate. Must sum to 1.0 per occupancy type
 # (enforced in validation).
-# TODO(Nada): cite. Candidate sources: ASHRAE handbook, local audit
-# studies of Egyptian public buildings, EEHC sector breakdowns.
+# CITE (Nada, 1 Sep): RCREEE Egypt Energy Outlook and NEEAP II, which put HVAC at
+# 50-60% of public-building consumption. Values below are unchanged.
 end_use_share:
   office:
     hvac: 0.55
@@ -149,7 +173,9 @@ end_use_share:
 # current state. A poorly insulated building has more to gain from
 # insulation than a well insulated one. Keyed by the catalog's adj_key
 # column; interventions with a blank adj_key get a multiplier of 1.0.
-# TODO(Nada): cite or justify each multiplier.
+# CITE (Nada, 1 Sep): engineering estimates informed by the Egyptian Building Code
+# (HBRC). That is a justification rather than a citation, and the paper must say so
+# until it points at a clause - asked as task 4 in the 1 September brief.
 adj:
   insulation:
     insulation_quality:
@@ -184,7 +210,9 @@ adj:
 solar:
   usable_roof_frac: 0.55         # setbacks, shading, plant, walkways
   m2_per_kwp: 7.0
-  yield_kwh_per_kwp: 1650        # Cairo, optimally tilted. TODO(Nada): cite PVGIS/NREL
+  yield_kwh_per_kwp: 1650        # Cairo, optimally tilted. CITE (Nada): PVGIS /
+                                 # Global Solar Atlas. Needs the coordinates and the
+                                 # query date to be reproducible.
   orientation_factor:
     S: 1.00
     SE: 0.96
@@ -198,7 +226,8 @@ solar:
   soiling_loss: 0.06             # dust. Higher in Egypt than European defaults
   self_consumption_cap: 0.90     # no export tariff assumed
   solar_fixed_egp: 120000        # inverter, mounting, connection, permits
-  solar_egp_per_kwp: 22000       # TODO(Nada): cite a dated supplier quotation
+  solar_egp_per_kwp: 22000       # CITE (Nada): 2024 market quotations,
+                                 # SolarizEgypt / KarmSolar. Needs a date.
 
 # --- F4: bundling ----------------------------------------------------
 # Interventions acting on the same end use compose MULTIPLICATIVELY, not

@@ -124,8 +124,10 @@ def test_meta_exposes_the_data_contract_state(client):
         "lca_carbon", "tou_carbon", "raw_kwh", "egp_saved"
     }
     assert set(body["solvers"]) == {"cpsat", "greedy", "greedy_upgrade", "equal_split"}
-    # Placeholder catalog rows are surfaced, not hidden - they gate submission.
-    assert body["uncited_catalog_rows"]
+    # Cited since 1 September. The field stays in the payload: it is how a reader
+    # checks the contract, and it must go non-empty again the moment a row loses its
+    # source. Its non-empty rendering is covered in test_harness.
+    assert body["uncited_catalog_rows"] == []
 
 
 # --- portfolio --------------------------------------------------------------
@@ -417,7 +419,7 @@ def test_recompute_materialises_the_candidate_set(client):
     assert body["buildings"] == 50
     assert body["candidates"] > 50
     assert len(body["inputs_hash"]) == 16
-    assert body["uncited_catalog_rows"]
+    assert body["uncited_catalog_rows"] == []
 
     with client.session_scope() as session:
         assert stored_candidate_count(session) == body["candidates"]
