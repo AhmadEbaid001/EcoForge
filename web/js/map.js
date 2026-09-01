@@ -625,19 +625,30 @@ function render() {
   svg.dataset.ground = state.basemapStyle;
   updateScaleBar();
 
-  /* Under everything, and only in the markup when there is something to draw.
-   * `image-rendering: auto` is deliberate at the far zooms and the CSS says so:
-   * this is 10 m imagery being magnified, and crisp pixel edges would advertise
-   * a resolution it does not have. */
+  /* Under everything, and OUTSIDE the transformed group, which is the whole
+   * difference between a sharp basemap and a soft one.
+   *
+   * Inside the group the browser rasterises the image once at the layer's own
+   * scale and then magnifies that raster with everything else, so zooming in
+   * enlarges pixels it has already thrown away - the file holds 8,192 across and
+   * at the opening view only 668 of them are asked for. Placed in screen
+   * coordinates instead, the width it is drawn at IS the width the browser
+   * samples the JPEG for, and zooming resolves detail that was in the file all
+   * along.
+   *
+   * The arithmetic is the group's own transform applied by hand: the rect is in
+   * pre-transform units, so it is scaled by k and shifted by the pan. */
   const ground = (state.basemap && state.basemapRect)
     ? `<image class="basemap" href="data/${escapeHtml(state.basemap.image)}"
-         x="${state.basemapRect.x.toFixed(1)}" y="${state.basemapRect.y.toFixed(1)}"
-         width="${state.basemapRect.w.toFixed(1)}" height="${state.basemapRect.h.toFixed(1)}"
+         x="${(state.basemapRect.x * k + x).toFixed(1)}"
+         y="${(state.basemapRect.y * k + y).toFixed(1)}"
+         width="${(state.basemapRect.w * k).toFixed(1)}"
+         height="${(state.basemapRect.h * k).toFixed(1)}"
          preserveAspectRatio="none" aria-hidden="true"/>`
     : '';
 
-  const parts = [`<g id="map-root" transform="translate(${x},${y}) scale(${k})">`,
-                 ground, state.contextMarkup || ''];
+  const parts = [ground, `<g id="map-root" transform="translate(${x},${y}) scale(${k})">`,
+                 state.contextMarkup || ''];
 
   /* District labels, one per cluster, uppercase.
    *

@@ -87,6 +87,12 @@ imagery is one JPEG in this repository, fetched by `scripts/fetch_basemap.py` an
 refreshed by hand. Nothing on this screen makes a network request at runtime, so it
 draws with the cable out.
 
+It is stored at the source's full resolution, about 8 m per pixel, and drawn in screen
+coordinates rather than inside the zoom transform — so zooming samples the file at the
+size it is being shown at instead of magnifying a raster the browser already made.
+Past about 17×, where 8 m data has nothing left to give, the vector layer takes over:
+the neighbouring footprints return as outlines and the streets go to full strength.
+
 <img src="docs/images/allocation-map.png" alt="Allocation map" width="900">
 
 ### Evidence
@@ -170,7 +176,7 @@ No default account ships, by design. The bootstrap command prints a password onc
 |---|---|
 | `python -m gemp.domain.catalog --validate` | Check the data contract. `--strict` fails on uncited catalog rows. |
 | `python scripts/fetch_osm_buildings.py` | Build the portfolio from **real, named** OpenStreetMap public buildings — ministries, hospitals, schools, courts, police stations, libraries — across Greater Cairo, each one's district resolved by reverse geocoding its own centroid. Needs network. |
-| `python scripts/fetch_basemap.py` | Bake the satellite basemap into `web/data/`. Sentinel-2 cloudless, CC BY 4.0, about 6 MB. Needs network; run by hand when the imagery should be refreshed. |
+| `python scripts/fetch_basemap.py` | Bake the satellite basemap into `web/data/`. Sentinel-2 cloudless, CC BY 4.0, about 15 MB at the source's own 8 m/pixel. Needs network; run by hand when the imagery should be refreshed. |
 | `python scripts/gen_buildings.py` | Offline fallback: synthetic footprints, same schema. Produces a *different portfolio*, so published numbers will not reproduce against it. |
 | `python -m gemp.optimize.cli --budget 10000000` | Solve and print an allocation. |
 | `python -m gemp.optimize.cli --budget 10000000 --compare --district-cap 2` | The instance where the exact solver decisively beats every heuristic. |

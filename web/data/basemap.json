@@ -8,12 +8,12 @@
  },
  "zoom": 14,
  "pixels": {
-  "width": 8192,
-  "height": 4655
+  "width": 11264,
+  "height": 6400
  },
  "source": "Sentinel-2 cloudless 2020 by EOX IT Services GmbH",
  "licence": "CC BY 4.0",
  "attribution": "Sentinel-2 cloudless 2020 by EOX IT Services GmbH (Copernicus data)",
- "fetched_at": "2026-08-31T17:08:42+00:00",
+ "fetched_at": "2026-09-01T00:49:00+00:00",
  "note": "Baked into the repository on purpose: the demonstration must run with the network unplugged (F13) and the Content-Security-Policy allows no off-origin request. Refresh by re-running scripts/fetch_basemap.py."
 }

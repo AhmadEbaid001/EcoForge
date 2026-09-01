@@ -3120,6 +3120,24 @@ tbody tr.denied-row td { font-weight: 600; }
 #map[data-ground="satellite"] .ctx-road { opacity: .5; }
 #map[data-ground="satellite"] .ctx-road.major { stroke-width: 1.6; }
 
+/* Past about 12x the imagery has run out of pixels - 10 m data cannot resolve a
+   courtyard however far it is magnified - so the vectors take over the detail.
+   The neighbouring footprints come back as outlines rather than fills, which
+   reads as structure drawn ON the photograph instead of a second set of grey
+   blocks pasted over their own roofs, and the streets come back to full
+   strength. This is the difference between "the picture goes soft when I zoom"
+   and "the picture softens and the drawing sharpens". */
+#map[data-ground="satellite"][data-zoom="close"] .ctx-building {
+  display: block;
+  fill: none;
+  stroke: var(--ctxLine, var(--lineStrong));
+  stroke-width: .6;
+  vector-effect: non-scaling-stroke;
+  opacity: .55;
+}
+#map[data-ground="satellite"][data-zoom="close"] .ctx-road { opacity: .85; }
+#map[data-ground="satellite"][data-zoom="close"] .basemap { opacity: .82; }
+
 /* The district labels sit on photography rather than on a flat panel, so they
    need their own ground to stay legible over both desert and city. */
 #map[data-ground="satellite"] .district-label {

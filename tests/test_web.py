@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-WEB = Path(__file__).resolve().parents[1] / "web"
+ROOT = Path(__file__).resolve().parents[1]
+WEB = ROOT / "web"
 
 # Anything that would make the browser reach off-origin. A CDN link added "just for
 # this one icon" is exactly how an offline demonstration dies.
@@ -484,3 +485,51 @@ def test_the_map_fetches_nothing_from_off_origin():
     assert manifest.get("attribution"), "imagery with no attribution recorded"
     assert manifest.get("licence"), "imagery with no licence recorded"
     assert "map-attribution" in source, "the map never renders the credit it owes"
+
+
+def test_every_nginx_location_that_sets_a_header_sets_all_of_them():
+    """nginx does not merge `add_header`: a location block that declares even one
+    of its own discards the entire inherited set for that location.
+
+    This file has already shipped the page carrying the whole application with no
+    Content-Security-Policy at all, because a `location = /index.html` set nothing
+    but Cache-Control. The basemap's caching exception is the second location to
+    declare a header, and there will be a third.
+    """
+    import re
+
+    conf = (ROOT / "infra" / "nginx" / "nginx.conf").read_text(encoding="utf-8")
+    required = {
+        "X-Content-Type-Options",
+        "X-Frame-Options",
+        "Referrer-Policy",
+        "Content-Security-Policy",
+    }
+
+    for match in re.finditer(r"location[^{]*\{(.*?)\n    \}", conf, re.S):
+        block = match.group(1)
+        if "add_header" not in block:
+            continue          # inherits the server-level set, which is correct
+        missing = sorted(h for h in required if h not in block)
+        assert not missing, (
+            f"a location sets its own headers and so loses the inherited ones; "
+            f"missing {missing} in: {match.group(0)[:80]}..."
+        )
+
+
+def test_only_the_basemap_escapes_no_store():
+    """The whole application is served `no-store` on purpose - there is no build
+    step and therefore no cache-busting, so a cached module is how somebody runs
+    last week's front end against this week's API.
+
+    Imagery is the one safe exception: a year-old photograph of Cairo has no
+    interface with the API, and it is refreshed by hand rather than by a deploy.
+    If a second exception appears, it should have to argue for itself here.
+    """
+    conf = (ROOT / "infra" / "nginx" / "nginx.conf").read_text(encoding="utf-8")
+
+    cached = [line.strip() for line in conf.splitlines()
+              if line.strip().startswith("add_header Cache-Control")
+              and "no-store" not in line]
+    assert len(cached) == 1, f"more than the basemap is cached now: {cached}"
+    assert "max-age=86400" in cached[0], "the basemap cache window moved"
