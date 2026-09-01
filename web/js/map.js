@@ -638,12 +638,11 @@ function render() {
    *
    * The arithmetic is the group's own transform applied by hand: the rect is in
    * pre-transform units, so it is scaled by k and shifted by the pan. */
-  const ground = (state.basemap && state.basemapRect)
+  const rect = groundRect();
+  const ground = rect
     ? `<image class="basemap" href="data/${escapeHtml(state.basemap.image)}"
-         x="${(state.basemapRect.x * k + x).toFixed(1)}"
-         y="${(state.basemapRect.y * k + y).toFixed(1)}"
-         width="${(state.basemapRect.w * k).toFixed(1)}"
-         height="${(state.basemapRect.h * k).toFixed(1)}"
+         x="${rect.x.toFixed(1)}" y="${rect.y.toFixed(1)}"
+         width="${rect.w.toFixed(1)}" height="${rect.h.toFixed(1)}"
          preserveAspectRatio="none" aria-hidden="true"/>`
     : '';
 
@@ -842,10 +841,37 @@ function attachPanZoom(signal) {
 /* A pan is a transform change and nothing else. Zoom still goes through
  * render(), because the zoom band decides which context detail is drawn and
  * whether footprints replace the consumption squares. */
+/* Where the imagery lands, in screen coordinates.
+ *
+ * ONE function, because two would drift - and did. `render` writes the image
+ * into fresh markup while `applyTransform` moves what is already there during a
+ * drag, and when only the second knew about the group's transform, panning slid
+ * the streets off the photograph underneath them.
+ *
+ * This is the group's own transform applied by hand: the rect is in
+ * pre-transform units, so it scales by k and shifts by the pan. */
+function groundRect() {
+  if (!state.basemap || !state.basemapRect) return null;
+  const { x, y, k } = state.view;
+  const r = state.basemapRect;
+  return { x: r.x * k + x, y: r.y * k + y, w: r.w * k, h: r.h * k };
+}
+
+function placeGround() {
+  const image = document.querySelector('#map image.basemap');
+  const rect = groundRect();
+  if (!image || !rect) return;
+  image.setAttribute('x', rect.x.toFixed(1));
+  image.setAttribute('y', rect.y.toFixed(1));
+  image.setAttribute('width', rect.w.toFixed(1));
+  image.setAttribute('height', rect.h.toFixed(1));
+}
+
 function applyTransform() {
   const group = document.getElementById('map-root');
   const { x, y, k } = state.view;
   if (group) group.setAttribute('transform', `translate(${x},${y}) scale(${k})`);
+  placeGround();
   updateScaleBar();
 }
 

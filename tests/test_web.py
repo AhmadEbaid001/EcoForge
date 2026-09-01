@@ -533,3 +533,32 @@ def test_only_the_basemap_escapes_no_store():
               and "no-store" not in line]
     assert len(cached) == 1, f"more than the basemap is cached now: {cached}"
     assert "max-age=86400" in cached[0], "the basemap cache window moved"
+
+
+def test_a_pan_moves_the_ground_with_everything_on_it():
+    """The map pans by moving one group's transform rather than redrawing 2,600
+    paths on every pointer move. The satellite imagery is drawn OUTSIDE that group
+    - it has to be, or the browser magnifies a raster it made once instead of
+    sampling the file at the size it is shown at - so the fast path has to move it
+    too.
+
+    It did not, and the streets slid off the photograph underneath them on every
+    drag. Both paths go through the same arithmetic now.
+    """
+    source = (WEB / "js" / "map.js").read_text(encoding="utf-8")
+
+    assert "function groundRect()" in source, (
+        "the placement arithmetic must live in one place, or the two callers drift"
+    )
+
+    transform = source[source.index("function applyTransform()"):]
+    transform = transform[:transform.index("\n}") + 2]
+    assert "placeGround()" in transform, (
+        "a pan moves the group but not the imagery under it"
+    )
+
+    render = source[source.index("const ground = rect"):]
+    render = render[:render.index(";")]
+    assert "rect.x" in render and "rect.w" in render, (
+        "render writes the image from something other than groundRect()"
+    )
