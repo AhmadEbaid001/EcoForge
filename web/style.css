@@ -371,8 +371,17 @@ h1, h2, h3, h4 { line-height: 1.3; }
 *::-webkit-scrollbar { width: 4px; height: 4px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
-*::-webkit-scrollbar-thumb:hover { background: var(--lineStrong); }
+@media (hover: hover) { *::-webkit-scrollbar-thumb:hover { background: var(--lineStrong); } }
 * { scrollbar-color: var(--line) transparent; scrollbar-width: thin; }
+
+/* Every :hover rule in this file is wrapped in `@media (hover: hover)`.
+   None of the 38 hides anything - they are a background, a colour, a border or
+   an opacity, and every affordance they decorate is reachable by tap and by key
+   - so the guard costs a touch reader nothing. What it buys is the end of stuck
+   hover: a touch browser leaves the last thing tapped in :hover until something
+   else is tapped, which on a table of alerts leaves a row lit as though it were
+   selected when it is not, and on the rail leaves the destination you came FROM
+   looking like the one you are on. */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -393,7 +402,7 @@ h1, h2, h3, h4 { line-height: 1.3; }
    The rail is 5.25rem and does not collapse. An icon-only rail fails the judge
    who has ten minutes and has never seen this before, and a hover tooltip is
    not discoverable, so every item carries its label at .5625rem underneath a
-   20px stroke icon. Eight items, always all eight: Administration stays in the
+   20px stroke icon. Nine items, always all nine: Administration stays in the
    rail for a non-admin, dimmed, and its screen explains what it holds and who
    can open it. A navigation item that disappears teaches nothing.
 
@@ -429,7 +438,7 @@ h1, h2, h3, h4 { line-height: 1.3; }
   color: var(--ink2); font: inherit; text-align: center; width: 100%;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.nav-item:hover { background: var(--sunk); color: var(--ink); }
+@media (hover: hover) { .nav-item:hover { background: var(--sunk); color: var(--ink); } }
 .nav-item .icon { width: 20px; height: 20px; flex: none; }
 .nav-label { font-size: var(--fs-nav); line-height: 1.15; }
 .nav-item[aria-current="page"] { background: var(--accentSoft); color: var(--accent); }
@@ -471,7 +480,7 @@ h1, h2, h3, h4 { line-height: 1.3; }
 }
 .rail-signout .icon { width: 16px; height: 16px; }
 .rail-signout span { font-size: var(--fs-nav); line-height: 1.15; }
-.rail-signout:hover { background: var(--sunk); color: var(--ink); }
+@media (hover: hover) { .rail-signout:hover { background: var(--sunk); color: var(--ink); } }
 
 .workspace { display: flex; flex-direction: column; min-width: 0; }
 
@@ -546,7 +555,7 @@ h1, h2, h3, h4 { line-height: 1.3; }
   font-size: var(--fs-label); font-variant-numeric: tabular-nums;
 }
 .textscale button:first-child { border-inline-start: 0; }
-.textscale button:hover { background: var(--sunk); color: var(--ink); }
+@media (hover: hover) { .textscale button:hover { background: var(--sunk); color: var(--ink); } }
 .textscale button[aria-pressed="true"] { background: var(--accentSoft); color: var(--accent); }
 
 /* ---- the strips under the header ------------------------------------- */
@@ -592,7 +601,7 @@ main {
   color: var(--ink2); width: 32px; height: 32px; min-height: 32px; padding: 0;
   border-radius: var(--radius); display: grid; place-items: center; cursor: pointer;
 }
-.icon-button:hover { color: var(--ink); background: var(--sunk); }
+@media (hover: hover) { .icon-button:hover { color: var(--ink); background: var(--sunk); } }
 .icon-button .icon { width: 18px; height: 18px; }
 
 .icon { fill: none; stroke: currentColor; stroke-width: 1.6;
@@ -649,7 +658,7 @@ main {
   border-radius: 2px; display: grid; place-items: center;
   transition: color var(--dur) var(--ease);
 }
-.appearance button:hover { color: var(--ink); }
+@media (hover: hover) { .appearance button:hover { color: var(--ink); } }
 .appearance button[aria-pressed="true"] { color: var(--accent); }
 .appearance svg { width: 15px; height: 15px; display: block; }
 
@@ -677,18 +686,22 @@ button .icon { width: 16px; height: 16px; flex: none; }
 button.primary, .form button, .login button[type="submit"] {
   background: var(--accent); color: var(--accentInk); border-color: var(--accent);
 }
-button.primary:hover:not(:disabled),
-.form button:hover:not(:disabled),
-.login button[type="submit"]:hover:not(:disabled) {
-  background: var(--accentLine); border-color: var(--accentLine);
+@media (hover: hover) {
+  button.primary:hover:not(:disabled),
+  .form button:hover:not(:disabled),
+  .login button[type="submit"]:hover:not(:disabled) {
+    background: var(--accentLine); border-color: var(--accentLine);
+  }
 }
 
 button.secondary, button.ghost, a.btn.secondary, a.btn.ghost {
   background: var(--panel2); color: var(--ink); border-color: var(--lineStrong);
 }
-button.secondary:hover:not(:disabled),
-button.ghost:hover:not(:disabled),
-a.btn.secondary:hover, a.btn.ghost:hover { background: var(--sunk); }
+@media (hover: hover) {
+  button.secondary:hover:not(:disabled),
+  button.ghost:hover:not(:disabled),
+  a.btn.secondary:hover, a.btn.ghost:hover { background: var(--sunk); }
+}
 
 /* No border, no background, underlined: an action that is available and is not
    the point of the screen. Dismiss, Clear filters, See the alerts. */
@@ -696,23 +709,27 @@ button.quiet, button.ghost.accent, button.link {
   background: none; border-color: transparent; color: var(--ink2);
   text-decoration: underline; font-weight: 400;
 }
-button.quiet:hover:not(:disabled),
-button.ghost.accent:hover:not(:disabled),
-button.link:hover:not(:disabled) { color: var(--ink); }
+@media (hover: hover) {
+  button.quiet:hover:not(:disabled),
+  button.ghost.accent:hover:not(:disabled),
+  button.link:hover:not(:disabled) { color: var(--ink); }
+}
 
 /* Outlined, never filled. */
 button.danger, button.destructive {
   background: transparent; color: var(--crit); border-color: var(--crit);
 }
-button.danger:hover:not(:disabled),
-button.destructive:hover:not(:disabled) { background: var(--critSoft); }
+@media (hover: hover) {
+  button.danger:hover:not(:disabled),
+  button.destructive:hover:not(:disabled) { background: var(--critSoft); }
+}
 
 /* Undo is the reversible twin of a destructive action, so it is drawn in the
    mint that means reversible everywhere else in this palette. */
 button.undo {
   background: transparent; color: var(--ink); border-color: var(--mintLine);
 }
-button.undo:hover:not(:disabled) { background: var(--okSoft); }
+@media (hover: hover) { button.undo:hover:not(:disabled) { background: var(--okSoft); } }
 
 button.amber-outline {
   background: transparent; color: var(--ink); border-color: var(--amber);
@@ -765,7 +782,7 @@ select, textarea {
   transition: border-color var(--dur) var(--ease);
 }
 textarea { padding: var(--s-sm); }
-input:hover, select:hover { border-color: var(--ink3); }
+@media (hover: hover) { input:hover, select:hover { border-color: var(--ink3); } }
 input:focus-visible, select:focus-visible, textarea:focus-visible {
   border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: -2px;
 }
@@ -917,7 +934,7 @@ label.check {
   min-height: var(--control-h); width: var(--control-h); padding: 0;
   background: none; border: 0; color: var(--ink2);
 }
-.reveal:hover { color: var(--ink); background: var(--sunk); }
+@media (hover: hover) { .reveal:hover { color: var(--ink); background: var(--sunk); } }
 .reveal .icon { width: 17px; height: 17px; }
 .login .hint { font-size: var(--fs-caption); color: var(--ink3); font-weight: 400; }
 
@@ -1083,7 +1100,7 @@ label.check {
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--panel2); font-weight: 400;
 }
-.sev-toggle:hover { border-color: var(--lineStrong); }
+@media (hover: hover) { .sev-toggle:hover { border-color: var(--lineStrong); } }
 .sev-toggle[aria-pressed="true"] { background: var(--accentSoft); border-color: var(--accentLine); }
 .sev-toggle[aria-pressed="true"] .sev { font-weight: 700; }
 
@@ -1446,7 +1463,7 @@ label.check {
   border-radius: 0;
 }
 .segmented .seg-btn:last-child { border-inline-end: none; }
-.segmented .seg-btn:hover { background: var(--sunk); color: var(--ink); }
+@media (hover: hover) { .segmented .seg-btn:hover { background: var(--sunk); color: var(--ink); } }
 /* Selection is a filled state, not merely a heavier weight - at this size a bold
    label beside a regular one is not a difference anyone spots across a room. */
 .segmented .seg-btn[aria-pressed="true"] {
@@ -1474,7 +1491,7 @@ label.check {
   list-style: none;
 }
 .chart-table > summary::-webkit-details-marker { display: none; }
-.chart-table > summary:hover { color: var(--ink); }
+@media (hover: hover) { .chart-table > summary:hover { color: var(--ink); } }
 .chart-table > summary:focus-visible { outline: 2px solid var(--accentLine); outline-offset: 2px; }
 .chart-table > summary .icon { width: 14px; height: 14px; }
 .chart-table-wrap { max-height: 18rem; overflow: auto; }
@@ -1616,10 +1633,12 @@ tbody td:first-child { padding-inline-start: var(--s-sm); }
 tbody td:last-child { padding-inline-end: var(--s-sm); }
 tbody tr:last-child td { border-bottom: none; }
 
-/* NO zebra striping. The severity mark does the scanning work, and a stripe
-   under a critical row is a second background fighting --critSoft for the same
-   job. */
-tbody tr:hover { background: var(--sunk); }
+@media (hover: hover) {
+  /* NO zebra striping. The severity mark does the scanning work, and a stripe
+     under a critical row is a second background fighting --critSoft for the same
+     job. */
+  tbody tr:hover { background: var(--sunk); }
+}
 tbody tr.chosen { background: var(--accentSoft); }
 tbody tr.denied-row { background: var(--critSoft); }
 
@@ -1644,7 +1663,7 @@ td.row-actions > button { vertical-align: middle; }
   font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
   display: inline-flex; align-items: center; gap: var(--s-xs); cursor: pointer;
 }
-.th-sort:hover { color: var(--ink); }
+@media (hover: hover) { .th-sort:hover { color: var(--ink); } }
 .th-arrow { opacity: .45; font-size: 10px; }
 th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--ink); }
 th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
@@ -1755,7 +1774,7 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
   width: 26px; height: 26px; min-height: 26px; padding: 0;
   font-size: 18px; line-height: 1; border-radius: var(--radius);
 }
-.close-inline:hover { opacity: 1; background: rgba(128, 128, 128, .16); }
+@media (hover: hover) { .close-inline:hover { opacity: 1; background: rgba(128, 128, 128, .16); } }
 
 .facts {
   display: grid; grid-template-columns: auto 1fr; gap: var(--s-sm) var(--s-lg);
@@ -1830,7 +1849,7 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
    right element when the action is "go to that screen". */
 a.btn { text-decoration: none; }
 a.btn.primary { background: var(--accent); color: var(--accentInk); border-color: var(--accent); }
-a.btn.primary:hover { background: var(--accentLine); border-color: var(--accentLine); }
+@media (hover: hover) { a.btn.primary:hover { background: var(--accentLine); border-color: var(--accentLine); } }
 
 /* The first-login panel is amber-bordered and carries a lock, because it is the
    one screen in the product that is a gate rather than a form. */
@@ -2123,7 +2142,7 @@ tbody tr.denied-row td { font-weight: 600; }
 .glossary-wrap > summary::-webkit-details-marker { display: none; }
 .glossary-wrap > summary::before { content: "+ "; color: var(--ink3); }
 .glossary-wrap[open] > summary::before { content: "2 "; }
-.glossary-wrap > summary:hover { color: var(--ink); }
+@media (hover: hover) { .glossary-wrap > summary:hover { color: var(--ink); } }
 
 /* ---- the landing page ------------------------------------------------
 
@@ -2153,7 +2172,7 @@ tbody tr.denied-row td { font-weight: 600; }
   font-size: var(--fs-body-sm); font-weight: 600; color: var(--ink2);
   text-decoration: none;
 }
-.lp-links a:hover { color: var(--ink); }
+@media (hover: hover) { .lp-links a:hover { color: var(--ink); } }
 .lp-nav-actions {
   margin-inline-start: auto; display: flex; align-items: center; gap: var(--s-sm);
 }
@@ -2222,7 +2241,7 @@ tbody tr.denied-row td { font-weight: 600; }
   letter-spacing: -.005em;
   transition: color var(--dur) var(--ease);
 }
-.stack-chip:hover { color: var(--ink); }
+@media (hover: hover) { .stack-chip:hover { color: var(--ink); } }
 .stack-mark { width: 22px; height: 22px; flex: 0 0 auto; }
 .sm-line   { fill: none; stroke: var(--ink2); stroke-width: 1.5;
              stroke-linecap: round; stroke-linejoin: round; }
@@ -2232,7 +2251,7 @@ tbody tr.denied-row td { font-weight: 600; }
              stroke-linecap: round; stroke-linejoin: round; }
 .sm-fill   { fill: var(--ok); stroke: none; }
 .sm-dot    { fill: var(--ok); stroke: none; }
-.stack-chip:hover .sm-line { stroke: var(--ink); }
+@media (hover: hover) { .stack-chip:hover .sm-line { stroke: var(--ink); } }
 
 /* A section label, set in the interface's monospace with a rule in front of it.
    It replaces the rounded pill these sections used to open with - a pill is the
@@ -2296,7 +2315,7 @@ tbody tr.denied-row td { font-weight: 600; }
   color: var(--ink2); font: inherit; font-size: var(--fs-caption);
   text-decoration: underline; cursor: pointer;
 }
-.linkish:hover { color: var(--ink); }
+@media (hover: hover) { .linkish:hover { color: var(--ink); } }
 
 /* ---- the reading blocks ---- */
 
@@ -2426,10 +2445,12 @@ tbody tr.denied-row td { font-weight: 600; }
 .num-digits.d2 { min-width: 2ch; }
 .num-digits.d3 { min-width: 3ch; }
 
-/* The cell responds by getting clearer rather than by moving. Nothing in a
-   specification sheet should bounce. */
-.num-cell:hover { background: var(--panel); }
-.num-cell:hover .num-note { color: var(--ink); }
+@media (hover: hover) {
+  /* The cell responds by getting clearer rather than by moving. Nothing in a
+     specification sheet should bounce. */
+  .num-cell:hover { background: var(--panel); }
+}
+@media (hover: hover) { .num-cell:hover .num-note { color: var(--ink); } }
 
 /* ---- how it is built: four cards ---- */
 
@@ -2457,10 +2478,12 @@ tbody tr.denied-row td { font-weight: 600; }
   transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
               border-color var(--dur) var(--ease);
 }
-.built-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--ok);
-  box-shadow: 0 18px 40px -28px rgba(0, 0, 0, .5);
+@media (hover: hover) {
+  .built-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--ok);
+    box-shadow: 0 18px 40px -28px rgba(0, 0, 0, .5);
+  }
 }
 /* The figure sits on its own plate. Floating a line drawing directly on the card
    makes it read as decoration; a plate makes it read as a diagram. */
@@ -2471,7 +2494,7 @@ tbody tr.denied-row td { font-weight: 600; }
   border-radius: var(--radius);
   transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
-.built-card:hover .built-fig { border-color: var(--ok); }
+@media (hover: hover) { .built-card:hover .built-fig { border-color: var(--ok); } }
 .built-fig .stage-fig { max-width: 88px; }
 .built-body { display: grid; gap: var(--s-sm); align-content: start; }
 .built-card h3 {
@@ -2487,7 +2510,7 @@ tbody tr.denied-row td { font-weight: 600; }
 .fig-eq { stroke-width: 2.6; }
 .fig-chosen { opacity: .18; }
 .fig-cloud { transition: opacity var(--dur) var(--ease); }
-.built-card:hover .fig-cloud { opacity: .55; }
+@media (hover: hover) { .built-card:hover .fig-cloud { opacity: .55; } }
 
 /* ---- what it does not claim: a ledger, not a card wall ---- */
 
@@ -2576,9 +2599,11 @@ tbody tr.denied-row td { font-weight: 600; }
   transform: scaleY(0); transform-origin: top;
   transition: transform var(--dur) var(--ease);
 }
-.limit-list > li:hover::before,
-.limit-list > li:focus-within::before { transform: scaleY(1); }
-.limit-list > li:hover .limit-n { color: #fff; }
+@media (hover: hover) {
+  .limit-list > li:hover::before,
+  .limit-list > li:focus-within::before { transform: scaleY(1); }
+}
+@media (hover: hover) { .limit-list > li:hover .limit-n { color: #fff; } }
 
 .limit-body { display: grid; gap: var(--s-sm); }
 .limit-body h3 { margin-top: calc(var(--s-sm) * -0.25); }
@@ -2672,8 +2697,10 @@ tbody tr.denied-row td { font-weight: 600; }
 /* The strip travels the width of one copy of the list and starts again. Slow,
    and it stops under the pointer so a name can be read without chasing it. */
 .lp-animate .stack-track { animation: lp-marquee 42s linear infinite; }
-.lp-stack:hover .stack-track,
-.lp-stack:focus-within .stack-track { animation-play-state: paused; }
+@media (hover: hover) {
+  .lp-stack:hover .stack-track,
+  .lp-stack:focus-within .stack-track { animation-play-state: paused; }
+}
 @keyframes lp-marquee { to { transform: translateX(-100%); } }
 
 /* ---- the two ruled sections draw themselves in ---- */
@@ -2857,7 +2884,7 @@ tbody tr.denied-row td { font-weight: 600; }
   width: 28px; height: 28px; min-height: 28px; padding: 0;
   border-radius: var(--radius); font-size: 20px; line-height: 1;
 }
-.close:hover { background: var(--sunk); color: var(--ink); }
+@media (hover: hover) { .close:hover { background: var(--sunk); color: var(--ink); } }
 
 .modal .lede {
   margin: 0 0 var(--s-12); font-size: var(--fs-body-md);
@@ -2958,7 +2985,7 @@ tbody tr.denied-row td { font-weight: 600; }
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--panel2); font-weight: 400;
 }
-.radiogroup [role="radio"]:hover { border-color: var(--lineStrong); }
+@media (hover: hover) { .radiogroup [role="radio"]:hover { border-color: var(--lineStrong); } }
 .radiogroup [role="radio"][aria-checked="true"] {
   background: var(--accentSoft); border-color: var(--accentLine);
 }
@@ -3002,7 +3029,22 @@ tbody tr.denied-row td { font-weight: 600; }
 .mapstage { position: relative; background: var(--mapBg); flex: 1; min-height: 32rem; }
 /* Was a flat 32rem regardless of the window. The map is the screen this product
    is judged on and it was the shortest of the three columns. */
-#map { width: 100%; height: 100%; min-height: 32rem; display: block; cursor: grab; background: var(--mapBg); }
+/* `touch-action: none` is what makes the map pannable by finger at all. It
+   tells the browser not to claim the gesture for a page scroll or a page zoom,
+   which is the difference between attachPanZoom seeing a stream of
+   `pointermove` and seeing one `pointercancel` 100ms in.
+
+   It has a cost and the cost is deliberate: a touch that starts on the map can
+   no longer scroll the page. That is why the stage is capped rather than
+   stretched on a phone - see the 768px block - so there is always page around
+   it to swipe from. On a desktop it also stops a trackpad pinch from zooming
+   the whole document when the pointer happens to be over the map, which was
+   never the intent of that gesture here. */
+#map {
+  width: 100%; height: 100%; min-height: 32rem; display: block;
+  cursor: grab; background: var(--mapBg);
+  touch-action: none;
+}
 #map.dragging { cursor: grabbing; }
 #map:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
@@ -3040,7 +3082,7 @@ tbody tr.denied-row td { font-weight: 600; }
   border: 1px solid var(--lineStrong); border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.map-zoom button:hover:not(:disabled) { background: var(--sunk); }
+@media (hover: hover) { .map-zoom button:hover:not(:disabled) { background: var(--sunk); } }
 
 /* A fixed 80px bar with a measured label - see updateScaleBar() for why it is
    that way round rather than a round number and a stretched bar - and the zoom
@@ -3181,7 +3223,7 @@ tbody tr.denied-row td { font-weight: 600; }
   vector-effect: non-scaling-stroke;
 }
 .bldg.funded { fill: var(--accent); stroke: var(--accentLine); stroke-width: 1.3; }
-.bldg-hit:hover .bldg { stroke: var(--ink); }
+@media (hover: hover) { .bldg-hit:hover .bldg { stroke: var(--ink); } }
 .bldg-check {
   fill: none; stroke: var(--accentInk); stroke-width: 1.9;
   stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none;
@@ -3256,7 +3298,7 @@ tbody tr.denied-row td { font-weight: 600; }
   border-radius: 0; background: var(--panel); font-size: var(--fs-body-sm);
   font-weight: 400;
 }
-.combobox > [role="listbox"] button:hover { background: var(--sunk); }
+@media (hover: hover) { .combobox > [role="listbox"] button:hover { background: var(--sunk); } }
 .combobox > [role="listbox"] [aria-selected="true"] button { background: var(--accentSoft); }
 .combobox > [role="listbox"] .mono { font-size: var(--fs-caption); color: var(--ink3); }
 .picker-empty { padding: var(--s-sm); font-size: var(--fs-body-sm); color: var(--ink2); }
@@ -3335,6 +3377,216 @@ tbody tr.denied-row td { font-weight: 600; }
   .panel.flex:has(> .table-host) { max-height: none; }
   .page-head { padding: var(--s-10) var(--pad-page); min-height: 0; }
   .map-layout { grid-template-columns: 1fr; grid-template-areas: "ctl" "map" "sel"; }
+}
+
+/* ------------------------------------------------------------- phones
+
+   Everything above assumes a pointer that hovers, a window at least 1024px
+   wide, and a 5.25rem rail down the side. A phone has none of the three, and
+   until this block the product simply did not have a phone layout: the rail ate
+   84px of a 375px screen and the map could not be panned at all.
+
+   Two steps, because two things break at different widths. At 768px the rail
+   has to leave the side of the screen. At 480px a row of eight labelled
+   destinations stops fitting across the foot of it. Both are `max-width` layered
+   on the existing cascade, so nothing a desktop reader loads has changed.
+   ===================================================================== */
+
+@media (max-width: 768px) {
+  /* 44px is the floor for a finger - it is the Apple HIG number, it is what
+     WCAG 2.5.5 asks for at AAA, and it is roughly the width of an adult
+     fingertip. The 30px control floor above it is a MOUSE's floor: every
+     control in this file was measured against a cursor that lands on the pixel
+     it was aimed at.
+
+     The two tokens move first, so every control already sized from them comes
+     along without being named again below. */
+  :root {
+    --control-h: 40px;
+    --button-h: 44px;
+    --railbar-h: 3.5rem;
+  }
+
+  /* ---- the rail becomes a bottom bar -------------------------------- */
+
+  /* A phone's reach is the bottom of the screen and its scarce axis is width,
+     so the destinations run across the foot rather than down the side. They
+     keep their labels: this rail has never collapsed to icons on the desktop,
+     for the reason section 3 gives, and a judge holding a phone is exactly the
+     reader that reasoning was written for.
+
+     `fixed`, not `sticky`: a sticky bottom bar in a grid column only sticks
+     while its own column is taller than the viewport, so on a short screen it
+     would sit wherever the column ended. */
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .rail {
+    position: fixed; inset: auto 0 0 0; z-index: 15;
+    height: auto; flex-direction: row; gap: 0;
+    padding: 0 var(--s-2) env(safe-area-inset-bottom, 0px);
+    border-inline-end: 0; border-top: 1px solid var(--line);
+    overflow-x: auto; overscroll-behavior-inline: contain;
+  }
+  /* The wordmark is the one thing on the rail that is not a destination, and a
+     bottom bar has no width to spare for it. It is in the page header already. */
+  .rail-logo, .rail-spacer { display: none; }
+  /* Sign out stays, because it is a control. The name and the role beside it
+     are not, and a 375px bar is not where they earn their space. */
+  .rail-foot {
+    margin: 0; padding: 0; border-top: 0;
+    border-inline-start: 1px solid var(--line);
+    display: flex; flex: none; align-items: stretch;
+  }
+  .rail-identity { display: none; }
+  .nav-item, .rail-signout {
+    min-height: var(--railbar-h); align-content: center;
+    padding: var(--s-6) var(--s-2); border-radius: 0;
+  }
+  .nav-item { flex: 1 1 0; min-width: 3.9rem; }
+  .rail-signout { flex: none; width: 3.9rem; border: 0; }
+  /* The bar floats over the page, so the page has to end above it. The inset is
+     0px unless the viewport is drawn edge-to-edge, in which case it is the home
+     indicator's own strip. */
+  main {
+    padding-bottom: calc(var(--railbar-h) + var(--pad-page) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ---- targets ------------------------------------------------------ */
+
+  input, select, textarea, .picker { min-height: 44px; }
+  input[type=range], #budget { height: 44px; min-height: 44px; }
+  /* A bare checkbox IS its own hit area - there is no padding to grow and a
+     pseudo-element on a replaced element does not render - so the box itself
+     has to get bigger. 28px is short of the 44px floor and deliberately so: a
+     44px checkbox in a table of 44px rows is a checkbox as tall as its row.
+     WCAG 2.5.8 asks 24px and the 48px cell around it supplies the spacing its
+     exception is written for. */
+  input[type=checkbox] { width: 28px; height: 28px; }
+  .icon-button { width: 44px; height: 44px; min-height: 44px; }
+  .close, .close-inline { width: 44px; height: 44px; min-height: 44px; }
+  .textscale button { min-height: 44px; min-width: 44px; }
+  .appearance { min-height: 48px; }
+  .appearance button { min-height: 44px; min-width: 44px; }
+  .segmented .seg-btn { min-height: 44px; padding-inline: var(--s-12); }
+  .sev-toggle, .deny-toggle { min-height: 44px; }
+  /* The one control deliberately left at 40: it sits INSIDE the password field
+     it reveals, and a 44px button inside a 44px input has nowhere to sit. */
+  .reveal { min-height: 40px; width: 40px; }
+  button.small, button.ghost.small { min-height: 44px; }
+  button.amber-outline { min-height: 44px; }
+  .radiogroup [role="radio"] { min-height: 44px; }
+  .map-zoom button { width: 44px; height: 44px; min-height: 44px; }
+  .combobox > [role="listbox"] button { min-height: 44px; }
+  /* A sort control IS the text of its own column heading, so it takes vertical
+     padding rather than a height: `min-height: 44px` here would make a sticky
+     table head 56px deep on a 812px screen, which costs more of the table than
+     the extra 2px of target is worth. 42px, and the heading stays a heading. */
+  .th-sort { padding-block: var(--s-12); }
+  tbody td { height: 44px; }
+  .table-wrap:has(td.row-actions button) tbody td { height: 52px; }
+  .col-select { width: 48px; }
+
+  /* ---- what the narrow column does to a page ------------------------ */
+
+  /* The title zone takes the whole first line and pushes the clock, the theme
+     and the actions onto the next, rather than the four of them fighting over
+     375px. */
+  .page-head { padding: var(--s-10) var(--pad-page); gap: var(--s-sm); }
+  .page-head-text, .page-head-text:not(:has(p)) { min-width: 0; flex: 1 1 100%; }
+
+  /* A table wider than the screen scrolls inside its own panel; the PAGE never
+     scrolls sideways, because a horizontal page scroll is how a layout reads as
+     broken even when nothing is. `overscroll-behavior-inline` stops the swipe
+     that runs out of table from being taken as the browser's back gesture. */
+  .table-wrap { overscroll-behavior-inline: contain; }
+
+  /* ---- the map ------------------------------------------------------ */
+
+  /* Capped, and the cap is a decision about `touch-action` rather than about
+     looks. The svg claims every touch that starts on it - see section 12, it
+     has to, or the browser takes the drag for a page scroll - so a stage tall
+     enough to fill the screen would be a scroll trap with no way out of it.
+     62svh always leaves the panel's own header and footer to swipe from.
+
+     `svh` rather than `vh` because on a phone `vh` is measured against the
+     browser with its toolbars hidden, so a 62vh map is taller than 62% of what
+     the reader can actually see the moment the toolbars are up.
+
+     `flex: none` is load-bearing rather than tidying. Section 12 gives this
+     `flex: 1`, and in a flex column that is `flex-basis: 0%`, which beats a
+     declared height - so the 62svh is ignored and clearing the 32rem floor
+     leaves the map SHORTER than it was. Measured at 375x812: 296px with the
+     flex left in, 471px with it off. */
+  .mapstage {
+    display: flex; flex-direction: column; flex: none;
+    height: 62svh; min-height: 0;
+  }
+  /* The map takes the panel's full width. That inset is inherited by every
+     non-header child of a panel, and 14px each side of a 375px screen is 7.5%
+     of the one screen this product is judged on spent on nothing; the metric
+     band above the map keeps an inset of its own.
+
+     Three classes on purpose. The inset comes from
+     `.panel > *:not(header):not(table):not(.table-wrap)`, and a `:not()` carries
+     the weight of its argument - so that selector is (0,2,2) and a bare
+     `.mapstage` here loses to it however far down the file it sits. Being later
+     is not being stronger, and a media query adds nothing. */
+  .map-layout .mapwrap > .mapstage { padding-inline: 0; }
+  #map { flex: 1; min-height: 0; height: auto; }
+
+  /* Five metric cards floating over a 375px map cover the thing they describe.
+     Above it they are a band, which is what they always were on a desktop where
+     the map was 700px wide and they only ever covered its sky. */
+  .results {
+    position: static; flex-wrap: nowrap; pointer-events: auto;
+    padding: var(--s-sm) var(--s-sm) 0;
+    overflow-x: auto; overscroll-behavior-inline: contain;
+  }
+  .results > .result { flex: none; }
+  /* Clear of the scale bar now that the buttons are 44px. */
+  .map-zoom { bottom: 3.75rem; }
+  .map-legend { margin-inline-start: 0; }
+}
+
+@media (max-width: 480px) {
+  :root { --pad-page: 12px; --pad-card: 14px; }
+
+  /* Nine destinations plus sign out do not fit across 375px at 44px each, so
+     the bar scrolls and the shell scrolls the current one into view (see
+     `centreCurrentNavItem` in app.js). Shrinking the cells until nine fit would
+     put them under the finger floor, which is the one thing here not on the
+     table. */
+  .nav-item { flex: none; width: 4.25rem; }
+
+  .page-head h2 { font-size: var(--fs-body-lg); }
+  /* Measured at 320x720: the four room controls wrapped to two rows and the
+     header alone was 243px, a third of the screen, before a reader reached
+     anything the screen is about. One scrolling row instead. Nothing is
+     dropped - the text scale and the appearance switch are how this product is
+     read in a bright room, and a phone is the likeliest bright room there is. */
+  .page-head-side {
+    width: 100%; flex-wrap: nowrap;
+    overflow-x: auto; overscroll-behavior-inline: contain;
+    padding-bottom: 2px;
+  }
+  .page-head-side > * { flex: none; }
+  .mapstage { height: 58svh; }
+  .map-foot-note { margin-inline-start: 0; }
+
+  /* A dialog on a phone is a sheet: full width, off the bottom edge, and short
+     enough that the page behind it still shows at the top - which is what tells
+     a reader it is a layer over the screen rather than a new screen. */
+  .modal { padding: 0; align-items: flex-end; }
+  .modal-inner {
+    width: 100%; max-height: 92svh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .modal-inner.narrow, .modal-inner.wide { width: 100%; }
+
+  /* One card across. `auto-fit` with a 13rem floor already gives one column at
+     this width; saying so explicitly is what stops the 10rem compact row from
+     putting two 150px cards side by side and wrapping their labels to three
+     lines each. */
+  .stat-row, .stat-row.compact { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* The empty shell before the first paint. */

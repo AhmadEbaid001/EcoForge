@@ -877,11 +877,35 @@ function showPasswordChange() {
 
 /* --------------------------------------------------------------------- app */
 
+/* On a phone the rail is a bar across the foot of the screen and eight labelled
+ * destinations are wider than 375px, so it scrolls. A navigation bar that opens
+ * showing stops four through seven, with the one you are on somewhere off to the
+ * left, is a navigation bar that has to be searched before it can be used.
+ *
+ * `scrollLeft` rather than `scrollIntoView`: the bar is `position: fixed`, and
+ * scrollIntoView walks every scrollable ancestor, so it also scrolls the page
+ * behind it to a place nobody asked to be. This moves one element and nothing
+ * else. On a desktop the rail is a column that never overflows, so the guard is
+ * false and this does nothing at all.
+ */
+function centreCurrentNavItem() {
+  const rail = document.querySelector('.rail');
+  const current = rail?.querySelector('.nav-item[aria-current="page"]');
+  if (!rail || !current || rail.scrollWidth <= rail.clientWidth) return;
+  rail.scrollLeft = current.offsetLeft - (rail.clientWidth - current.offsetWidth) / 2;
+}
+
 /* Seven destinations in a row of top tabs was already crowding the header at
  * 1180px, and it left nowhere to put a page title. A fixed sidebar gives each
  * destination a stable position, room for a label AND an icon, and hands the
- * whole top of the workspace back to the screen you are actually on. It
- * collapses to icons on a narrow window rather than wrapping. */
+ * whole top of the workspace back to the screen you are actually on.
+ *
+ * Below 768px it is not a sidebar at all: the stylesheet turns it into a fixed
+ * bar across the foot of the screen, which is where a thumb is. It keeps all
+ * nine labels there too - an icon-only bar is a rebus, and this rail exists
+ * because a judge with ten minutes should not have to learn one. On a phone
+ * nine labels plus sign out are wider than the screen, so the bar scrolls
+ * sideways and `centreCurrentNavItem` below keeps the current stop in it. */
 async function showApp() {
   document.body.className = 'signed-in';
 
@@ -905,7 +929,7 @@ async function showApp() {
   const who = escapeHtml(state.user.display_name || state.user.username);
 
   $('root').innerHTML = `
-    <!-- Eight navigation items stand between the top of the document and the
+    <!-- Nine navigation items stand between the top of the document and the
          content, on every single view change. Without a way past them a keyboard
          user tabs through the whole rail to reach the table they came for, and
          does it again the next time. WCAG 2.4.1 calls this bypassing blocks; it is
@@ -1092,6 +1116,7 @@ async function navigate(key, search = '') {
     if (item.dataset.view === key) item.setAttribute('aria-current', 'page');
     else item.removeAttribute('aria-current');
   });
+  centreCurrentNavItem();
   /* Cleared here rather than by each view, so a view that throws before it
    * renders cannot leave the previous screen's title above the error - and so
    * that a result strip about the screen you just left ("42 alerts
@@ -1104,8 +1129,9 @@ async function navigate(key, search = '') {
   /* Every listener a view attaches outside its own subtree is tied to this.
    *
    * Replacing `#view`'s innerHTML drops the listeners INSIDE it, and nothing else.
-   * A view that listens on `window` - the map does, for resize, mouseup and
-   * mousemove - leaves those behind on every mount, so five visits to the Map
+   * A view that listens on `window` - the map does, for resize, pointermove,
+   * pointerup and pointercancel - leaves those behind on every mount, so five
+   * visits to the Map
    * meant five resize handlers, each rebuilding the projection for a screen that
    * was no longer on it.
    *

@@ -221,11 +221,11 @@ def test_the_map_does_not_solve_for_a_role_that_may_not():
 def test_view_scoped_listeners_are_tied_to_a_lifetime():
     """Replacing `#view` drops the listeners inside it and nothing else.
 
-    The map listens on `window` for resize, mouseup and mousemove. Without an abort
-    signal those survive every navigation away and back: five visits to the Map meant
-    five resize handlers, each rebuilding the projection for a screen nobody was
-    looking at. Measured in the browser before the fix - the count climbed 1, 2, 3, 4;
-    after it, it stays at 1.
+    The map listens on `window` for resize, pointermove, pointerup and pointercancel.
+    Without an abort signal those survive every navigation away and back: five visits
+    to the Map meant five resize handlers, each rebuilding the projection for a screen
+    nobody was looking at. Measured in the browser before the fix - the count climbed
+    1, 2, 3, 4; after it, it stays at 1.
     """
     app = (WEB / "js" / "app.js").read_text(encoding="utf-8")
     assert "AbortController" in app, "the shell must own a lifetime per mounted view"
@@ -562,3 +562,170 @@ def test_a_pan_moves_the_ground_with_everything_on_it():
     assert "rect.x" in render and "rect.w" in render, (
         "render writes the image from something other than groundRect()"
     )
+
+
+# ---------------------------------------------------------------------------
+# The phone layout.
+#
+# Added on 2 September, when the product was carried to a phone for the first
+# time and could not be used on one: the map answered a finger with a synthetic
+# click and nothing else, the 5.25rem rail took a fifth of a 375px screen, and
+# every control had been sized against a cursor. None of that is visible from a
+# desktop, which is exactly why it survived to a week before submission - so
+# each of these is the specific thing that was broken, written so it stays fixed.
+# ---------------------------------------------------------------------------
+
+
+def test_the_map_is_driven_by_pointers_rather_than_a_mouse():
+    """`mousedown` reaches a phone as one synthetic click after the gesture is over.
+
+    A map wired to it can be tapped and never dragged, which is what the map did:
+    the screen this product is judged on was unusable on the device a judge is
+    most likely to be holding. Pointer Events carry mouse, pen and touch through
+    one set of handlers, so there is a single implementation of a pan rather than
+    a mouse one and a touch one drifting apart.
+    """
+    source = (WEB / "js" / "map.js").read_text(encoding="utf-8")
+    code = "\n".join(line for line in source.splitlines() if not COMMENT_LINE.match(line))
+
+    for dead in ("'mousedown'", "'mousemove'", "'mouseup'"):
+        assert dead not in code, f"the map still listens for {dead}"
+
+    for live in ("'pointerdown'", "'pointermove'", "'pointerup'", "'pointercancel'"):
+        assert live in code, f"the map does not handle {live}"
+
+
+def test_a_cancelled_gesture_ends_the_drag():
+    """`pointercancel` is not an edge case on a phone.
+
+    An incoming call, the notification shade, or the browser deciding after a
+    hundred milliseconds that the gesture was a scroll all end a touch this way
+    and never send `pointerup`. Handled on its own, the map is left mid-drag with
+    no finger behind it and the next tap teleports it across the city.
+    """
+    source = (WEB / "js" / "map.js").read_text(encoding="utf-8")
+    attach = source[source.index("function attachPanZoom"):]
+    attach = attach[:attach.index("\nfunction ", 10)]
+    assert "pointercancel" in attach and "pointerup" in attach, (
+        "the two have to be handled together, or a cancelled touch never ends the drag"
+    )
+
+
+def test_the_pinch_and_the_buttons_share_one_zoom_clamp():
+    """Four ways to zoom - the buttons, the keys, the wheel, two fingers - and one
+    ladder for all of them.
+
+    The floor used to be a bare `0.4` inside zoomAbout while the ceiling was a
+    named constant with a paragraph explaining it, so half the clamp was findable
+    and half was not. A pinch that reached a different ceiling than the + key
+    would be invisible until somebody in the room pinched to the end of it.
+    """
+    source = (WEB / "js" / "map.js").read_text(encoding="utf-8")
+
+    assert "const MIN_ZOOM" in source and "const MAX_ZOOM" in source, (
+        "both ends of the clamp have to be named, or the second caller writes its own"
+    )
+    assert "function scaleAbout(" in source, (
+        "the pinch needs the arithmetic without the render, or it re-renders 2,600 "
+        "paths per frame of a gesture a finger drives"
+    )
+
+    # zoomAbout is the version that renders; it must delegate rather than repeat.
+    zoom = source[source.index("function zoomAbout("):]
+    zoom = zoom[:zoom.index("\n}") + 2]
+    assert "scaleAbout(" in zoom, "zoomAbout has its own copy of the arithmetic again"
+    assert "Math.min" not in zoom, "zoomAbout is clamping separately from scaleAbout"
+
+
+def test_the_map_claims_the_touch_gestures_it_needs():
+    """Without `touch-action: none` the browser takes a drag on the map for a page
+    scroll and sends `pointercancel` in the middle of it, so the pan handler sees
+    the start of every gesture and the end of none."""
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+    block = css[css.index("#map {"):]
+    block = block[:block.index("}") + 1]
+    assert "touch-action: none" in block, "#map does not claim its own gestures"
+
+
+def test_the_map_stage_is_capped_on_a_phone():
+    """The other half of `touch-action: none`, and the reason it is safe.
+
+    An element that swallows every vertical swipe and fills the screen is a
+    scroll trap: a reader who lands a finger on it cannot reach the rest of the
+    page. The stage is capped to a fraction of the viewport on a phone precisely
+    so there is always page around it to swipe from, and `svh` rather than `vh`
+    because `vh` is measured with the browser's toolbars hidden.
+    """
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+    phone = css[css.index("@media (max-width: 768px)"):]
+    assert "svh" in phone, (
+        "the map stage is not capped against the viewport a phone actually shows"
+    )
+
+
+def test_every_hover_rule_is_gated_behind_a_hovering_pointer():
+    """A touch browser leaves the last thing tapped in `:hover` until something
+    else is tapped.
+
+    None of these rules hides anything - they are a background, a colour, a
+    border or an opacity - but left ungated they leave a table row lit as though
+    it were selected when it is not, and the navigation item you came FROM
+    looking like the one you are on.
+    """
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+    # Prose about hover is not a hover rule, and this file explains itself at
+    # length. Comments are blanked rather than dropped so the line numbers in the
+    # message below still point at the line somebody has to open.
+    css = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), css, flags=re.S)
+
+    ungated = []
+    guard_depth = None
+    depth = 0
+    for number, line in enumerate(css.splitlines(), 1):
+        # `@media (hover: hover) { … }` on one line opens and closes together.
+        gated_here = "hover: hover" in line
+        if ":hover" in line and not gated_here and guard_depth is None:
+            ungated.append(f"style.css:{number}: {line.strip()[:80]}")
+        if gated_here and line.rstrip().endswith("{"):
+            guard_depth = depth
+        depth += line.count("{") - line.count("}")
+        if guard_depth is not None and depth <= guard_depth:
+            guard_depth = None
+
+    assert not ungated, (
+        "these hover states will stick to whatever a phone reader last tapped:\n"
+        + "\n".join(ungated)
+    )
+
+
+def test_a_phone_reader_can_still_zoom_the_page():
+    """`user-scalable=no` and a `maximum-scale` are the two ways a viewport meta
+    takes page zoom away from somebody who needs it. WCAG 1.4.4, and the first
+    thing a low-vision reader reaches for on a phone."""
+    head = (WEB / "index.html").read_text(encoding="utf-8")
+    viewport = [line for line in head.splitlines() if "name=\"viewport\"" in line]
+    assert viewport, "the page declares no viewport at all"
+    joined = " ".join(viewport)
+    assert "user-scalable=no" not in joined, "the page forbids pinch-zooming itself"
+    assert "maximum-scale" not in joined, "the page caps how far it can be zoomed"
+
+
+def test_the_bottom_bar_leaves_room_for_the_page_under_it():
+    """Below 768px the rail is a fixed bar across the foot of the screen, so it
+    floats over the content. Without a matching pad on `main` it covers the last
+    row of every table and the last control of every form - and the one screen
+    where that is invisible is the one a developer is looking at."""
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+    phone = css[css.index("@media (max-width: 768px)"):]
+    phone = phone[:phone.index("@media (max-width: 480px)")]
+
+    assert "--railbar-h" in phone, "the bar's height is not named, so nothing can reserve it"
+    main_rule = phone[phone.index("main {"):]
+    main_rule = main_rule[:main_rule.index("}")]
+    assert "padding-bottom" in main_rule and "--railbar-h" in main_rule, (
+        "the page does not reserve the height of the bar that sits over it"
+    )
+    assert "safe-area-inset-bottom" in main_rule, (
+        "an edge-to-edge viewport puts the home indicator under the bar as well"
+    )
+

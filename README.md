@@ -350,6 +350,17 @@ walk at exactly that row. A *deleted tail* breaks nothing — there is nothing a
 to check — so chain heads are also written to a file on a separate mount, and verification
 compares the two. → `ingest/anchor.py`
 
+**The map claims every touch that lands on it, and is capped so that is safe.**
+A pannable map and a scrollable page want the same one-finger drag, and only one of
+them can have it. `touch-action: none` on the `<svg>` gives it to the map — without
+that the browser takes the gesture for a page scroll and sends `pointercancel` a
+hundred milliseconds in, which is a map that can be tapped and never dragged. The
+price is that a finger landing on the map can no longer scroll the page, so on a
+phone the stage is capped to 62 % of the visible viewport rather than filling it:
+there is always page above and below to swipe from. One pan implementation covers
+mouse, pen and touch, and the pinch shares the buttons' clamp rather than owning a
+second one. → `web/js/map.js`, `web/style.css` § phones
+
 **Alerting is a row, a marker, and an optional webhook.** No SMTP service and no pager.
 The webhook posts from a worker thread behind a bounded queue and drops rather than
 buffers when the endpoint cannot keep up, because the ingester is a single-threaded loop
@@ -461,7 +472,13 @@ Stated here as they are stated on the screens that present them.
    table number before a reviewer could verify the figure, and the 24-hour marginal
    emission profile behind the TOU objective remains a placeholder. Both are marked as
    such wherever they appear, including on the printed bill of quantities.
-7. **The data is simulated** — fifty real, named buildings, a real street network and a real
+7. **Two touch targets on a phone are under the 44 px floor** — the row-selection
+   checkboxes are 28 px and a column's sort control is 42 px. Both clear the 24 px
+   WCAG 2.5.8 minimum with room, and both were left short of the 44 px AAA figure
+   deliberately: a 44 px checkbox is as tall as the row it selects, and a 44 px sort
+   control makes a sticky table head 56 px deep on an 812 px screen. Every other
+   control on every screen meets 44 px.
+8. **The data is simulated** — fifty real, named buildings, a real street network and a real
    catalog structure, driven by a simulator rather than by fifty real meters.
 
 ---

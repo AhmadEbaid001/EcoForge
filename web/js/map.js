@@ -196,6 +196,7 @@ const MAP_HTML = () => String.raw`<!-- -----------------------------------------
          binding nobody uses. -->
     <footer class="map-foot" id="map-help">
       <span>${t('map.keyboard')}</span>
+      <span>${t('map.touch')}</span>
       <span class="map-foot-note">${t('map.footNote')}</span>
       <!-- CC BY 4.0 requires the credit to travel with the pixels. Shown only
            when the imagery is on screen, because crediting a layer nobody is
@@ -420,6 +421,12 @@ const FOOTPRINT_ZOOM = 3;
 // necessarily gets smaller when the real outline takes over. That is the intended
 // trade and it is why the ceiling, not the switch point, is what needed raising.
 const MAX_ZOOM = 24;
+
+// The floor. It was written into zoomAbout as a bare 0.4 while the ceiling was a
+// named constant beside the paragraph explaining it, so half the clamp was
+// findable and half was not. The pinch needs the same clamp as the buttons, and
+// a number that only one caller can see is a number that gets a second copy.
+const MIN_ZOOM = 0.4;
 
 function buildGeometry() {
   const svg = $('map');
@@ -784,28 +791,131 @@ function escapeHtml(s) {
 
 /* ------------------------------------------------------------ interaction */
 
+/* Pointer Events, not mouse events.
+ *
+ * This was `mousedown`/`mousemove`, which a phone answers with one synthetic
+ * click and nothing else: the map could be tapped and never panned or zoomed,
+ * on the screen this product is judged on and on the device a judge is most
+ * likely to be holding. Pointer Events carry mouse, pen and touch through the
+ * same handlers, so there is ONE implementation of a pan rather than a mouse
+ * one and a touch one that drift.
+ *
+ * `touch-action: none` on #map, in section 12 of the stylesheet, is what makes
+ * the touch half work at all: without it the browser claims the gesture for a
+ * page scroll and sends `pointercancel` in the middle of the drag. That is also
+ * why the stage is capped to a fraction of the viewport on a phone - an element
+ * that swallows every vertical swipe and fills the screen is a scroll trap, and
+ * the page has to stay reachable from somewhere.
+ */
 function attachPanZoom(signal) {
   const svg = $('map');
-  let dragging = false, startX = 0, startY = 0, originX = 0, originY = 0;
 
-  svg.addEventListener('mousedown', (e) => {
-    dragging = true; svg.classList.add('dragging');
-    startX = e.clientX; startY = e.clientY;
-    originX = state.view.x; originY = state.view.y;
+  /* The live pointers, by id. One is a pan and two are a pinch; a third is
+   * recorded but not steered by, because three fingers on a map is a mistake
+   * and averaging it into the gesture is a worse answer than ignoring it. */
+  const active = new Map();
+  let panFrom = null;    /* {x, y, viewX, viewY} - the one-finger drag */
+  let pinchFrom = null;  /* {dist, cx, cy}       - the two-finger gesture */
+
+  /* The svg's own frame, which is the frame scaleAbout anchors in. */
+  const stagePoint = (clientX, clientY) => {
+    const rect = svg.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+
+  const pinchNow = () => {
+    const [a, b] = [...active.values()].slice(0, 2);
+    const mid = stagePoint((a.x + b.x) / 2, (a.y + b.y) / 2);
+    /* `|| 1` guards the divide in the move handler: two pointers can land on
+     * the same pixel, and a zero baseline makes the first factor Infinity. */
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx: mid.x, cy: mid.y };
+  };
+
+  /* Re-derived on every finger down and every finger up rather than only at the
+   * start, so putting a second finger down mid-drag, or lifting one of two,
+   * continues from where the map is instead of jumping by however far the
+   * gesture had already travelled. */
+  const rebase = () => {
+    svg.classList.add('dragging');
+    if (active.size >= 2) {
+      pinchFrom = pinchNow();
+      panFrom = null;
+      return;
+    }
+    const [only] = active.values();
+    pinchFrom = null;
+    panFrom = { x: only.x, y: only.y, viewX: state.view.x, viewY: state.view.y };
+  };
+
+  svg.addEventListener('pointerdown', (e) => {
+    /* A right-click or a middle-click is not a pan, and neither is the context
+     * menu that follows one. */
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    active.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    rebase();
   });
+
   /* `signal` ties these to the current mount. Without it they survive every
-   * navigation away and back, and the map ends up with one set per visit. */
-  window.addEventListener('mouseup', () => { dragging = false; svg.classList.remove('dragging'); }, { signal });
-  window.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    state.view.x = originX + (e.clientX - startX);
-    state.view.y = originY + (e.clientY - startY);
+   * navigation away and back, and the map ends up with one set per visit.
+   *
+   * They stay on `window` rather than moving to setPointerCapture on the svg,
+   * which is the tidier-looking way to write this and would break selection:
+   * capture retargets `pointerup` to the svg, and the browser dispatches
+   * `click` to the common ancestor of the down and up targets - so every tap on
+   * a building would land on the map instead of the mark, and reaching a
+   * building's evidence is what the marks are for. */
+  window.addEventListener('pointermove', (e) => {
+    const held = active.get(e.pointerId);
+    if (!held) return;
+    held.x = e.clientX; held.y = e.clientY;
+
+    if (pinchFrom && active.size >= 2) {
+      const now = pinchNow();
+      /* Scale about the midpoint the fingers had, then carry that midpoint's
+       * own travel across as a pan, so a two-finger gesture pinches and drags
+       * at once the way every other map does. */
+      scaleAbout(now.dist / pinchFrom.dist, pinchFrom.cx, pinchFrom.cy);
+      state.view.x += now.cx - pinchFrom.cx;
+      state.view.y += now.cy - pinchFrom.cy;
+      pinchFrom = now;
+      /* Move what is already drawn. A pinch DOES change the zoom band, and the
+       * band decides the context detail and whether footprints replace the
+       * squares - but re-rendering 2,600 paths per pointer move is what made
+       * the mouse version unusable to drag, and a finger emits them faster than
+       * a mouse does. render() runs once, when the fingers leave. */
+      applyTransform();
+      return;
+    }
+
+    if (!panFrom) return;
+    state.view.x = panFrom.viewX + (e.clientX - panFrom.x);
+    state.view.y = panFrom.viewY + (e.clientY - panFrom.y);
     /* Move the group, do not rebuild it. The context layer is about 2,600
      * paths; regenerating that markup on every pointer move made the map
      * unusable to drag. A pan changes nothing about WHAT is drawn, only where,
      * so the transform is the whole update. */
     applyTransform();
   }, { signal });
+
+  /* `pointercancel` is not an edge case on a phone. An incoming call, the
+   * notification shade, or the browser deciding after 100ms that the gesture
+   * was a scroll all end a drag this way and never send `pointerup`. Handled
+   * identically, or the map is left in a drag with no finger behind it and the
+   * next tap teleports it. */
+  for (const type of ['pointerup', 'pointercancel']) {
+    window.addEventListener(type, (e) => {
+      if (!active.delete(e.pointerId)) return;
+      const wasPinching = Boolean(pinchFrom);
+      pinchFrom = null;
+      panFrom = null;
+      if (active.size) rebase();
+      else svg.classList.remove('dragging');
+      /* The zoom band is only right after a render, and the pinch deferred it.
+       * One render for the whole gesture, at the end of it. */
+      if (wasPinching) render();
+    }, { signal });
+  }
+
   svg.addEventListener('wheel', (e) => {
     e.preventDefault();
     const rect = svg.getBoundingClientRect();
@@ -877,15 +987,26 @@ function applyTransform() {
 
 /* Zooms about a point in the map's own coordinates, defaulting to the middle of
  * the viewport - which is what a zoom BUTTON should do, since there is no cursor
- * position to anchor to. */
-function zoomAbout(factor, px, py) {
+ * position to anchor to.
+ *
+ * Split in two so a pinch can reach the arithmetic without paying for a render
+ * on every frame of the gesture. The button, the key, the wheel and the pinch
+ * all have to land on the same clamped ladder of zoom levels - a second copy of
+ * this would drift the first time one of them was tuned, and the drift would be
+ * invisible until someone pinched to the ceiling and found a different ceiling
+ * than the + key reaches. */
+function scaleAbout(factor, px, py) {
   const svg = $('map');
-  const next = Math.min(MAX_ZOOM, Math.max(0.4, state.view.k * factor));
+  const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, state.view.k * factor));
   const ax = px === undefined ? svg.clientWidth / 2 : px;
   const ay = py === undefined ? svg.clientHeight / 2 : py;
   state.view.x = ax - ((ax - state.view.x) * next) / state.view.k;
   state.view.y = ay - ((ay - state.view.y) * next) / state.view.k;
   state.view.k = next;
+}
+
+function zoomAbout(factor, px, py) {
+  scaleAbout(factor, px, py);
   render();
 }
 
