@@ -3452,6 +3452,12 @@ tbody tr.denied-row td { font-weight: 600; }
 
   /* ---- targets ------------------------------------------------------ */
 
+  /* Both axes, and this is the general rule rather than a list: every named
+     target below sets a height, which is the axis that is short on a control
+     with a long label. `#signin-lang` is one Arabic character and was 31px
+     across on the login screen - the first screen anybody opens - because
+     nothing had ever asked about width. */
+  button, .btn { min-width: 44px; }
   input, select, textarea, .picker { min-height: 44px; }
   input[type=range], #budget { height: 44px; min-height: 44px; }
   /* A bare checkbox IS its own hit area - there is no padding to grow and a
@@ -3475,8 +3481,10 @@ tbody tr.denied-row td { font-weight: 600; }
      text and does not become a box with a rule under it. */
   .linkish { display: inline-block; padding-block: var(--s-md); }
   /* The one control deliberately left at 40: it sits INSIDE the password field
-     it reveals, and a 44px button inside a 44px input has nowhere to sit. */
-  .reveal { min-height: 40px; width: 40px; }
+     it reveals, and a 44px button inside a 44px input has nowhere to sit. The
+     `min-width: 0` is what exempts it from the rule above; without it the
+     min-width wins over the width and the button hangs out of its own field. */
+  .reveal { min-height: 40px; width: 40px; min-width: 0; }
   button.small, button.ghost.small { min-height: 44px; }
   button.amber-outline { min-height: 44px; }
   .radiogroup [role="radio"] { min-height: 44px; }
