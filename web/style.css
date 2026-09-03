@@ -3468,6 +3468,12 @@ tbody tr.denied-row td { font-weight: 600; }
   .appearance button { min-height: 44px; min-width: 44px; }
   .segmented .seg-btn { min-height: 44px; padding-inline: var(--s-12); }
   .sev-toggle, .deny-toggle { min-height: 44px; }
+  /* An inline text button has no box to grow, so it gets one. Measured on the
+     deployed login screen at 390x844: "What this is" was 69x16, which is under
+     the 24px WCAG 2.5.8 minimum as well as the 44px floor, on the first screen
+     anybody opens. Padding rather than height, so the underline stays on the
+     text and does not become a box with a rule under it. */
+  .linkish { display: inline-block; padding-block: var(--s-md); }
   /* The one control deliberately left at 40: it sits INSIDE the password field
      it reveals, and a 44px button inside a 44px input has nowhere to sit. */
   .reveal { min-height: 40px; width: 40px; }

@@ -472,12 +472,13 @@ Stated here as they are stated on the screens that present them.
    table number before a reviewer could verify the figure, and the 24-hour marginal
    emission profile behind the TOU objective remains a placeholder. Both are marked as
    such wherever they appear, including on the printed bill of quantities.
-7. **Two touch targets on a phone are under the 44 px floor** — the row-selection
-   checkboxes are 28 px and a column's sort control is 42 px. Both clear the 24 px
-   WCAG 2.5.8 minimum with room, and both were left short of the 44 px AAA figure
-   deliberately: a 44 px checkbox is as tall as the row it selects, and a 44 px sort
-   control makes a sticky table head 56 px deep on an 812 px screen. Every other
-   control on every screen meets 44 px.
+7. **Three touch targets on a phone are under the 44 px floor** — the row-selection
+   checkboxes are 28 px, a column's sort control is 42 px, and the show-password
+   button is 40 px. All three clear the 24 px WCAG 2.5.8 minimum, and all three were
+   left short of the 44 px AAA figure deliberately: a 44 px checkbox is as tall as
+   the row it selects, a 44 px sort control makes a sticky table head 56 px deep on
+   an 812 px screen, and a 44 px reveal button inside a 44 px password field has
+   nowhere to sit. Every other control on every screen meets 44 px.
 8. **The data is simulated** — fifty real, named buildings, a real street network and a real
    catalog structure, driven by a simulator rather than by fifty real meters.
 
