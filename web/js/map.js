@@ -1304,13 +1304,19 @@ async function compare() {
     ? t('mp.gapNoPct')
     : t('mp.gapPct', { gap: `${gap > 0 ? '+' : ''}${gap.toFixed(1)}%` });
 
+  /* `.table-wrap`, like every other table in the product. Six columns of
+     figures come to 562px, and without a scroller of its own that width was
+     handed to the dialog: on a 390px screen the whole sheet scrolled sideways,
+     carrying its heading and its close button off the left edge. */
   $('compare-body').innerHTML = `
-    <table>
-      <thead><tr><th>${t('mp.colMethod')}</th><th>${t('mp.colFunded')}</th>
-        <th>${t('mp.colSpent')}</th><th>${t('mp.colLifetime')}</th>
-        <th>${t('mp.colVsStatusQuo')}</th><th>${t('mp.colTime')}</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>${t('mp.colMethod')}</th><th>${t('mp.colFunded')}</th>
+          <th>${t('mp.colSpent')}</th><th>${t('mp.colLifetime')}</th>
+          <th>${t('mp.colVsStatusQuo')}</th><th>${t('mp.colTime')}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
     <p class="caption">
       ${t('mp.beats', { gap: gapText })}
       ${capped ? t('mp.cappedWhy') : t('mp.uncappedWhy')}

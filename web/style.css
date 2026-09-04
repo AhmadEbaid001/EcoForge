@@ -116,6 +116,10 @@
 
   --shadow: 0 1px 1px rgba(13, 26, 38, .04), 0 10px 28px -12px rgba(13, 26, 38, .16);
   --scrim:  rgba(13, 26, 38, .45);
+  /* The edge mark on a container that still has content off to the side. Its own
+     token because it is the one colour in the file that has to be DARKER than
+     the surface in light and LIGHTER in dark - a shadow, not a tint. */
+  --scrollEdge: rgba(13, 26, 38, .22);
   --overlay: rgba(255, 255, 255, .9);
 
   /* Type. The sizes are the handoff's, all in rem so that the browser's own text
@@ -248,6 +252,7 @@
 
     --shadow: 0 1px 1px rgba(0, 0, 0, .4), 0 12px 32px -14px rgba(0, 0, 0, .85);
     --scrim:  rgba(2, 4, 6, .7);
+    --scrollEdge: rgba(226, 238, 248, .30);
     --overlay: rgba(17, 30, 42, .9);
   }
 }
@@ -313,6 +318,7 @@
 
   --shadow: 0 1px 1px rgba(0, 0, 0, .4), 0 12px 32px -14px rgba(0, 0, 0, .85);
   --scrim:  rgba(2, 4, 6, .7);
+  --scrollEdge: rgba(226, 238, 248, .30);
   --overlay: rgba(17, 30, 42, .9);
 
   color-scheme: dark;
@@ -1714,6 +1720,10 @@ th[aria-sort="ascending"] .th-arrow, th[aria-sort="descending"] .th-arrow {
   position: sticky; top: var(--gap-box); z-index: 3; box-shadow: var(--shadow);
 }
 .action-bar[hidden] { display: none; }
+/* And when there is nothing in it. The bar is painted only once there are rows
+   to act on, so an empty inbox left an accent-coloured pill 22px tall sitting
+   between the filters and the empty state, saying nothing. */
+.action-bar:empty { display: none; }
 .action-bar .bulk-actions { display: flex; gap: var(--s-sm); align-items: center; flex-wrap: wrap; }
 
 .hash { cursor: help; border-bottom: 1px dotted var(--lineStrong); }
@@ -3345,7 +3355,18 @@ tbody tr.denied-row td { font-weight: 600; }
 /* The chart grid folds before the map does: two charts side by side stop being
    readable at about 1200px, while the map's three regions survive to 1240. */
 @media (max-width: 1200px) {
-  .two-col { grid-template-columns: 1fr; }
+  /* BOTH selectors, and the second one is why this rule exists at all.
+     `.two-col` is (0,1,0) and `.two-col.aside-first` below is (0,2,0), so for as
+     long as this said only `.two-col` the aside variant never collapsed - a
+     media query adds no weight to a selector. Measured on a 390px screen: the
+     grid computed to `358px 0px`, the second column was literally zero wide, and
+     everything in it hung off the right of the document. That is the Integrity
+     screen and the Account screen, both unusable on a phone, and neither shows
+     it on a desktop.
+
+     Any new `.two-col` variant has to be named here too; test_web.py checks. */
+  .two-col,
+  .two-col.aside-first { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Below this the map's evidence panel moves under the map rather than beside
@@ -3474,6 +3495,18 @@ tbody tr.denied-row td { font-weight: 600; }
   .appearance button { min-height: 44px; min-width: 44px; }
   .segmented .seg-btn { min-height: 44px; padding-inline: var(--s-12); }
   .sev-toggle, .deny-toggle { min-height: 44px; }
+  /* Named because it is more specific than the token: `.verify-panel
+     button[data-verify]` is (0,2,1) and beats `button { min-height:
+     var(--button-h) }`, so Integrity's only action stayed at 40px while every
+     other button on the screen moved. */
+  .verify-panel button[data-verify] { min-height: var(--button-h); }
+  /* A <summary> is the control that opens a <details>, and both of the ones in
+     this product hold an explanation somebody on a phone is more likely to need
+     than somebody at a desk. 35px before. */
+  summary { min-height: 44px; padding-block: var(--s-sm); }
+  /* Only visible while it has focus, which is precisely when it must be easy to
+     hit: the reader using it is the reader who cannot see it. */
+  .skip-link { min-height: 44px; padding-block: var(--s-12); }
   /* An inline text button has no box to grow, so it gets one. Measured on the
      deployed login screen at 390x844: "What this is" was 69x16, which is under
      the 24px WCAG 2.5.8 minimum as well as the 44px floor, on the first screen
@@ -3507,11 +3540,64 @@ tbody tr.denied-row td { font-weight: 600; }
   .page-head { padding: var(--s-10) var(--pad-page); gap: var(--s-sm); }
   .page-head-text, .page-head-text:not(:has(p)) { min-width: 0; flex: 1 1 100%; }
 
+  /* The alert inbox's filter strip. `.toolbar` is `flex: 1 1 auto`, and a flex
+     item's default `min-width: auto` refuses to shrink below the widest thing
+     inside it - the severity group, which does not wrap. At 320px that made the
+     strip 306px wide in a 294px panel and pushed the whole document 7px
+     sideways. Letting the groups wrap is what actually fixes it; `min-width: 0`
+     is what lets the strip narrow enough to make them. */
+  /* The bulk-action bar stops following the page. Stacked on a phone it is
+     153px tall - its label, its disabled primary and the destructive
+     close-a-whole-group button each take a line - and 153px pinned to the top
+     of an 844px screen is a fifth of the viewport spent on a bar whose primary
+     action is disabled until a row is ticked. It sits above the table and
+     scrolls with it, which is where a reader ticking rows started from. */
+  .action-bar { position: static; }
+
+  .toolbar-panel, .toolbar { min-width: 0; }
+  .toolbar .group { flex-wrap: wrap; }
+  /* The 1px rule separates filter groups along a row. Once the groups are
+     stacked it separates a group from the end of its own line, which is a mark
+     that means nothing. */
+  .toolbar .rule { display: none; }
+
   /* A table wider than the screen scrolls inside its own panel; the PAGE never
      scrolls sideways, because a horizontal page scroll is how a layout reads as
      broken even when nothing is. `overscroll-behavior-inline` stops the swipe
-     that runs out of table from being taken as the browser's back gesture. */
-  .table-wrap { overscroll-behavior-inline: contain; }
+     that runs out of table from being taken as the browser's back gesture.
+
+     It also has to LOOK scrollable. The stored allocations are 1,048px of table
+     in a 336px panel - three screens sideways - and on a desktop a mouse finds
+     that by accident, while on a phone the first column is simply the whole
+     table as far as anyone can tell. Two shadows pinned to the scroll container
+     and two covers pinned to the content: `background-attachment: local` is what
+     makes the covers travel with the scroll, so a shadow only shows on the side
+     that still has table behind it. No script, and nothing to keep in sync.
+
+     All four of this product's table scrollers, not just the one on the screen
+     that prompted it: the evidence panel's option table is 974px in a 266px
+     column, which is the worst of them. */
+  .table-wrap,
+  .opt-table-wrap,
+  .card-table,
+  .chart-table-wrap {
+    overscroll-behavior-inline: contain;
+    background:
+      linear-gradient(to right, var(--panel) 30%, transparent) left / 28px 100% no-repeat local,
+      linear-gradient(to left, var(--panel) 30%, transparent) right / 28px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, var(--scrollEdge), transparent) left / 14px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, var(--scrollEdge), transparent) right / 14px 100% no-repeat scroll;
+  }
+  /* The evidence panel's option table sits on the panel's own inset face, so
+     its covers have to be that colour or they show as two pale bands. */
+  .opt-table-wrap {
+    background-color: transparent;
+    background-image:
+      linear-gradient(to right, var(--panel2) 30%, transparent),
+      linear-gradient(to left, var(--panel2) 30%, transparent),
+      radial-gradient(farthest-side at 0 50%, var(--scrollEdge), transparent),
+      radial-gradient(farthest-side at 100% 50%, var(--scrollEdge), transparent);
+  }
 
   /* ---- the map ------------------------------------------------------ */
 
@@ -3572,17 +3658,24 @@ tbody tr.denied-row td { font-weight: 600; }
   .nav-item { flex: none; width: 4.25rem; }
 
   .page-head h2 { font-size: var(--fs-body-lg); }
-  /* Measured at 320x720: the four room controls wrapped to two rows and the
-     header alone was 243px, a third of the screen, before a reader reached
-     anything the screen is about. One scrolling row instead. Nothing is
-     dropped - the text scale and the appearance switch are how this product is
-     read in a bright room, and a phone is the likeliest bright room there is. */
-  .page-head-side {
-    width: 100%; flex-wrap: nowrap;
-    overflow-x: auto; overscroll-behavior-inline: contain;
-    padding-bottom: 2px;
-  }
+  /* This was one scrolling row, to keep the header short. Running the real
+     application on a phone showed what that costs: on the Overview the row is
+     961px of controls behind a 366px window, with nothing to say so - the text
+     scale, the appearance switch and the language toggle are simply not there
+     as far as a reader is concerned. A control nobody can find is worse than a
+     header that is 100px taller, and this header scrolls away.
+
+     So it wraps. Measured on the real Overview at 390x844: 98px hiding 961px of
+     controls, against 204px showing all of them. */
+  .page-head-side { width: 100%; flex-wrap: wrap; }
   .page-head-side > * { flex: none; }
+  /* The screen's own actions take the first line. They are what this screen
+     does; the four room controls under them are the same on all nine. */
+  #page-head-actions:not(:empty) {
+    flex-basis: 100%; padding-inline-end: 0;
+    border-inline-end: 0; border-bottom: 1px solid var(--line);
+    padding-bottom: var(--s-sm);
+  }
   .mapstage { height: 58svh; }
   .map-foot-note { margin-inline-start: 0; }
 

@@ -729,3 +729,71 @@ def test_the_bottom_bar_leaves_room_for_the_page_under_it():
         "an edge-to-edge viewport puts the home indicator under the bar as well"
     )
 
+
+def test_every_two_column_grid_collapses_on_a_narrow_window():
+    """A variant that adds a class keeps its own columns however narrow the window.
+
+    `.two-col` is (0,1,0) and `.two-col.aside-first` is (0,2,0), so a collapse
+    rule naming only the first never reached the second - and a media query adds
+    no weight to a selector. Measured on the running application at 390px: the
+    grid computed to `358px 0px`, the second column was zero wide, and the
+    Integrity and Account screens pushed their content off the right of the
+    document. Neither shows it at a desktop width, which is why it survived.
+
+    So the collapse rule has to name every variant that exists. This finds them
+    from the stylesheet rather than from a list somebody has to remember.
+    """
+    css = (WEB / "style.css").read_text(encoding="utf-8")
+    css_no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+
+    # Every selector that gives a .two-col something more than one column.
+    variants = set()
+    for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css_no_comments):
+        if "grid-template-columns" not in body:
+            continue
+        for part in selector.split(","):
+            part = part.strip()
+            if part.startswith(".two-col"):
+                tracks = re.search(r"grid-template-columns:([^;]+)", body).group(1)
+                # A single `1fr` or `minmax(0, 1fr)` IS the collapsed form.
+                if tracks.count("fr") > 1 or "rem)" in tracks:
+                    variants.add(part)
+
+    assert variants, "no .two-col grid found; has the class been renamed?"
+
+    narrow = css_no_comments[css_no_comments.index("@media (max-width: 1200px)"):]
+    narrow = narrow[:narrow.index("}", narrow.index("}") + 1) + 1]
+
+    missing = sorted(v for v in variants if v not in narrow)
+    assert not missing, (
+        "these two-column grids never collapse, so they overflow a phone:\n  "
+        + "\n  ".join(missing)
+    )
+
+
+def test_every_table_the_ui_writes_can_scroll_inside_its_own_box():
+    """A table is the one element that cannot be made narrower than its content.
+
+    Six columns of figures come to about 560px. Dropped into a dialog with no
+    scroller of its own, that width is handed to the dialog: on a 390px screen
+    the Compare sheet scrolled sideways, carrying its own heading and its close
+    button off the edge. Every other table in the product sits in a wrapper that
+    scrolls; this checks that the next one does too.
+    """
+    wrappers = ("table-wrap", "opt-table-wrap", "card-table", "chart-table-wrap")
+
+    bare = []
+    for path in sorted(WEB.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"<table[\s>]", source):
+            # The wrapper is opened just before it, possibly across a line break.
+            before = source[max(0, match.start() - 220):match.start()]
+            if not any(w in before for w in wrappers):
+                line = source.count("\n", 0, match.start()) + 1
+                bare.append(f"{path.name}:{line}")
+
+    assert not bare, (
+        "these tables have no scroller, so their width becomes their container's:\n  "
+        + "\n  ".join(bare)
+    )
+
