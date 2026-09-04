@@ -689,12 +689,19 @@ button, .btn {
 }
 button .icon { width: 16px; height: 16px; flex: none; }
 
-button.primary, .form button, .login button[type="submit"] {
+/* `.form button` means "the button a form is for". The show-password toggle is
+   inside the form and is not that button, and `.form button` is (0,1,1) against
+   `.reveal`'s (0,1,0), so it won: on the Account screen the eye icon was painted
+   in the accent while the actual submit button beside it sat grey and disabled.
+   The one control that looked like the primary action was the one that reveals a
+   password. Excluded by name rather than by adding weight to `.reveal`, because
+   the exception belongs where the claim is made. */
+button.primary, .form button:not(.reveal), .login button[type="submit"] {
   background: var(--accent); color: var(--accentInk); border-color: var(--accent);
 }
 @media (hover: hover) {
   button.primary:hover:not(:disabled),
-  .form button:hover:not(:disabled),
+  .form button:not(.reveal):hover:not(:disabled),
   .login button[type="submit"]:hover:not(:disabled) {
     background: var(--accentLine); border-color: var(--accentLine);
   }
