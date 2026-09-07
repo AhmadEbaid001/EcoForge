@@ -138,6 +138,14 @@ def _result(
     )
 
 
+# Below this relative difference, two allocations are the same allocation. One
+# kilogram of CO2e out of this portfolio's 3.66e+08 is a relative 3e-09, and the
+# float noise between two solvers that funded an identical set has been measured at
+# 5e-16, so this sits four million times above the noise and still finer than the
+# smallest unit any objective is reported in.
+TIE_REL_TOL = 1e-9
+
+
 # --- solver claims (no infrastructure) --------------------------------------
 
 
@@ -147,24 +155,40 @@ def claim_cpsat_never_worse(instance: Instance, rows: Sequence[SweepRow]) -> Cla
     Every baseline explores a subset of what CP-SAT can express, so on an identical
     instance CP-SAT losing to any of them means they are not solving the same
     problem - a bug in the model, the constraints or the objective mapping.
+
+    A loss has to be bigger than floating-point summation order to be one. Where the
+    two solvers fund the SAME buildings for the SAME money, their totals still differ
+    in the last bit or two because they add the same terms in a different sequence;
+    on this portfolio that has been measured at a relative 5e-16 with identical
+    funded sets. Comparing with a strict `<` reported that as CP-SAT losing, which
+    failed a claim the paper makes on a run where every allocation was correct.
     """
     losses: list[str] = []
+    ties = 0
     checked = 0
     worst = 0.0
     for baseline in ("greedy_upgrade", "greedy", "equal_split"):
         for exact, other in paired(rows, "cpsat", baseline):
             checked += 1
             worst = min(worst, gap_pct(exact, other))
-            if exact.objective_total < other.objective_total:
-                losses.append(
-                    f"{baseline} at budget {exact.budget_egp:,.0f} "
-                    f"obj {exact.objective} cap {exact.district_cap}"
-                )
+            shortfall = other.objective_total - exact.objective_total
+            if shortfall <= 0:
+                continue
+            if shortfall <= abs(other.objective_total) * TIE_REL_TOL:
+                ties += 1
+                continue
+            losses.append(
+                f"{baseline} at budget {exact.budget_egp:,.0f} "
+                f"obj {exact.objective} cap {exact.district_cap}"
+            )
+    measured = f"{checked - len(losses)}/{checked} instances, worst gap {worst:+.2f}%"
+    if ties:
+        measured += f" ({ties} exact tie{'s' if ties > 1 else ''})"
     return _result(
         "F1-a",
         "CP-SAT is never worse than any baseline on an identical instance",
         not losses,
-        f"{checked - len(losses)}/{checked} instances, worst gap {worst:+.2f}%",
+        measured,
         detail="; ".join(losses[:5]),
     )
 

@@ -8,6 +8,7 @@ no numbers - they carry the authority of a measurement without the property.
 from __future__ import annotations
 
 import csv
+import math
 
 import pytest
 from tests.conftest import PARAMS_DICT, make_building, make_intervention
@@ -106,6 +107,47 @@ def test_cpsat_losing_to_a_baseline_is_caught():
     rows = [
         row(solver="cpsat", total=90.0),
         row(solver="greedy_upgrade", total=100.0),
+    ]
+    result = claim_cpsat_never_worse(_instance(), rows)
+
+    assert result.verdict is Verdict.FAIL
+    assert "greedy_upgrade" in result.detail
+
+
+def test_a_last_bit_disagreement_is_a_tie_not_a_loss():
+    """Two solvers that funded the same set still differ in the last bit.
+
+    Measured on the deployed portfolio: CP-SAT and greedy_upgrade funded the same
+    fifty buildings for the same 159,982,055.70 EGP and their objective totals
+    differed by 1.8e-07 out of 3.66e+08 - a relative 5e-16, one or two ULPs, purely
+    the order the terms were added in. A strict `<` called that a loss and failed a
+    claim the paper makes on a run where every allocation was correct.
+
+    The tie is COUNTED, not swallowed. A harness that quietly forgives is how a
+    tolerance stops being a tolerance.
+    """
+    total = 365629710.54651314
+    rows = [
+        row(solver="cpsat", total=math.nextafter(total, 0.0)),
+        row(solver="greedy_upgrade", total=total),
+    ]
+    result = claim_cpsat_never_worse(_instance(), rows)
+
+    assert result.verdict is Verdict.PASS
+    assert "1 exact tie" in result.measured
+
+
+def test_the_tie_tolerance_is_far_too_tight_to_hide_a_real_loss():
+    """The tolerance must be below anything a person would call a difference.
+
+    One kilogram of CO2e out of this portfolio's 3.66e+08 is a relative 3e-09. A
+    shortfall of a single kilogram therefore has to fail, or the gate has been
+    loosened into decoration.
+    """
+    total = 365629710.0
+    rows = [
+        row(solver="cpsat", total=total - 1.0),
+        row(solver="greedy_upgrade", total=total),
     ]
     result = claim_cpsat_never_worse(_instance(), rows)
 
