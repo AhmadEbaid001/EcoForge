@@ -76,9 +76,11 @@ async function request(method, path, body) {
 }
 
 export const api = {
+  /* The one generic verb with callers. `post` and `patch` sat here beside it with
+   * none, and removing them keeps the pattern that every write in this file is a
+   * NAMED method: a named method can be grepped from the route it calls, an
+   * anonymous `api.post('/whatever')` cannot. */
   get: (path) => request('GET', path),
-  post: (path, body) => request('POST', path, body),
-  patch: (path, body) => request('PATCH', path, body),
 
   /* --- auth --- */
   session: () => request('GET', '/auth/session'),

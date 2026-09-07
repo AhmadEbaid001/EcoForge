@@ -278,6 +278,12 @@ to configure, and it survives the demonstration network.
   `scripts/setup_env.py` generates one, and regenerating invalidates every existing
   signature. That is a deliberate property, not a bug, and it means the key must be
   backed up with the data it signs.
-- **`ci` has still never executed.** It is committed and the workflow parses and its
-  gates match `scripts/check.py`, which a test enforces — but nothing has run it.
-  The first push will be the first real evidence.
+- **The fifteen integration tests are not a gate anywhere.** `ci` runs
+  `pytest -q --cov` with no `services:` block, so the MQTT and PostgreSQL integration
+  tests skip in CI exactly as they skip on a laptop with nothing running. They are
+  exercised only when somebody brings the stack up by hand and runs pytest against it.
+  Every claim the evaluation harness checks is independent of them, and the four gates
+  in `scripts/check.py` pass without them — but "473 passed" in a CI log means 473 of
+  488, and it is worth knowing which fifteen are missing. Adding two service
+  containers to the workflow is the fix; it was not done close to a deadline because a
+  newly-running integration test that fails also blocks every deploy.
