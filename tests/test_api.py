@@ -915,3 +915,30 @@ def test_the_reading_count_says_whether_it_is_exact(client):
     assert "readings_exact" in body, "the screen needs to know which kind of number this is"
     assert body["readings_exact"] is True, "SQLite has no estimator, so this one is exact"
     assert isinstance(body["readings"], int)
+
+
+def test_the_evidence_job_measures_the_claims_that_need_the_database():
+    """Without `--with-db` this job is the harness with its best half switched off.
+
+    Five claims cannot be checked from files: F3 and F9-a/F9-b need readings to
+    forecast and score, F5-b needs the hash chain and its external anchor, and F15
+    needs the hour-of-day load shapes the nightly refit writes. They report SKIP
+    everywhere else, and the evidence screen is the one surface where a reader sees
+    them measured against the running system - which is the project's whole argument.
+
+    The job runs inside the API process, which is the only one holding a database
+    connection, so this flag is not a preference. It is the reason the button exists.
+    """
+    from gemp.api import jobs
+
+    argv = jobs.JOB_COMMANDS["evidence"]
+
+    assert "--with-db" in argv, (
+        "the evidence job no longer measures F3, F9 and F15; the screen will show "
+        "them as SKIP and the strongest claims in the paper go unevidenced"
+    )
+    # --quick is the deliberate trade: the claims, not the full twenty-budget sweep.
+    assert "--quick" in argv
+    # Figures need matplotlib, which is a development dependency and is not in the
+    # runtime image; asking for them here logs a warning nobody should have to read.
+    assert "--no-figures" in argv

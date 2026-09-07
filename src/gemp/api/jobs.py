@@ -54,7 +54,16 @@ JOB_COMMANDS: dict[str, list[str]] = {
     # Re-measures every claim in the paper and rewrites out/evaluation/claims.csv,
     # which is what the evidence screen reads. `--quick` keeps it to the claims
     # rather than the full sweep, and figures are for the paper, not the screen.
-    "evidence": [sys.executable, "-m", "gemp.evaluate", "--quick", "--no-figures"],
+    #
+    # `--with-db` is the whole reason this job is worth pressing. Without it the
+    # five claims that need real data - F3 and F9 need readings to forecast and
+    # score, F5-b needs the hash chain and its external anchor, F15 needs the
+    # hour-of-day load shapes the nightly refit writes - report SKIP, and the
+    # evidence screen shows a judge a table with the most interesting rows greyed
+    # out. This job runs inside `core`, which is the one process that has the
+    # database, so it is the only place those five CAN be measured.
+    "evidence": [sys.executable, "-m", "gemp.evaluate",
+                 "--quick", "--with-db", "--no-figures"],
 }
 
 JOB_LABELS = {
