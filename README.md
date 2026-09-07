@@ -469,11 +469,14 @@ Stated here as they are stated on the screens that present them.
    actually falls inside.
 5. **No per-building error figure is published** — the platform reports which model was
    selected and draws both lines, rather than inventing a metric it does not measure.
-6. **Two parameters carry a reference that is not yet checkable, and one is still
-   uncited** — every catalog rate now names a source, but five of them need a page or a
-   table number before a reviewer could verify the figure, and the 24-hour marginal
-   emission profile behind the TOU objective remains a placeholder. Both are marked as
-   such wherever they appear, including on the printed bill of quantities.
+6. **One input is a labelled placeholder, and two are estimates inside a stated
+   range** — every catalog rate and every physical parameter now names a source and a
+   place inside it. The exception is the 24-hour marginal emission profile behind the
+   TOU objective: no such series is published for the Egyptian grid, the sources
+   checked are listed in `data/params.yaml`, and the shipped profile is illustrative,
+   so F15 demonstrates the mechanism rather than an Egyptian measurement. The two
+   solar cost terms are market prices quoted with a date and a cross-check rather than
+   measurements. All three are marked as such wherever they appear.
 7. **Three touch targets on a phone are under the 44 px floor** — the row-selection
    checkboxes are 28 px, a column's sort control is 42 px, and the show-password
    button is 40 px. All three clear the 24 px WCAG 2.5.8 minimum, and all three were
