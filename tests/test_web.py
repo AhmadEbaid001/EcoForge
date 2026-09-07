@@ -797,3 +797,31 @@ def test_every_table_the_ui_writes_can_scroll_inside_its_own_box():
         + "\n  ".join(bare)
     )
 
+
+def test_the_map_states_the_grid_factor_the_data_actually_uses():
+    """The screen must not quote a constant the optimizer has stopped believing.
+
+    `map.js` prints the grid emission factor into the evidence panel - "benefit is
+    kWh saved x lifetime x {factor}" - from a hardcoded string, because reading it
+    from `/api/v1/meta` would make one line of explanatory prose depend on a second
+    request that can fail. That is a defensible trade and it has exactly one cost:
+    the string can drift from `data/params.yaml`, and it did, silently, until the
+    factor was cited and the panel was left quoting the old one.
+
+    A reader who checks a recommendation against the stated method is doing the thing
+    this project asks them to do. This is the cheap half of keeping that honest.
+    """
+    source = (WEB / "js" / "map.js").read_text(encoding="utf-8")
+    match = re.search(r"const GRID_FACTOR = '([^']+)'", source)
+    assert match, "map.js no longer declares GRID_FACTOR; has the panel changed?"
+    shown = float(match.group(1))
+
+    params = (ROOT / "data" / "params.yaml").read_text(encoding="utf-8")
+    declared = re.search(r"^grid_emission_factor:\s*([0-9.]+)", params, re.M)
+    assert declared, "data/params.yaml no longer declares grid_emission_factor"
+
+    assert shown == float(declared.group(1)), (
+        f"the map tells the reader {shown} kgCO2e/kWh while the optimizer uses "
+        f"{declared.group(1)}; update the GRID_FACTOR constant in web/js/map.js"
+    )
+

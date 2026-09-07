@@ -5,6 +5,16 @@ engineering. **Nada edits values and never code. Ahmed edits code and never valu
 Both are schema-validated on every push, so a malformed edit fails the build rather
 than silently producing wrong recommendations.
 
+**Exception, 7 September 2026.** Two days before submission the contract was crossed
+once, deliberately: four values in `params.yaml` were changed from the code side
+against primary sources — the grid emission factor, the electricity tariff, the solar
+specific yield and the roof-orientation table. Each carries its source, its locator
+and the date it was fetched, in a comment beside the value. Nothing was estimated:
+every saving fraction and cost in `catalog.csv`, the `adj` condition multipliers, the
+end-use shares and the two solar cost terms were left exactly as they were, and the
+one value that could not be sourced — the time-of-use profile — was labelled a
+placeholder rather than given a citation that does not support it.
+
 | File | Owner | Contents |
 |---|---|---|
 | `catalog.csv` | Nada | One row per retrofit intervention: cost model, saving fraction, service life, embodied carbon, applicability rule, **source citation** |

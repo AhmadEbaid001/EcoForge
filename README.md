@@ -194,14 +194,16 @@ No default account ships, by design. The bootstrap command prints a password onc
 
 50 named public buildings drawn from OpenStreetMap across Greater Cairo — ministries,
 hospitals, schools, courts, police stations and public libraries, 132.7 GWh/yr — at a
-budget of 50,000,000 EGP. Reproduce with `python -m gemp.evaluate`.
+budget of 50,000,000 EGP, at a grid emission factor of 0.3803 kgCO₂e/kWh (EEHC
+2023/2024 — see `data/params.yaml` for what that figure is and is not). Reproduce with
+`python -m gemp.evaluate`.
 
 | Solver | Funded | Spent | Life-cycle kgCO₂e | vs equal split |
 |---|---|---|---|---|
-| `equal_split` | 29 | 21,940,122 | 47,054,719 | baseline |
-| `greedy` | 42 | 49,995,739 | 161,355,511 | +243 % |
-| `greedy_upgrade` | 42 | 49,995,739 | 161,355,511 | +243 % |
-| `cpsat` | 15 | 49,969,015 | 201,869,418 | **+329 %** |
+| `equal_split` | 29 | 21,940,122 | 39,586,969 | baseline |
+| `greedy` | 42 | 49,995,739 | 135,962,422 | +243 % |
+| `greedy_upgrade` | 42 | 49,995,739 | 135,962,422 | +243 % |
+| `cpsat` | 15 | 49,969,015 | 170,238,791 | **+330 %** |
 
 CP-SAT funds fifteen buildings where the heuristics fund forty-two, and delivers a
 quarter more carbon for the same money: it is buying deep retrofits of a few
@@ -213,10 +215,10 @@ its district slots to cheap high-density options and then cannot use the rest.
 
 | Solver | Funded | Spent | Life-cycle kgCO₂e | vs equal split |
 |---|---|---|---|---|
-| `equal_split` | 15 | 11,274,593 | 27,267,857 | baseline |
-| `greedy` | 18 | 22,877,215 | 89,943,629 | +230 % |
-| `greedy_upgrade` | 18 | 49,972,148 | 189,443,583 | +595 % |
-| `cpsat` | 10 | 49,988,795 | 191,517,107 | **+602 %** |
+| `equal_split` | 15 | 11,274,593 | 22,952,097 | baseline |
+| `greedy` | 18 | 22,877,215 | 75,835,137 | +230 % |
+| `greedy_upgrade` | 18 | 49,972,148 | 159,744,320 | +596 % |
+| `cpsat` | 10 | 49,988,795 | 161,511,232 | **+604 %** |
 
 **The headline is quoted against `greedy_upgrade`, never against plain greedy.** Plain
 greedy never revisits a funded building, so once every building holds its cheapest dense
@@ -231,13 +233,13 @@ median is the whole story, and the shapes differ. The unconstrained advantage pe
 **25 % at 50 M EGP**, where the budget binds hardest and the choice of which building to
 skip decides the answer, then decays to nothing above 140 M once there is enough money
 to fund everything worth funding. The capped advantage does the opposite: it grows with
-the budget, to 14.6 % at 200 M, because the cap keeps binding after the budget has
+the budget, to 14.8 % at 200 M, because the cap keeps binding after the budget has
 stopped. The median is small only because most of the range is budgets where a good
 heuristic is near-optimal on a plain knapsack — that is reported rather than hidden. The
 cap is also the realistic case: no ministry funds nine buildings in one district and
 none in the next.
 
-Dominance pruning removes 62 % of the candidate set (1448 → 547) before solving. Provably
+Dominance pruning removes 62 % of the candidate set (1448 → 551) before solving. Provably
 safe — any solution using a dominated option can be rewritten to use its dominator — and
 `test_pruning_does_not_change_any_solver_result` checks that across every solver ×
 objective × budget combination.

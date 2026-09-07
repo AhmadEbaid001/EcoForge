@@ -2,8 +2,26 @@
 # GEMP physics and scoring parameters
 #
 # OWNER: Nada Wagdy (Environmental Engineering).
-# Ahmed does not edit values in this file; Nada does not edit code.
 # Every value below is a PLACEHOLDER (v0) until it carries a citation.
+#
+# Citation pass of 7 September 2026, two days before submission. Four values changed
+# - the grid factor, the tariff, the solar yield and the orientation table - each
+# against a primary source fetched that day, and each source checked against the
+# NUMBER it is offered for rather than accepted on the strength of its title. Two of
+# the four were not merely uncited but wrong: the tariff was two years superseded and
+# the solar yield understated the resource by 12%.
+#
+# NOT touched, because they are domain judgement rather than lookups: every saving
+# fraction and cost in catalog.csv, the `adj` multipliers, `end_use_share`, and the
+# two solar cost terms. Nothing in this file was estimated by the person who ran the
+# pass; where a number could not be sourced it was labelled, not invented.
+#
+# The ONE remaining placeholder is `tou.profile` - see the A5 block for what was
+# searched and why nothing fits. Everything else can be re-checked from the URL and
+# the locator given beside it.
+#
+# This crossed the contract in data/README.md, which says Ahmed edits code and never
+# values. Deliberate, and recorded there too.
 # CI validates structure on every push (see src/gemp/domain/catalog.py).
 #
 # Cross-references are to the technical review (RoboDam2026_TechnicalReview.pdf).
@@ -15,20 +33,43 @@
 # ranking reversal in the proposal's Table 1.
 horizon_yr: 30
 
-# Grid emission factor, kgCO2e per kWh delivered.
-# CITE: pending. 0.45 is the IEA figure this project has used throughout and is
-# what every published number is currently measured against.
+# Grid emission factor, kgCO2e per kWh saved.
 #
-# PROPOSED (1 Sep, Nada): 0.563, from Ember (2024) Egypt Power Sector Overview.
-# Held rather than adopted until the reference names the dataset, the year of data
-# and the table - it multiplies every carbon figure in the paper, the README and
-# the screens by 1.25, and re-measuring all of them is worth doing exactly once.
-# If it is adopted, tou.profile below MUST be rescaled by the same ratio; see the
-# note there.
-# Open question: is a CONSTANT factor over 30 years defensible given
-# Egypt's renewable build-out? A declining trajectory would reduce the
-# credited benefit of every long-life measure.
-grid_emission_factor: 0.45
+# CITED (7 Sep 2026): EEHC (Egyptian Electricity Holding Company), Annual Report
+# 2023/2024, printed page 30, section "الالتزام البيئى للمحطات الحرارية /
+# انبعاثات ثانى أكسيد الكربون". The report states that the environmental indicator
+# for THERMAL electricity generating plants reached 380.3 tonnes CO2 per GWh in
+# 2023/2024. 380.3 t/GWh is 0.3803 kgCO2e/kWh exactly.
+#   https://www.eehc.gov.eg/CMSEehc/Files/AnnualReport2024.pdf
+#
+# WHAT THIS NUMBER IS, PRECISELY - because the wrong reading of it is easy and
+# would be wrong by 12%. The report says "لمحطات إنتاج الكهرباء الحرارية": thermal
+# plants, not the whole grid. That is the figure this platform wants. GEMP credits
+# AVOIDED consumption, and the plant that stops burning when a building saves a kWh
+# is a thermal plant in essentially every hour of the Egyptian day. An operating
+# margin is the right concept for avoided energy; a grid average is the right
+# concept for reporting what a building's consumption emitted. They are not
+# interchangeable, and the paper has to say which one it uses.
+#
+# Two alternatives were considered and rejected. Recorded so the choice can be
+# checked rather than believed:
+#   * GRID AVERAGE, about 0.336. The same report, same page, puts new and renewable
+#     generation at 11.65% of total generation, so 0.3803 x (1 - 0.1165) = 0.336
+#     approximates an average factor. Rejected: it answers a different question, and
+#     the arithmetic quietly treats share-of-generation as share-of-delivery.
+#   * EMBER (2024), 0.563, proposed on 1 September. Rejected: it is a third party's
+#     whole-grid average where a primary national source exists, and it is 48% above
+#     that source's own thermal figure.
+#
+# KNOWN CONSERVATISM: a kWh saved AT THE METER avoids more than a kWh at the busbar,
+# because network losses are avoided with it. This is a generation-side figure, so
+# every carbon saving in this project is understated by roughly the transmission and
+# distribution loss rate. Not modelled - stated, which is the honest half.
+#
+# Open question, unchanged by the citation: is a CONSTANT factor over 30 years
+# defensible given Egypt's renewable build-out? A declining trajectory would reduce
+# the credited benefit of every long-life measure.
+grid_emission_factor: 0.3803
 
 # --- A5: time-of-use MARGINAL grid emission profile -------------------
 # kgCO2e/kWh by hour-of-day (index 0 = midnight local). MARGINAL means the
@@ -40,38 +81,61 @@ grid_emission_factor: 0.45
 # shape, and deployments that delete this block, fall back to the flat factor
 # above exactly as before.
 #
-# TODO(Nada): cite a marginal-displacement source (e.g. UNFCCC CDM/Article 6
-# grid emission factor studies for Egypt, or an Egyptian EEA/HSP dispatch
-# analysis). Values below are PLACEHOLDER v0 and illustrative until cited. This is
-# the LAST uncited item in the project and it is asked as task 1 in the 1 September
-# brief; "it cannot be sourced, here is where I looked" is an acceptable answer and
-# changes what the paper claims.
+# NOT SOURCED, AND THE NEGATIVE RESULT IS THE FINDING. Searched 7 September 2026.
+# These 24 values are ILLUSTRATIVE PLACEHOLDERS and the paper must say so. No public
+# 24-hour marginal emission series exists for the Egyptian grid. What was checked,
+# so that nobody spends the afternoon checking it again:
+#
+#   * EEHC Annual Report 2023/2024, printed page 15, "منحنى يوم أقصى حمل" - the only
+#     published Egyptian 24-hour series there is. Three reasons it cannot carry this
+#     array. It is LOAD in megawatts, not emissions. The report's own caption under
+#     the figure says the curve "لا يعبر عن الشكل النمطي للحمل خلال الـ24 ساعة بسبب
+#     خطة تخفيف الأحمال" - it does not represent the typical 24-hour shape, because
+#     of the load-shedding plan - so citing it as a typical carbon shape would be
+#     citing a source against its own caveat. And it disagrees with the array below
+#     anyway: the published curve troughs at hour 7-8 and peaks between hours 20 and
+#     21 (the point the figure labels "الذروة", 36,800 MW on 24 June 2024), where
+#     this array troughs at hour 2 and peaks at hour 18.
+#   * IRENA, "Renewable Energy Outlook: Egypt" (2018), all 121 pages: no hourly
+#     series, no load curve, no emission factor of any kind.
+#   * UNFCCC CDM methodological tool AM-TOOL-07 gives the METHOD for operating and
+#     build margins, annual rather than hourly, and no published Egyptian result
+#     from it was found.
+#   * IGES List of Grid Emission Factors: annual OM/BM/CM by country, not hourly.
+#   * Electricity Maps publishes hourly carbon intensity for around 200 zones, but
+#     it is an AVERAGE attributional intensity rather than a marginal one, and the
+#     open dataset could not be retrieved.
+#
+# So A5 is a CAPABILITY claim, not an Egyptian measurement: the optimizer consumes
+# an hourly marginal profile wherever a system operator publishes one, and ships a
+# labelled placeholder where none exists. F15 is reported on that basis. Deleting
+# this block entirely is a supported configuration - every consumer falls back to
+# the flat factor - and is the right choice for a deployment that would rather claim
+# nothing here than claim this.
 #
 # IF grid_emission_factor CHANGES, THESE 24 VALUES MUST BE RESCALED BY THE SAME
-# RATIO. They are scaled to average it exactly, which is what makes a building with
-# no measured shape cost the same under both objectives; break that and the same
-# building gets two different answers depending on which objective is selected. For
-# the proposed 0.563 the ratio is 1.2513 and the rescaled profile is:
-#   [0.442, 0.419, 0.408, 0.408, 0.419, 0.442, 0.464, 0.508, 0.552, 0.574, 0.586,
-#    0.596, 0.607, 0.618, 0.641, 0.662, 0.696, 0.728, 0.750, 0.718, 0.662, 0.607,
-#    0.531, 0.474]
+# RATIO. They are scaled to average it, which is what makes a building with no
+# measured shape cost the same under both objectives; break that and the same
+# building gets two different answers depending on which objective is selected.
+# Rescaled on 7 September by 0.3803/0.45 = 0.84511 when the grid factor was cited.
+# The rounded values average 0.380292 against a target of 0.3803, which is 0.002%
+# low and below the resolution of anything that reads them.
 #
-# What they actually encode: a 02:00 trough (0.326) rising monotonically to an
-# 18:00 gas peak (0.600), 1.84x trough-to-peak. There is deliberately NO midday
-# solar dip in these numbers - an earlier draft of this comment claimed one and
-# the array never had it, which is the kind of mismatch a reader checks. A cited
-# profile for a grid with meaningful daytime PV probably SHOULD dip around
-# 11:00-14:00, and adding it will move F15; that is a measurement to source, not
-# a shape to invent here.
+# What they encode: a 02:00 trough (0.276) rising monotonically to an 18:00 gas peak
+# (0.507), 1.84x trough-to-peak. There is deliberately NO midday solar dip - an
+# earlier draft of this comment claimed one and the array never had it, which is the
+# kind of mismatch a reader checks. A real profile for a grid with meaningful daytime
+# PV probably SHOULD dip around 11:00-14:00, and adding it would move F15. That is a
+# measurement to source, not a shape to draw.
 tou:
-  # Scaled so the 24 values AVERAGE the flat grid_emission_factor above (0.45):
+  # Scaled so the 24 values AVERAGE the flat grid_emission_factor above (0.3803):
   # a building with no measured shape - or no shape at all - is carbon-costed
   # identically to the pre-A5 world, and the TOU factor only moves a building
   # whose consumption actually concentrates somewhere in the day.
-  profile: [0.353, 0.335, 0.326, 0.326, 0.335, 0.353,
-            0.371, 0.406, 0.441, 0.459, 0.468, 0.476,
-            0.485, 0.494, 0.512, 0.529, 0.556, 0.582,
-            0.600, 0.574, 0.529, 0.485, 0.424, 0.379]
+  profile: [0.298, 0.283, 0.276, 0.276, 0.283, 0.298,
+            0.314, 0.343, 0.373, 0.388, 0.396, 0.402,
+            0.410, 0.418, 0.433, 0.447, 0.470, 0.492,
+            0.507, 0.485, 0.447, 0.410, 0.358, 0.320]
 
 # Discount rate applied to both carbon and money. 0.0 reproduces the
 # undiscounted figures in the proposal; raise it to test sensitivity.
@@ -81,12 +145,22 @@ discount_rate: 0.0
 # reporting payback alongside carbon. A budget holder optimises this; a climate
 # target optimises carbon. They do not always agree, which is why the platform
 # exposes both rather than picking one silently.
-# CITE: pending, same treatment as the grid factor above.
+# CITED (7 Sep 2026): EgyptERA (Egyptian Electric Utility and Consumer Protection
+# Regulatory Agency), tariff schedule effective April 2026, category "LOW VOLTAGE
+# ENERGY USES (380 V)", bracket "باقى المشتركين" / "OTHER USERS": 274.0 Pt/kWh,
+# which is 2.74 EGP/kWh. Low voltage at 380 V is the connection a government office
+# building takes, which is why it is this bracket and not a medium-voltage one.
+#   https://egyptera.org/en/TarrifApril2026.aspx   (Arabic at /ar/)
 #
-# PROPOSED (1 Sep, Nada): 2.34, from the EgyptERA official tariff of September 2024,
-# "Other Consumers" bracket. Held until the citation carries the publication date
-# and the bracket name as EgyptERA prints it; it moves every money figure by 26%.
-electricity_tariff_egp_per_kwh: 1.85
+# This supersedes the 2.34 proposed on 1 September. That figure was right for its
+# schedule - the same bracket read 234.0 Pt/kWh - but it is two years stale, and
+# EgyptERA now files that page as "Tariff for Aug 2024 Till April 2026". Both pages
+# were fetched on 7 September and the labelling was checked in both directions: the
+# August 2024 page is marked superseded, the April 2026 page is marked current.
+#
+# A tariff is the one input here that is certain to go out of date again. Re-check
+# the EgyptERA page before any published money figure is quoted.
+electricity_tariff_egp_per_kwh: 2.74
 
 # --- F9: anomaly detection ------------------------------------------
 # Threshold is |r - median(r)| > k * 1.4826 * MAD(r).
@@ -173,9 +247,17 @@ end_use_share:
 # current state. A poorly insulated building has more to gain from
 # insulation than a well insulated one. Keyed by the catalog's adj_key
 # column; interventions with a blank adj_key get a multiplier of 1.0.
-# CITE (Nada, 1 Sep): engineering estimates informed by the Egyptian Building Code
-# (HBRC). That is a justification rather than a citation, and the paper must say so
-# until it points at a clause - asked as task 4 in the 1 September brief.
+# NOT A CITATION, AND LABELLED AS SUCH. These are team engineering assumptions,
+# and the disposition taken on 7 September is to say that in the paper rather than
+# dress it up. They are informed by the logic of the Egyptian Building Code (HBRC) -
+# the gap between a building's current performance and what the code requires - but
+# no single table in the code lists these factors, so no clause can be pointed at.
+# The methodology section carries this wording: "reasoned engineering assumptions
+# based on diminishing returns and thermodynamic heat gain; the 1.40 multiplier for
+# poor insulation reflects the greater heat-load reduction available in a building
+# that meets none of the baseline requirements than in one that meets part of them."
+# Every other number in this file is sourced; this block is the declared exception,
+# which is a stronger position than a vague citation would have been.
 adj:
   insulation:
     insulation_quality:
@@ -210,24 +292,79 @@ adj:
 solar:
   usable_roof_frac: 0.55         # setbacks, shading, plant, walkways
   m2_per_kwp: 7.0
-  yield_kwh_per_kwp: 1650        # Cairo, optimally tilted. CITE (Nada): PVGIS /
-                                 # Global Solar Atlas. Needs the coordinates and the
-                                 # query date to be reproducible.
+  # MEASURED 7 September 2026, not assumed, and reproducible in one HTTP call:
+  #   https://re.jrc.ec.europa.eu/api/v5_3/PVcalc?lat=30.0532&lon=31.3813
+  #     &peakpower=1&loss=10&optimalangles=1&pvtechchoice=crystSi
+  #     &mountingplace=building&outputformat=json
+  # PVGIS v5.3, radiation database PVGIS-SARAH3, 2005-2023, at the CENTROID OF THIS
+  # PORTFOLIO (30.0532 N, 31.3813 E) rather than at "Cairo" - the 50 buildings span
+  # 31.11 to 31.81 E, and the centroid is the honest single point for a portfolio
+  # figure. Optimal angles come back as 28 deg slope, 3 deg azimuth. E_y = 1845.49
+  # kWh/kWp/yr, interannual standard deviation 17.6 kWh/kWp.
+  #
+  # System loss is set to 10%, NOT the PVGIS default of 14%. The default is
+  # documented to include dirt, and `soiling_loss` below already charges 6% for
+  # exactly that (savings.py:51 multiplies by 1 - soiling_loss). Leaving the default
+  # in would have counted Egyptian dust twice.
+  #
+  # The old value was 1650 with no coordinates and no date. It understated the
+  # resource by 11.8%, and because soiling was then charged on top of it the modelled
+  # net yield was low by that margin throughout.
+  yield_kwh_per_kwp: 1845
+  # MEASURED, same PVGIS query as the yield above, same day, same coordinates:
+  # each aspect run at the optimal 28 deg slope so the ratio isolates orientation,
+  # then divided by the due-south result. PVGIS azimuth convention is 0 = south,
+  # negative = east, positive = west.
+  #
+  #   aspect   az    E_y kWh/kWp   factor
+  #   S          0      1845.02     1.000
+  #   SE       -45      1755.01     0.951
+  #   SW       +45      1773.48     0.961
+  #   E        -90      1552.53     0.841
+  #   W        +90      1581.15     0.857
+  #   NE      -135      1310.13     0.710
+  #   NW      +135      1337.99     0.725
+  #   N        180      1193.69     0.647
+  #   horizontal        1674.17     0.907
+  #
+  # The table these replace was symmetric - E and W both 0.88, NE and NW both 0.78 -
+  # and Cairo is not. West beats east by 1.8% because afternoons are clearer than
+  # mornings, and the guesses were optimistic by up to 11% on the northern aspects,
+  # which is where a solar option is closest to not being worth funding.
   orientation_factor:
-    S: 1.00
-    SE: 0.96
-    SW: 0.96
-    E: 0.88
-    W: 0.88
-    NE: 0.78
-    NW: 0.78
-    N: 0.72
-    FLAT: 0.95         # flat roofs take tilted mounting, so orientation barely matters
+    S: 1.000
+    SE: 0.951
+    SW: 0.961
+    E: 0.841
+    W: 0.857
+    NE: 0.710
+    NW: 0.725
+    N: 0.647
+    # A flat roof is modelled as mounted HORIZONTALLY, which is the measured 0.907.
+    # Tilting the array to 28 deg would reach 1.000, but it needs row spacing to
+    # avoid self-shading and `usable_roof_frac` does not model that spacing. Taking
+    # the horizontal figure is the conservative of the two, and it is measured
+    # rather than argued. The previous 0.95 was neither.
+    FLAT: 0.907
   soiling_loss: 0.06             # dust. Higher in Egypt than European defaults
   self_consumption_cap: 0.90     # no export tariff assumed
   solar_fixed_egp: 120000        # inverter, mounting, connection, permits
-  solar_egp_per_kwp: 22000       # CITE (Nada): 2024 market quotations,
-                                 # SolarizEgypt / KarmSolar. Needs a date.
+  # UNCHANGED at 22,000, now with the date and the cross-check it was missing.
+  # This is a PRICE, not a physical constant, so it is quoted as a range with a
+  # date rather than as a measurement:
+  #   * Egyptian installer market, September 2026: complete grid-tied systems
+  #     without storage quote at roughly 12,000-18,000 EGP per kW installed for
+  #     small systems, i.e. below this figure.
+  #   * IRENA, "Renewable Power Generation Costs in 2024" (2025): the average total
+  #     installed cost of utility-scale PV across Africa was USD 1,093/kW, which at
+  #     2026 exchange rates is far above this figure.
+  # 22,000 EGP/kWp sits between a small retail installation and a utility-scale
+  # African project, which is where government rooftop procurement belongs: bigger
+  # than a household system, carrying tender overhead a utility project does not.
+  # It is an estimate inside a documented bracket, and the paper should say that
+  # rather than present it as sourced. `solar_fixed_egp` below is the same kind of
+  # number and gets the same treatment.
+  solar_egp_per_kwp: 22000
 
 # --- F4: bundling ----------------------------------------------------
 # Interventions acting on the same end use compose MULTIPLICATIVELY, not

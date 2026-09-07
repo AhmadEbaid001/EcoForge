@@ -141,8 +141,10 @@ def test_lca_adjustment_barely_changes_the_funded_set(portfolio):
     because embodied carbon is a median 8% of gross avoided emissions and the funded
     options are the ones where it is smallest.
 
-    This is the F2 finding reappearing empirically: at an Egyptian grid factor of
-    0.45 kgCO2e/kWh, embodied carbon is too small to reverse a retrofit ranking.
+    This is the F2 finding reappearing empirically: embodied carbon is too small to
+    reverse a retrofit ranking at any Egyptian grid factor measured so far. The fixture
+    here uses 0.45; the deployed data uses the cited 0.3803, where the effect is
+    stronger but still does not reverse the ranking (see docs/FINDINGS.md).
 
     The test asserts the current behaviour so the finding stays visible rather than
     being quietly assumed away. If a time-of-use marginal emission factor is added

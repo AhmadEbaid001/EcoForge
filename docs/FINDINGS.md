@@ -8,13 +8,22 @@ because the reasoning is the point.
 
 ## Open finding: the LCA layer currently changes no decisions
 
-At 18 of the 20 budgets from 10 M to 200 M EGP, the `lca_carbon` and `raw_kwh`
-objectives fund **the same buildings with the same interventions**, and at the two where
-they differ the carbon cost of having ranked by raw kWh is at most 0.0027 %. Embodied
-carbon is a median 8.2 % of gross avoided emissions across the 1,448 candidate options,
+At 16 of the 20 budgets from 10 M to 200 M EGP, the `lca_carbon` and `raw_kwh`
+objectives fund **the same buildings with the same interventions**, and at the four where
+they differ the carbon cost of having ranked by raw kWh is at most 0.0085 %. Embodied
+carbon is a median 9.5 % of gross avoided emissions across the 1,448 candidate options,
 and the options that actually get funded are the ones where it is smallest. At an
-Egyptian grid factor of 0.45 kgCO₂e/kWh, embodied carbon is simply too small to reverse
+Egyptian grid factor of 0.3803 kgCO₂e/kWh, embodied carbon is still too small to reverse
 a retrofit ranking.
+
+**It moved on 7 September, and the direction is the interesting part.** Citing the grid
+factor took it from 0.45 to 0.3803. The energy term scales with that factor and the
+embodied term does not, so the embodied share rose from a median 8.1 % to 9.5 % and the
+two objectives began to disagree at four budgets instead of two. The same measurement
+run against the old factor still reports 8.1 % and 18 of 20, so this is the citation
+moving the finding rather than the portfolio drifting underneath it. The finding has not
+reversed - it has moved perhaps a fifth of the way toward reversing, on a change of one
+input, which is worth knowing when the paper says the layer changes nothing.
 
 The LCA layer used to earn its place in one respect: on the first portfolio it
 correctly refused a glazing option whose manufacture emitted more than it avoided over
@@ -33,8 +42,9 @@ worth more carbon than a lighting kWh saved in the evening — that test should 
 failing, and the failure is the signal that the LCA layer has begun to matter.
 
 Stated more usefully as what the difference is worth: choosing funding by raw kWh
-instead of life-cycle carbon costs at most **0.003 %** of the carbon a carbon-optimal
-allocation would deliver, across those 20 budgets.
+instead of life-cycle carbon costs at most **0.009 %** of the carbon a carbon-optimal
+allocation would deliver, across those 20 budgets. It was 0.003 % at the uncited
+factor.
 
 ---
 

@@ -1221,9 +1221,17 @@ async function selectBuilding(id) {
 }
 
 /* The grid emission factor the benefit figures are built on. Stated on screen rather
- * than left implicit, because it is one of the numbers still awaiting a citation and
- * a reader is entitled to see which constant a recommendation rests on. */
-const GRID_FACTOR = '0.45';
+ * than left implicit, because a reader is entitled to see which constant a
+ * recommendation rests on. Cited since 7 September 2026: EEHC Annual Report
+ * 2023/2024 p.30, the specific emission of Egypt's thermal generating plants.
+ *
+ * This DUPLICATES params.yaml, which is the authoritative copy, and duplication
+ * drifts. `/api/v1/meta` already serves the live value, but reading it here would
+ * make one line of explanatory prose depend on a second network request that can
+ * fail. The duplicate is kept and pinned instead:
+ * `test_the_map_states_the_grid_factor_the_data_actually_uses` fails if this string
+ * and `data/params.yaml` stop agreeing. */
+const GRID_FACTOR = '0.3803';
 
 /* Open alerts for one building, read from the geometry the map already holds rather
  * than re-fetched: the map's own anomaly rings are drawn from this, so the panel and
