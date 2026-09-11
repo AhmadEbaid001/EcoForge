@@ -214,6 +214,33 @@ def test_the_whole_harness_runs_on_a_hand_built_instance():
     assert len({c.id for c in claims}) == len(claims)
 
 
+def test_a_measured_claim_replaces_its_fixture_twin_rather_than_sitting_beside_it(
+    monkeypatch,
+):
+    """F15 has a fixture-world twin that always SKIPs and a measured version that runs
+    against stored data. With a database attached both used to be returned, so the
+    evidence screen listed F15 twice - a greyed "not measured" row directly above the
+    passing one - and its header counted one claim as unmeasured when none was. The
+    uniqueness check above never saw it: it only runs without a database."""
+    import gemp.evaluate.claims as claims_mod
+
+    measured = ClaimResult(
+        "F15", "The TOU-weighted objective changes which buildings get funded",
+        Verdict.PASS, "funded set differs at 1/3 probe budgets",
+    )
+    monkeypatch.setattr(claims_mod, "db_claims", lambda: [measured])
+
+    instance = _instance()
+    rows = run_sweep(instance, budgets=(1000.0,), objectives=("lca_carbon",), caps=(None,))
+    claims = run_claims(instance, rows, with_db=True)
+
+    assert len({c.id for c in claims}) == len(claims), "a claim id appears twice"
+    f15 = [c for c in claims if c.id == "F15"]
+    assert len(f15) == 1 and f15[0] is measured, (
+        "the fixture's SKIP survived beside the measured result"
+    )
+
+
 def test_the_sweep_csv_carries_every_row(tmp_path):
     instance = _instance()
     rows = run_sweep(instance, budgets=(500.0, 1000.0), objectives=("lca_carbon",),

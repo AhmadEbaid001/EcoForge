@@ -809,5 +809,12 @@ def run_claims(
 ) -> list[ClaimResult]:
     results = [claim(instance, rows) for claim in SOLVER_CLAIMS]
     if with_db:
-        results.extend(db_claims())
+        measured = db_claims()
+        # A claim measured on stored data supersedes its fixture-world twin. F15 is
+        # the case: the file-based pass reports it SKIP because fixtures carry no
+        # load shapes, and appending the measured result beside it put the same claim
+        # on the evidence screen twice - a greyed "not measured" row directly above
+        # the passing one, and a header counting one claim as unmeasured when none was.
+        replaced = {c.id for c in measured}
+        results = [c for c in results if c.id not in replaced] + measured
     return results

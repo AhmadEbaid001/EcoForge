@@ -283,7 +283,7 @@ to configure, and it survives the demonstration network.
   tests skip in CI exactly as they skip on a laptop with nothing running. They are
   exercised only when somebody brings the stack up by hand and runs pytest against it.
   Every claim the evaluation harness checks is independent of them, and the four gates
-  in `scripts/check.py` pass without them — but "490 passed" in a CI log means 490 of
-  505, and it is worth knowing which fifteen are missing. Adding two service
+  in `scripts/check.py` pass without them — but "491 passed" in a CI log means 491 of
+  506, and it is worth knowing which fifteen are missing. Adding two service
   containers to the workflow is the fix; it was not done close to a deadline because a
   newly-running integration test that fails also blocks every deploy.
