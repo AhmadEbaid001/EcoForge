@@ -52,8 +52,13 @@ JOB_COMMANDS: dict[str, list[str]] = {
     # the annual figures the optimizer costs against.
     "forecast-refit": [sys.executable, "-m", "gemp.ml.jobs"],
     # Re-measures every claim in the paper and rewrites out/evaluation/claims.csv,
-    # which is what the evidence screen reads. `--quick` keeps it to the claims
-    # rather than the full sweep, and figures are for the paper, not the screen.
+    # which is what the evidence screen reads. It runs the FULL twenty-budget sweep,
+    # not the four-budget `--quick` grid CI uses. The screen is where a reader checks
+    # the paper against the running system, and the quick grid prints different
+    # figures for the same claims - 72/72 instances where the paper says 360/360, a
+    # median of +1.43% where it says +1.25%. Both are true; only one of them is the
+    # number on the poster. The full sweep is 480 solves, about twenty seconds, which
+    # the timeout below does not notice. Figures are for the paper, not the screen.
     #
     # `--with-db` is the whole reason this job is worth pressing. Without it the
     # five claims that need real data - F3 and F9 need readings to forecast and
@@ -63,7 +68,7 @@ JOB_COMMANDS: dict[str, list[str]] = {
     # out. This job runs inside `core`, which is the one process that has the
     # database, so it is the only place those five CAN be measured.
     "evidence": [sys.executable, "-m", "gemp.evaluate",
-                 "--quick", "--with-db", "--no-figures"],
+                 "--with-db", "--no-figures"],
 }
 
 JOB_LABELS = {

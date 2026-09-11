@@ -937,8 +937,13 @@ def test_the_evidence_job_measures_the_claims_that_need_the_database():
         "the evidence job no longer measures F3, F9 and F15; the screen will show "
         "them as SKIP and the strongest claims in the paper go unevidenced"
     )
-    # --quick is the deliberate trade: the claims, not the full twenty-budget sweep.
-    assert "--quick" in argv
+    # The full sweep, not CI's four-budget grid. The quick grid reports different
+    # figures for the same claims - 72/72 against the paper's 360/360 - and this
+    # screen is where a reader checks the paper against the running system.
+    assert "--quick" not in argv, (
+        "the evidence screen would show the quick grid's figures, which are not the "
+        "ones the paper and the poster quote"
+    )
     # Figures need matplotlib, which is a development dependency and is not in the
     # runtime image; asking for them here logs a warning nobody should have to read.
     assert "--no-figures" in argv
