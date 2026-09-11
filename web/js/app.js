@@ -191,7 +191,9 @@ let attempts = 0;
  * renders for a visitor who has not signed in, so a figure describing the
  * deployment's own state - how many rates are cited, how many alerts are open -
  * would be answering the questions the sign-in screen exists to gate. The numbers
- * that ARE here are fixed by the design: fifty buildings, four methods, 720x.
+ * that ARE here are fixed by the design: fifty buildings, four methods, and a
+ * 64-character hash. The replay speed used to be a fourth; it is set per deployment,
+ * so no fixed copy could state it truthfully.
  */
 function showLanding() {
   document.body.className = 'signed-out';
@@ -282,7 +284,7 @@ function showLanding() {
       <section class="lp-band" id="numbers">
         <div class="band-head lp-rise">
           <p class="lp-kicker">Reference figures</p>
-          <h2 class="lp-h">Four numbers, and where each one comes from</h2>
+          <h2 class="lp-h">Three numbers, and where each one comes from</h2>
           <p class="lp-sub">None of these is a target or an average. Each is a
           property of how the platform is built, which is why it can be quoted
           without a footnote.</p>
@@ -315,18 +317,6 @@ function showLanding() {
               <span class="num-note">Stored with every allocation, so a run can be
               tied to the exact data it was solved against.</span>
               <span class="num-src">sha256 &middot; services.inputs_hash</span>
-            </dd>
-          </div>
-          <div class="num-cell">
-            <dt class="num-key">Default replay speed</dt>
-            <dd class="num-body">
-              <span class="num-val"><span class="num-digits d3">720</span><span
-                class="num-mult">&times;</span></span>
-              <span class="num-note">The shipped rate at which the simulator replays
-              stored history to reach the present; each deployment sets its own. It
-              is clamped there: once level, the clock advances at real time and can
-              never run into the future.</span>
-              <span class="num-src">GEMP_SIM_SPEED</span>
             </dd>
           </div>
         </dl>
@@ -506,7 +496,7 @@ function showLanding() {
    * which is the cheaper of the two things that could be lost.
    *
    * The digits also keep a fixed width in `ch`, declared in the markup, so the
-   * multiplication sign beside `720` has nothing to walk left into.
+   * unit beside `64` has nothing to walk left into.
    */
   const COUNT_MS = 900;
   const STALL_MS = 90;   /* about five dropped frames */

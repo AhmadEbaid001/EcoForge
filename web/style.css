@@ -2391,7 +2391,7 @@ tbody tr.denied-row td { font-weight: 600; }
  * specification sheet is what this section is. */
 .num-strip {
   margin: 0; position: relative;
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
@@ -2427,15 +2427,12 @@ tbody tr.denied-row td { font-weight: 600; }
   letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums;
   display: flex; align-items: baseline; gap: .18em;
 }
-/* The unit rides at the figure's baseline in the smaller size, so `720` reads as
-   the number and the mark after it reads as what kind of number it is. */
+/* The unit rides at the figure's baseline in the smaller size, so `64` reads as
+   the number and `chars` after it reads as what kind of number it is. */
 .num-unit {
   font-size: var(--fs-body-md); font-weight: 600; color: var(--ink2);
   letter-spacing: 0;
 }
-/* `chars` is a unit and belongs to the label; the multiplication sign is part of
-   the figure and belongs to it, so it keeps the accent and only loses size. */
-.num-mult { font-size: .56em; font-weight: 600; opacity: .8; letter-spacing: 0; }
 .num-note {
   font-size: var(--fs-body-sm); line-height: 1.6; color: var(--ink2);
   text-wrap: pretty; transition: color var(--dur) var(--ease);
@@ -2821,11 +2818,16 @@ tbody tr.denied-row td { font-weight: 600; }
   box-shadow: 0 10px 24px -14px var(--accent);
 }
 
+/* Three figures stay three across on a tablet - a 2x2 would leave the third on a
+   row of its own - and stack only once three columns would be too narrow to hold
+   a sentence each. */
+@media (max-width: 40rem) {
+  .num-strip { grid-template-columns: minmax(0, 1fr); }
+  .num-cell { border-inline-start: 0; padding-inline-start: 0; }
+  .num-cell + .num-cell { border-top: 1px solid var(--line); }
+}
+
 @media (max-width: 60rem) {
-  .num-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .num-cell { padding-inline: var(--pad-card); }
-  .num-cell:nth-child(odd) { border-inline-start: 0; padding-inline-start: 0; }
-  .num-cell:nth-child(n + 3) { border-top: 1px solid var(--line); }
   .built-grid { grid-template-columns: minmax(0, 1fr); }
   .built-card { grid-template-columns: minmax(0, 1fr); }
   .built-fig { width: 100%; height: 132px; }
