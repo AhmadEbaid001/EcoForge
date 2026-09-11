@@ -1190,6 +1190,16 @@ label.check {
   gap: var(--gap-box);
 }
 .stat-row.compact .stat { min-height: 0; padding: var(--s-10); }
+/* Four headline cards in a row that fits three stranded the fourth on a line of
+   its own at tablet widths - "Costed on measurement" alone under the other three.
+   Two by two is the only arrangement of four that leaves no hole, and the band is
+   exactly where auto-fit lands on three: below it the row is already two, above
+   it all four fit. Only a row of exactly four, so the compact six stay as they are. */
+@media (min-width: 40rem) and (max-width: 64rem) {
+  .stat-row:not(.compact):has(> .stat:nth-child(4):last-child) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 
 /* Inside a panel the compact row stops being cards. The panel already carries a
    border, a shadow and a header; giving each of its six figures the same three
@@ -3455,6 +3465,18 @@ tbody tr.denied-row td { font-weight: 600; }
     padding: 0 var(--s-2) env(safe-area-inset-bottom, 0px);
     border-inline-end: 0; border-top: 1px solid var(--line);
     overflow-x: auto; overscroll-behavior-inline: contain;
+    /* Ten destinations do not fit 375px, and the bar scrolls - but from the first
+       screen half of them, Evidence among them, sat past the edge with nothing to
+       say they were there. The same scroll shadows the tables use: a soft edge
+       appears on whichever side still has more, and goes when it runs out. Both
+       sides are drawn, so it reads the same in Arabic, where the bar starts at
+       the right. */
+    background:
+      linear-gradient(to right, var(--panel) 30%, transparent) left / 28px 100% no-repeat local,
+      linear-gradient(to left, var(--panel) 30%, transparent) right / 28px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, var(--scrollEdge), transparent) left / 14px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, var(--scrollEdge), transparent) right / 14px 100% no-repeat scroll,
+      var(--panel);
   }
   /* The wordmark is the one thing on the rail that is not a destination, and a
      bottom bar has no width to spare for it. It is in the page header already. */
@@ -3857,4 +3879,33 @@ body.booting .login-wrap, body.signed-out { background: var(--bg); }
 
   /* A URL printed after every link is noise on a costed document. */
   a[href]::after { content: ""; }
+}
+
+
+/* ---- touch: no zoom on focus ------------------------------------------------
+
+   iOS and iPadOS zoom the whole page when a text field under 16px takes focus,
+   and they do not zoom back out. Every field here is set at --fs-body-sm, which is
+   13px at the default text size, so on an iPhone the first tap on "Username" -
+   and on the budget, the building finder, every admin form - scaled the layout
+   sideways and left the reader to pinch it back. `pointer: coarse` rather than a
+   width, because the iPad does the same at 1024px. `max()` so the larger text
+   sizes still win: at 150% the field is already past 16px and keeps its size.
+   Checkboxes, radios, ranges and files carry no text and are left alone, the same
+   exclusions the base rule makes.
+
+   `input.mono` is named because the base selector is (0,0,1) and `.mono` is
+   (0,1,0): every username and password field in the product carries it - sign-in,
+   first login, the Account screen - so without the extra weight the rule reached
+   every field except the first ones anybody types into. Measured at 375px: the
+   pickers went to 16px and the three password fields stayed at 13. No field is
+   sized above 16px on purpose, so the extra weight cannot shrink one. */
+@media (pointer: coarse) {
+  input:where(:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file])),
+  input.mono, select, textarea {
+    font-size: max(16px, var(--fs-body-sm));
+  }
+  /* The landing wordmark is a link back to the top, and at its drawn height it
+     was a 25px target. The mark keeps its size; the link grows around it. */
+  .lp-brand { display: flex; align-items: center; min-height: 44px; }
 }
