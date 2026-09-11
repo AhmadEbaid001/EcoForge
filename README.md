@@ -2,11 +2,11 @@
 
 # GEMP — Green Energy Monitoring Platform
 
-**Budget-constrained retrofit decision support for public-sector building portfolios.**
+**Measured, continuously verified retrofit decision support for public-sector building portfolios.**
 
-Given fifty real, named public buildings and a fixed budget, GEMP decides which get
-which retrofit — measuring each one from its own meter rather than assuming it, proving
-the measurements were never altered, and solving the allocation exactly rather than
+Given fifty real, named public buildings, GEMP decides which get which retrofit —
+measuring each one from its own meter rather than assuming it, proving the
+measurements were never altered, and solving the allocation exactly rather than
 approximately.
 
 [![ci](https://github.com/AhmadEbaid001/EcoForge/actions/workflows/ci.yml/badge.svg)](https://github.com/AhmadEbaid001/EcoForge/actions/workflows/ci.yml)
@@ -65,8 +65,8 @@ one of them being taken seriously.
 
 Where the portfolio stands: buildings costed, readings stored, alerts open, and the most
 recent stored allocation. Every window is measured in **data time**, which the simulator
-advances at 720× wall clock — so a fortnight of behaviour plays out in half an hour of
-demonstration, and no window is ever anchored on `now()`.
+replays at `GEMP_SIM_SPEED` (720× by default) until it draws level with the present and
+then advances at real time — so no window is ever anchored on `now()`.
 
 <img src="docs/images/overview.png" alt="Portfolio overview" width="900">
 
@@ -380,7 +380,7 @@ what it actually took to reach the anomaly precision target — are in
 python scripts/check.py
 ```
 
-**457 tests** — 442 run anywhere, 15 integration tests skip themselves without the stack.
+**505 tests** — 490 run anywhere, 15 integration tests skip themselves without the stack.
 Property-based tests via Hypothesis where a round-trip or an invariant is the thing worth
 pinning.
 

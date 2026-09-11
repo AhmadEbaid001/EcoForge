@@ -224,7 +224,7 @@ function showLanding() {
       <section class="lp-hero" id="top">
         <div class="lp-hero-copy lp-enter">
           <p class="lp-badge">Team Ecoforge &middot; RoboDam 2026</p>
-          <h1>A fixed budget.<br>Fifty public buildings.<br>
+          <h1>Fifty public buildings.<br>Measured, not assumed.<br>
             <span class="lp-accent">Evidence for every choice.</span></h1>
           <p class="lp-standfirst">GEMP decides which public buildings across Greater Cairo get
           retrofitted and with what &mdash; measuring each one rather than assuming it,
@@ -318,13 +318,14 @@ function showLanding() {
             </dd>
           </div>
           <div class="num-cell">
-            <dt class="num-key">Replay speed</dt>
+            <dt class="num-key">Default replay speed</dt>
             <dd class="num-body">
               <span class="num-val"><span class="num-digits d3">720</span><span
                 class="num-mult">&times;</span></span>
-              <span class="num-note">The rate the simulator replays stored history
-              to reach the present. It is clamped there: once level, the clock
-              advances at real time and can never run into the future.</span>
+              <span class="num-note">The shipped rate at which the simulator replays
+              stored history to reach the present; each deployment sets its own. It
+              is clamped there: once level, the clock advances at real time and can
+              never run into the future.</span>
               <span class="num-src">GEMP_SIM_SPEED</span>
             </dd>
           </div>
