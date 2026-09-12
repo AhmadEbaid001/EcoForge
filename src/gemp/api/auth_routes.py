@@ -630,9 +630,12 @@ def pass_redeem(
         background.add_task(judge_pass.deliver, provider, issued.row.id, email,
                             message, settings)
 
-    return {
+    # A response field whose NAME ends in password, not a password - the same
+    # false positive the reset endpoint above carries its marker for. Bandit reports
+    # it against the dict's opening line, so the marker is there and on the field.
+    return {  # nosec B105
         "user": _user_json(issued.user),
-        "must_change_password": False,
+        "must_change_password": False,  # nosec B105
         "csrf_token": csrf,
         "pass": {"email": email, "until": _iso_utc(settings.judge_pass_until),
                  "mail": issued.row.mail_status},
