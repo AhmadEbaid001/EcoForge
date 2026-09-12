@@ -116,8 +116,10 @@ class Settings(BaseSettings):
     public_url: str = ""
 
     # --- outbound mail (the Judge Pass email, and nothing else) ---
-    # Resend's HTTPS API. Unset means passes are still issued and the judge is still
-    # signed in on the spot; only the email that brings them back later is skipped.
+    # A provider's HTTPS API - Brevo if its key is set, otherwise Resend. Unset means
+    # passes are still issued and the judge is still signed in on the spot; only the
+    # email that brings them back later is skipped.
+    brevo_api_key: SecretStr = SecretStr("")
     resend_api_key: SecretStr = SecretStr("")
     mail_from: str = ""
     mail_reply_to: str = ""

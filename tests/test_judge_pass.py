@@ -49,6 +49,8 @@ def configure(monkeypatch, **overrides) -> None:
         "GEMP_JUDGE_PASS_DAILY_MAX": "90",
         "GEMP_PUBLIC_URL": "https://gemp.example.test",
         "GEMP_RESEND_API_KEY": "re_test",
+        # Blank, so a Brevo key in a developer's .env cannot change what these test.
+        "GEMP_BREVO_API_KEY": "",
         "GEMP_MAIL_FROM": "GEMP <pass@example.test>",
         "GEMP_MAIL_REPLY_TO": "team@example.test",
     } | overrides
@@ -460,6 +462,7 @@ def test_the_card_link_keeps_the_code_out_of_every_server_log(client):
 
 def _settings(**overrides) -> Settings:
     values = {"hmac_key": "cd" * 32, "resend_api_key": "re_live_looking_key",
+              "brevo_api_key": "",
               "mail_from": "GEMP <pass@example.test>",
               "mail_reply_to": "team@example.test"} | overrides
     return Settings(**values)
@@ -477,6 +480,59 @@ class _Reply:
 
     def __exit__(self, *exc):
         return False
+
+
+def test_the_sender_speaks_brevos_api_when_its_key_is_set(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        return _Reply(b'{"messageId": "<202609121200.1@smtp-relay.mailin.fr>"}')
+
+    monkeypatch.setattr(mail.urllib.request, "urlopen", fake_urlopen)
+    settings = _settings(resend_api_key="", brevo_api_key="brevo-test-key",
+                         mail_from="GEMP - Team Ecoforge <pass@example.test>",
+                         mail_reply_to="Team <team@example.test>")
+    outcome = mail.send(settings, to=JUDGE, subject="s", html="<p>h</p>", text="h")
+
+    assert outcome.status == "sent" and "mailin" in outcome.detail
+    request = captured["request"]
+    assert request.full_url == mail.BREVO_URL == "https://api.brevo.com/v3/smtp/email"
+    assert request.get_header("Api-key") == "brevo-test-key"
+    assert request.get_header("Authorization") is None
+    body = json.loads(request.data)
+    # Brevo takes the sender as an object, so the display name is split off.
+    assert body["sender"] == {"name": "GEMP - Team Ecoforge", "email": "pass@example.test"}
+    assert body["to"] == [{"email": JUDGE}]
+    assert body["replyTo"] == {"email": "team@example.test"}
+    assert body["htmlContent"] == "<p>h</p>" and body["textContent"] == "h"
+
+
+def test_brevo_wins_when_both_keys_are_set(monkeypatch):
+    """Switching provider is adding one key, not remembering to blank the other."""
+    seen = []
+    monkeypatch.setattr(mail.urllib.request, "urlopen",
+                        lambda request, timeout: seen.append(request.full_url) or _Reply(b"{}"))
+    mail.send(_settings(brevo_api_key="brevo-test-key"), to=JUDGE, subject="s",
+              html="h", text="h")
+    assert seen == [mail.BREVO_URL]
+    assert mail.configured(_settings(resend_api_key="", brevo_api_key="brevo-test-key"))
+
+
+def test_a_blocked_server_address_is_named_on_the_admin_screen(monkeypatch):
+    """Brevo refuses API calls from an address it has not authorised, and says so
+    in `message`. That sentence is what the administrator has to act on."""
+    def refuse(request, timeout):
+        raise urllib.error.HTTPError(
+            mail.BREVO_URL, 401, "Unauthorized", None,
+            io.BytesIO(b'{"code": "unauthorized", "message": "unauthorized: IP not authorized"}'))
+
+    monkeypatch.setattr(mail.urllib.request, "urlopen", refuse)
+    outcome = mail.send(_settings(brevo_api_key="brevo-test-key"), to=JUDGE, subject="s",
+                        html="h", text="h")
+    assert outcome.status == "failed"
+    assert "IP not authorized" in outcome.detail
+    assert "brevo-test-key" not in outcome.detail
 
 
 def test_the_sender_speaks_resends_api(monkeypatch):
