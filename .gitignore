@@ -12,6 +12,7 @@ htmlcov/
 # --- secrets: never commit ---
 .env
 *.key
+*.pem
 secrets/
 
 # --- generated data (regenerate with scripts/, do not version) ---
