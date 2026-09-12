@@ -339,8 +339,6 @@ def until_text(until: datetime, lang: str) -> str:
 COPY = {
     "en": {
         "subject": "Your GEMP Judge Pass",
-        "preheader": "You are signed in. These details bring you back on any device "
-                     "until {until}.",
         "eyebrow": "Judge Pass · RoboDam 2026",
         "title": "Thank you for visiting Team Ecoforge.",
         "intro": "Your pass opened GEMP on the phone you scanned it with. These details "
@@ -373,7 +371,6 @@ COPY = {
     },
     "ar": {
         "subject": "بطاقة المحكّم الخاصة بك في GEMP",
-        "preheader": "تم تسجيل دخولك. بهذه البيانات تعود من أي جهاز حتى {until}.",
         "eyebrow": "بطاقة محكّم · روبودام 2026",
         "title": "شكرًا لزيارتك فريق Ecoforge.",
         "intro": "فتحت بطاقتك منصة GEMP على الهاتف الذي مسحتها به. بهذه البيانات تعود "
@@ -496,7 +493,6 @@ def _html(lang: str, c: dict, *, email: str, password: str, when: str, url: str)
             f'{e(c["or"]).format(url=f"<span dir=ltr>{e(url)}</span>")}</td></tr>'
         )
 
-    preheader = e(c["preheader"]).format(until=e(when))
     footer = e(c["footer"]).format(until=e(when))
 
     return f"""<!doctype html>
@@ -508,7 +504,6 @@ def _html(lang: str, c: dict, *, email: str, password: str, when: str, url: str)
 <title>{e(c["subject"])}</title>
 </head>
 <body style="margin:0;padding:0;background:{GROUND};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;">{preheader}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
        style="background:{GROUND};" dir="{direction}">
 <tr><td align="center" style="padding:24px 12px;">

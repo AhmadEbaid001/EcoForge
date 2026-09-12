@@ -33,7 +33,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from email.message import EmailMessage
-from email.utils import formataddr, formatdate, make_msgid, parseaddr
+from email.utils import formataddr, formatdate, parseaddr
 
 from gemp.config import Settings
 
@@ -59,8 +59,8 @@ SMTPS_PORT = 465
 @dataclass(frozen=True)
 class Outcome:
     """What happened to one message. `detail` is safe to show an administrator:
-    the message id on success, the server's stated reason on failure, and never a
-    key, a password or the message body."""
+    the provider's reference on success, the server's stated reason on failure, and
+    never a key, a password or the message body."""
 
     status: str          # "sent", "failed" or "off"
     detail: str = ""
@@ -147,7 +147,9 @@ def _smtp(settings: Settings, to: str, subject: str, html: str, text: str) -> Ou
     message["To"] = to
     message["Subject"] = subject
     message["Date"] = formatdate(usegmt=True)
-    message["Message-ID"] = make_msgid(domain=address.rpartition("@")[2] or None)
+    # No Message-ID of our own. One minted here claims the sender's domain -
+    # "@gmail.com" - from a machine that is not Gmail's, which is one more oddity for
+    # a spam filter to weigh against a new sender. Gmail's server adds a real one.
     if settings.mail_reply_to:
         message["Reply-To"] = settings.mail_reply_to
     # Plain text first and HTML as the alternative: a client shows the last part it
@@ -177,7 +179,7 @@ def _smtp(settings: Settings, to: str, subject: str, html: str, text: str) -> Ou
     except (smtplib.SMTPException, OSError) as exc:
         return _failed("smtp", f"{type(exc).__name__}: {str(exc)[:120]}")
 
-    return Outcome("sent", str(message["Message-ID"])[:64])
+    return Outcome("sent", f"accepted by {settings.smtp_host}")
 
 
 def _smtp_text(raw: bytes | str) -> str:

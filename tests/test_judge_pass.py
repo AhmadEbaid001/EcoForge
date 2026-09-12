@@ -268,6 +268,9 @@ def test_the_email_speaks_the_language_of_the_page(client, sent):
         assert "https://gemp.example.test/#/signin" in message["text"]
         # Nothing the mail client would have to fetch - and block.
         assert "<img" not in message["html"]
+        # And nothing hidden. Invisible text is one of the oldest spam tells, and a
+        # new sender cannot afford any of them.
+        assert "display:none" not in message["html"]
 
 
 def test_the_email_escapes_what_it_was_given(client, sent, monkeypatch):
@@ -639,13 +642,16 @@ def test_a_gmail_mailbox_is_spoken_to_over_starttls(monkeypatch):
     outcome = mail.send(_gmail(), to=JUDGE, subject="بطاقة المحكّم", html="<p>h</p>",
                         text="h")
 
-    assert outcome.status == "sent" and outcome.detail.startswith("<")
+    assert outcome.status == "sent" and outcome.detail == "accepted by smtp.gmail.com"
     [client] = _FakeSMTP.instances
     assert (client.host, client.port) == ("smtp.gmail.com", 587)
     # TLS first, then the login: the password never crosses in plain text.
     assert client.calls[:2] == ["starttls",
                                 ("login", "gemp.pass@gmail.com", "app-password-for-tests")]
     [message] = client.sent
+    # Gmail's own server stamps a genuine Message-ID; one minted here would claim
+    # @gmail.com from a machine that is not Gmail's.
+    assert message["Message-ID"] is None
     assert message["To"] == JUDGE
     assert message["Reply-To"] == "team@example.test"
     assert "gemp.pass@gmail.com" in message["From"]
