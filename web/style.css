@@ -3909,3 +3909,56 @@ body.booting .login-wrap, body.signed-out { background: var(--bg); }
      was a 25px target. The mark keeps its size; the link grows around it. */
   .lp-brand { display: flex; align-items: center; min-height: 44px; }
 }
+
+
+/* ---- the judge pass ---------------------------------------------------------
+
+   The page the QR code on a printed Judge Pass opens. It is the sign-in card with
+   one field instead of two, because it does the sign-in card's job with a
+   different credential - the card itself - so the layout, the brand field and the
+   scene are all the rules above. These are only the few things a pass says that
+   the form does not. */
+.pass-eyebrow {
+  justify-self: start; margin: 0;
+  display: inline-flex; align-items: center; gap: var(--s-6);
+  padding: var(--s-xs) var(--s-10); border-radius: var(--radius-pill);
+  background: var(--accentSoft); color: var(--accent);
+  font-size: var(--fs-caption); font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.pass-eyebrow .icon { width: 13px; height: 13px; }
+
+/* The address being confirmed, set apart and large enough to proofread: a typo
+   here is the difference between a judge who can come back and one who cannot. */
+.pass-address {
+  margin: 0; padding: var(--s-sm) var(--s-12);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel2); color: var(--ink);
+  font-size: var(--fs-body-lg); font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.login .pass-secondary { width: 100%; min-height: 44px; }
+
+.pass-state { display: grid; gap: var(--s-md); }
+.pass-state > * { margin: 0; }
+.pass-state h2 {
+  font-size: var(--fs-figure); font-weight: 700; letter-spacing: -.024em;
+  line-height: 1.1; text-wrap: balance;
+}
+.pass-state p { color: var(--ink2); line-height: 1.55; text-wrap: pretty; }
+.pass-state .pass-actions { display: flex; flex-wrap: wrap; gap: var(--s-sm); }
+
+/* The welcome under the header for the day a pass lasts. The result strip's
+   shape in the accent tint, with the three screens worth a judge's first minute
+   beside it rather than behind the rail. */
+.strip.pass { background: var(--accentSoft); border-bottom-color: var(--accentLine); }
+.strip.pass .icon { color: var(--accent); }
+.strip-stops { display: flex; flex-wrap: wrap; gap: var(--s-xs); }
+
+/* The card link on the administration screen: long, unbroken, and worth
+   reading character by character against a printed card. */
+.jp-link { overflow-wrap: anywhere; font-size: var(--fs-caption); }
+
+/* The card with no scene beside it: the ending of a pass is one message, and a
+   second column would be an empty panel next to it. */
+.login-card.single { grid-template-columns: minmax(0, 1fr); width: min(28rem, 100%); }

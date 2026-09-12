@@ -358,6 +358,13 @@ class UserRow(Base):
     password_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # When the account stops working, or NULL for one that never does. Only a Judge
+    # Pass account carries one. It is enforced at sign-in AND on every request, so an
+    # account that reaches it mid-session stops at the stated minute rather than when
+    # its cookie happens to lapse.
+    access_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class SessionRow(Base):
@@ -419,6 +426,53 @@ class AuditRow(Base):
     outcome: Mapped[str] = mapped_column(String(16), default="ok")
     ip: Mapped[str] = mapped_column(String(45), default="")
     detail: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+
+
+class JudgePassRow(Base):
+    """One Judge Pass: the address it was issued to, and what became of its email.
+
+    The account itself is an ordinary `app_user` row - a viewer named after the
+    address, with an end date. This row is what makes it a pass: it is how the
+    administration screen lists who was given one, and where the outcome of the one
+    email the pass sends is recorded, since that email is sent after the response
+    and nobody is waiting on it to see whether it failed.
+
+    Never the password. It is generated, hashed into the account, handed to the mail
+    sender in memory, and gone.
+    """
+
+    __tablename__ = "judge_pass"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("app_user.id", ondelete="CASCADE"), unique=True
+    )
+    # The username column's width, because the address IS the username.
+    email: Mapped[str] = mapped_column(String(64), unique=True)
+    lang: Mapped[str] = mapped_column(String(8), default="en")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    # queued -> sent | failed, or "off" when no sender is configured at all.
+    mail_status: Mapped[str] = mapped_column(String(16), default="queued")
+    mail_detail: Mapped[str] = mapped_column(String(200), default="")
+    mail_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AppSettingRow(Base):
+    """A switch an administrator flips from the interface, keyed by name.
+
+    In the database rather than in process memory because the one it exists for -
+    pausing Judge Passes - has to survive the container restarting. A flag that
+    quietly switched itself back on after a restart would be worse than no flag.
+    Configuration that must NOT be settable through the API stays in the
+    environment; this table holds only what an administrator is meant to change.
+    """
+
+    __tablename__ = "app_setting"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSONType)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str] = mapped_column(String(64), default="")
 
 
 # ---------------------------------------------------------------------------

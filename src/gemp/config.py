@@ -7,6 +7,7 @@ development key is worse than one that refuses to start.
 
 from __future__ import annotations
 
+from datetime import datetime
 from functools import lru_cache
 from urllib.parse import quote_plus
 
@@ -96,6 +97,31 @@ class Settings(BaseSettings):
     # anything worth building against needs an account anyway.
     api_docs: bool = False
 
+    # --- judge pass ---
+    # One code, printed as the same QR on every card handed out at the booth. Whoever
+    # scans it can issue themselves a one-day VIEWER account: one per email address,
+    # none after `judge_pass_until`, at most `judge_pass_daily_max` in any 24 hours.
+    # Empty means the feature is off - the page reports an invalid link and both
+    # endpoints refuse everything. See gemp/auth/judge_pass.py for why the code is
+    # shared rather than one per card, and what stands in for the difference.
+    judge_pass_code: SecretStr = SecretStr("")
+    # WITH a UTC offset - 2026-09-14T23:59:59+03:00 - or passes stay off. A bare
+    # local time would be read as UTC and close the booth three hours late.
+    judge_pass_until: datetime | None = None
+    # Far above a booth's worth of judges. It is not a quota anyone should meet; it
+    # is what stops a photographed card from turning the sender into a spam cannon
+    # and getting the sending account suspended mid-event.
+    judge_pass_daily_max: int = Field(default=90, ge=0)
+    # This deployment's public address, for the sign-in button in the pass email.
+    public_url: str = ""
+
+    # --- outbound mail (the Judge Pass email, and nothing else) ---
+    # Resend's HTTPS API. Unset means passes are still issued and the judge is still
+    # signed in on the spot; only the email that brings them back later is skipped.
+    resend_api_key: SecretStr = SecretStr("")
+    mail_from: str = ""
+    mail_reply_to: str = ""
+
     # --- alerting (F11) ---
     # The review's alerting fix is a row in the anomaly table, a marker on the map,
     # and an optional outbound webhook. Unset means the path is inert, which is the
@@ -109,6 +135,38 @@ class Settings(BaseSettings):
     # filter would silently drop the entire fault class. Forwarded: extreme residual
     # excursions and certain hardware faults. Suppressed: marginal residual blips.
     webhook_min_severity: str = "high"
+
+    @field_validator("judge_pass_until", mode="before")
+    @classmethod
+    def _until_or_none(cls, value):
+        """Blank or unreadable means "no pass window", never "no application".
+
+        A value pydantic refuses does not switch a feature off: `get_settings()`
+        raises on every call, and every request - sign-in included - comes back 500.
+        The closing time is the one line of .env somebody edits on the morning of an
+        event, so a typo in it must cost the passes, not the demonstration.
+        `judge_pass.problem` then names what is wrong on the administration screen.
+        Measured: `GEMP_JUDGE_PASS_UNTIL=` left blank, as .env.example ships it, took
+        the whole API down before this existed.
+        """
+        if value is None or isinstance(value, datetime):
+            return value
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            return datetime.fromisoformat(text)
+        except ValueError:
+            return None
+
+    @field_validator("judge_pass_daily_max", mode="before")
+    @classmethod
+    def _ceiling_or_default(cls, value):
+        """The same reasoning: a blank or garbled ceiling falls back to the default."""
+        try:
+            return max(0, int(str(value).strip()))
+        except (TypeError, ValueError):
+            return 90
 
     @field_validator("hmac_key")
     @classmethod

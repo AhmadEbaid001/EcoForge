@@ -1637,6 +1637,103 @@ function passwordProblem({ password, confirm }) {
   return null;
 }
 
+/* ------------------------------------------------------------- judge pass */
+
+/* The booth's side of the Judge Pass: whether a card works right now, how many
+ * have been used, what became of each one's email, and the one switch that
+ * matters on the day. One request, and its absence is not an error - the panel
+ * simply is not drawn. */
+const judgePassStates = () => ({
+  open: `<span class="sev medium">${mark('check', { size: 11 })}${t('ad.jpOpen')}</span>`,
+  paused: `<span class="sev high">${mark('dash', { size: 11 })}${t('ad.jpPaused')}</span>`,
+  full: `<span class="sev high">${mark('dash', { size: 11 })}${t('ad.jpFull')}</span>`,
+  closed: `<span class="sev critical">${mark('cross', { size: 11 })}${t('ad.jpClosed')}</span>`,
+  unconfigured: `<span class="sev critical">${mark('cross', { size: 11 })}${
+    t('ad.jpUnconfigured')}</span>`,
+});
+
+/* Read from a map rather than built from the status word, so every label is a
+   literal key the translation check can see. */
+const judgePassMail = () => ({
+  sent: `<span class="state-cell ok">${mark('check', { size: 11 })}${t('ad.jpSent')}</span>`,
+  failed: `<span class="state-cell bad">${mark('cross', { size: 11 })}${t('ad.jpFailed')}</span>`,
+  queued: `<span class="state-cell warn">${mark('dash', { size: 11 })}${t('ad.jpQueued')}</span>`,
+  off: `<span class="state-cell warn">${mark('dash', { size: 11 })}${t('ad.jpOff')}</span>`,
+});
+
+function judgePassPanel(jp) {
+  if (!jp) return '';
+  const states = judgePassStates();
+  const mailCells = judgePassMail();
+  const closes = jp.until
+    ? new Date(jp.until).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' })
+    : '—';
+  /* A closed event cannot be reopened from here - the closing time is the
+     environment's to change - so offering the switch would offer nothing. */
+  const switchable = jp.state !== 'unconfigured' && jp.state !== 'closed';
+
+  return `
+    <section class="panel" id="jp-panel">
+      <header>
+        <h3>${t('ad.jpTitle')}</h3>
+        <span class="scope">${t('ad.jpScope')}</span>
+        ${switchable ? `<button type="button" class="secondary small" id="jp-switch"
+            data-enabled="${jp.enabled}">${jp.enabled ? t('ad.jpPause') : t('ad.jpResume')}</button>` : ''}
+        ${jp.passes.length ? `<button type="button" class="secondary small" id="jp-export">${
+          t('ad.exportCsv')}</button>` : ''}
+      </header>
+
+      ${jp.problem ? `<div class="note-panel warn" role="note">${icon('warning')}<p>${
+        escapeHtml(jp.problem)}</p></div>` : ''}
+
+      <dl class="facts">
+        <div><dt>${t('ad.jpState')}</dt><dd>${states[jp.state] || escapeHtml(jp.state)}</dd></div>
+        <div><dt>${t('ad.jpCloses')}</dt><dd>${escapeHtml(closes)}</dd></div>
+        <div><dt>${t('ad.jpIssued')}</dt><dd>${t('ad.jpIssuedN', {
+          n: jp.issued_24h, max: jp.daily_max })}</dd></div>
+        <div><dt>${t('ad.jpMail')}</dt><dd>${jp.mail_configured
+          ? `<span class="sev medium">${mark('check', { size: 11 })}${t('ad.jpMailOn')}</span>`
+          : `<span class="sev high">${mark('dash', { size: 11 })}${t('ad.jpMailOff')}</span>`}</dd></div>
+        ${jp.link ? `<div><dt>${t('ad.jpLink')}</dt><dd class="mono jp-link">${
+          escapeHtml(jp.link)}</dd></div>` : ''}
+      </dl>
+
+      ${jp.passes.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>${t('ad.jpColEmail')}</th><th>${t('ad.jpColIssued')}</th>
+          <th>${t('ad.jpColMail')}</th><th>${t('ad.jpColLast')}</th></tr></thead>
+        <tbody>${jp.passes.map((p) => `<tr>
+          <td class="mono">${escapeHtml(p.email)}</td>
+          <td class="mono">${fmtDateTime(p.created_at)}</td>
+          <td title="${escapeHtml(p.mail_detail || '')}">${
+            mailCells[p.mail_status] || escapeHtml(p.mail_status)}</td>
+          <td class="mono">${fmtDateTime(p.last_login_at)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : emptyState({ title: t('ad.jpEmptyTitle'), body: t('ad.jpEmptyBody') })}
+
+      <p class="caption">${t('ad.jpCaption')}</p>
+    </section>`;
+}
+
+function wireJudgePass(root, jp, reload) {
+  if (!jp) return;
+  root.querySelector('#jp-switch')?.addEventListener('click', async (event) => {
+    const enabling = event.currentTarget.dataset.enabled !== 'true';
+    await guard(root, async () => {
+      await api.setJudgePass(enabling);
+      await reload(enabling ? t('ad.jpResumedDone') : t('ad.jpPausedDone'));
+    });
+  });
+  /* The list is the contact sheet the booth was for. Named columns, for the
+     same reason the audit export names them. */
+  root.querySelector('#jp-export')?.addEventListener('click', () => {
+    downloadCsv(`gemp-judge-passes-${new Date().toISOString().slice(0, 10)}.csv`,
+      jp.passes.map((p) => ({
+        email: p.email, issued: p.created_at || '', email_status: p.mail_status,
+        last_sign_in: p.last_login_at || '',
+      })));
+  });
+}
+
 export const admin = {
   title: t('ad.title'),
   /* `requiredRole` is what dims this item in the rail, and the rail keeps it for
@@ -1671,8 +1768,11 @@ export const admin = {
       ${skeletonRows(6)}`;
 
     await guard(root, async () => {
-      const [users, posture, auditRows] = await Promise.all([
+      const [users, posture, auditRows, passes] = await Promise.all([
         api.users(), api.securityPosture(), api.audit(50),
+        /* The Judge Pass panel is an addition, not a dependency: if it cannot be
+           read, the rest of Administration renders exactly as it did before. */
+        api.judgePass().catch(() => null),
       ]);
 
       const auditColumns = [
@@ -1781,6 +1881,8 @@ export const admin = {
             : `<p class="caption">${t('ad.noFailed')}</p>`}
         </section>
 
+        ${judgePassPanel(passes)}
+
         <section class="panel">
           <header><h3>${t('ad.accounts')}</h3><span class="muted small">${
             t('ad.accountsTotal', { n: users.length })}</span></header>
@@ -1867,6 +1969,7 @@ export const admin = {
         wireSort(body, auditState, paintAudit);
       };
       paintAudit();
+      wireJudgePass(root, passes, reload);
 
       root.querySelector('#denied-only').addEventListener('click', (event) => {
         auditState.deniedOnly = !auditState.deniedOnly;

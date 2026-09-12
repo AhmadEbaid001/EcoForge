@@ -269,6 +269,10 @@ def test_every_api_route_is_authenticated_or_deliberately_public():
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/auth/session",
+        # The Judge Pass page. Both demand the shared code before answering; see
+        # tests/test_judge_pass.py for what the code can and cannot do.
+        "/api/v1/pass/check",
+        "/api/v1/pass/redeem",
     }, f"unexpected public API routes: {public}"
 
 

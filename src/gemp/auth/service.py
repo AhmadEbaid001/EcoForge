@@ -121,6 +121,9 @@ class Principal:
     role: str
     organization_id: str
     must_change_password: bool
+    # When the account stops working, or None for one that never does. Only a Judge
+    # Pass account carries one; see `access_expired`.
+    access_expires_at: datetime | None = None
 
     def can(self, required: str) -> bool:
         return at_least(self.role, required)
@@ -471,7 +474,10 @@ def authenticate(session: Session, username: str, password: str,
     stored = user.password_hash if user else _ABSENT_USER_HASH
     ok = passwords.verify(password, stored)
 
-    if not user or not ok or not user.is_active:
+    # An account past its end date fails exactly like a wrong password. A Judge Pass
+    # that has closed is not a secret, but "this account exists and has expired"
+    # is still an answer about which usernames are real.
+    if not user or not ok or not user.is_active or access_expired(user):
         for key in throttle_keys:
             _record_failure(key)
         audit(session, "auth.login", username=username, outcome="denied", ip=ip,
@@ -494,7 +500,9 @@ def _denial_reason(user: UserRow | None, password_ok: bool) -> str:
         return "no_such_user"
     if not password_ok:
         return "bad_password"
-    return "disabled"
+    if not user.is_active:
+        return "disabled"
+    return "expired"
 
 
 # A well-formed hash of a value nobody knows, so the "no such user" path does the same
@@ -515,23 +523,42 @@ def hash_token(token: str) -> str:
 _hash_token = hash_token
 
 
+def access_expired(user: UserRow, now: datetime | None = None) -> bool:
+    """True once an account with an end date has reached it.
+
+    Checked at sign-in and on every request, so an account that expires mid-session
+    stops working at the stated minute rather than whenever its cookie happens to
+    lapse. Only Judge Pass accounts carry an end date; for every other account this
+    is always False.
+    """
+    if user.access_expires_at is None:
+        return False
+    return _as_utc(user.access_expires_at) <= (now or datetime.now(UTC))
+
+
 def issue_session(session: Session, user: UserRow, *, ip: str = "",
                   user_agent: str = "") -> tuple[str, SessionRow]:
     """Create a session and return (token, row). The token is shown once, here.
 
-    Called only after a successful `authenticate`, and it always mints a NEW token -
-    never adopting one the client supplied. That is what makes session fixation
-    impossible: an attacker who plants a cookie value before login finds it replaced
-    the moment the login succeeds.
+    Called only after a successful `authenticate` - or a redeemed Judge Pass - and it
+    always mints a NEW token, never adopting one the client supplied. That is what
+    makes session fixation impossible: an attacker who plants a cookie value before
+    login finds it replaced the moment the login succeeds.
     """
     token = secrets.token_urlsafe(TOKEN_BYTES)
     now = datetime.now(UTC)
+    # A session never outlives its account. For a Judge Pass that is the difference
+    # between a pass that closes at midnight and a cookie that keeps working for a
+    # week after it.
+    expires_at = now + ABSOLUTE_LIFETIME
+    if user.access_expires_at is not None:
+        expires_at = min(expires_at, _as_utc(user.access_expires_at))
     row = SessionRow(
         token_hash=_hash_token(token),
         user_id=user.id,
         created_at=now,
         last_seen_at=now,
-        expires_at=now + ABSOLUTE_LIFETIME,
+        expires_at=expires_at,
         ip=ip[:45],
         user_agent=(user_agent or "")[:256],
     )
@@ -561,7 +588,7 @@ def resolve_session(session: Session, token: str) -> Principal | None:
         return None
 
     user = session.get(UserRow, row.user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or access_expired(user, now):
         return None
 
     # Sliding idle window, written at most once a minute.
@@ -576,6 +603,7 @@ def resolve_session(session: Session, token: str) -> Principal | None:
         role=user.role,
         organization_id=user.organization_id,
         must_change_password=user.must_change_password,
+        access_expires_at=user.access_expires_at,
     )
 
 

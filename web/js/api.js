@@ -90,6 +90,12 @@ export const api = {
     request('POST', '/auth/password', { current_password, new_password }),
   mySessions: () => request('GET', '/auth/sessions'),
 
+  /* --- judge pass --- */
+  /* The code travels in the body, never the query string, so it stays out of every
+     access log between the phone and the application. */
+  passCheck: (code) => request('POST', '/pass/check', { code }),
+  passRedeem: (code, email, lang) => request('POST', '/pass/redeem', { code, email, lang }),
+
   /* --- dashboards --- */
   summary: () => request('GET', '/dashboard/summary'),
   /* The three fields the alert inbox needs. Calling summary() for them meant
@@ -128,6 +134,8 @@ export const api = {
     request('POST', `/admin/users/${encodeURIComponent(id)}/password`, { new_password }),
   audit: (limit = 200) => request('GET', `/admin/audit?limit=${limit}`),
   securityPosture: () => request('GET', '/admin/security'),
+  judgePass: () => request('GET', '/admin/judge-pass'),
+  setJudgePass: (enabled) => request('PUT', '/admin/judge-pass', { enabled }),
   recompute: () => request('POST', '/candidates/recompute'),
 
   /* --- maintenance jobs --- */

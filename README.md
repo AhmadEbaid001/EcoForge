@@ -380,7 +380,7 @@ what it actually took to reach the anomaly precision target — are in
 python scripts/check.py
 ```
 
-**506 tests** — 491 run anywhere, 15 integration tests skip themselves without the stack.
+**540 tests** — 525 run anywhere, 15 integration tests skip themselves without the stack.
 Property-based tests via Hypothesis where a round-trip or an invariant is the thing worth
 pinning.
 

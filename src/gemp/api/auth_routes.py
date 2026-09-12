@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from gemp import mail
 from gemp.api.deps import get_session
-from gemp.auth import passwords, service
+from gemp.auth import judge_pass, passwords, service
 from gemp.auth.deps import ADMIN, client_ip, current_principal, require
 from gemp.auth.roles import ROLES
 from gemp.auth.service import (
@@ -69,26 +72,52 @@ def _user_json(user: UserRow) -> dict:
         "must_change_password": user.must_change_password,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+        "access_expires_at": _iso_utc(user.access_expires_at),
     }
 
 
-def _set_session_cookies(response: Response, token: str, csrf: str) -> None:
+def _iso_utc(value: datetime | None) -> str | None:
+    """ISO 8601 WITH its offset, or None.
+
+    SQLite hands datetimes back naive. Serialised as they are, a browser reads
+    "2026-09-14T20:59:59" as its own local time, which puts the closing minute of a
+    Judge Pass three hours out on every screen that counts down to it.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.isoformat()
+
+
+def _set_session_cookies(response: Response, token: str, csrf: str,
+                         expires_at: datetime | None = None) -> None:
     """One HttpOnly cookie the browser cannot read, one it must.
 
     The session token is HttpOnly so that a cross-site scripting bug cannot exfiltrate
     it. The CSRF token deliberately is NOT: the page has to read it to echo it in a
     header, and that is exactly what an attacker on another origin cannot do.
+
+    `expires_at` is the session row's own expiry, and the cookies are given the same
+    one - so a browser drops a Judge Pass cookie at the minute the pass closes rather
+    than holding a dead one for a week. The server stays the authority either way.
     """
     secure = get_settings().cookie_secure
+    max_age = int(service.ABSOLUTE_LIFETIME.total_seconds())
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        remaining = int((expires_at - datetime.now(UTC)).total_seconds())
+        max_age = max(1, min(max_age, remaining))
     response.set_cookie(
         SESSION_COOKIE, token,
         httponly=True, secure=secure, samesite="lax", path="/",
-        max_age=int(service.ABSOLUTE_LIFETIME.total_seconds()),
+        max_age=max_age,
     )
     response.set_cookie(
         CSRF_COOKIE, csrf,
         httponly=False, secure=secure, samesite="lax", path="/",
-        max_age=int(service.ABSOLUTE_LIFETIME.total_seconds()),
+        max_age=max_age,
     )
 
 
@@ -130,7 +159,7 @@ def login(
         session.commit()          # keep the audit row for the failed attempt
         raise HTTPException(401, str(exc)) from exc
 
-    token, _row = service.issue_session(
+    token, session_row = service.issue_session(
         session, user, ip=ip, user_agent=request.headers.get("user-agent", "")
     )
     csrf = service.issue_csrf_token()
@@ -138,7 +167,7 @@ def login(
                   detail={"role": user.role})
     session.commit()
 
-    _set_session_cookies(response, token, csrf)
+    _set_session_cookies(response, token, csrf, session_row.expires_at)
     return {
         "user": _user_json(user),
         "must_change_password": user.must_change_password,
@@ -179,6 +208,9 @@ def whoami(request: Request) -> dict:
             "username": principal.username,
             "display_name": principal.display_name,
             "role": principal.role,
+            # Present on a Judge Pass account, null on every other. The shell counts
+            # down to it and ends the pass on screen at that minute.
+            "access_expires_at": _iso_utc(principal.access_expires_at),
         },
         "must_change_password": principal.must_change_password,
     }
@@ -273,14 +305,15 @@ def change_password(
 
     # set_password revokes every session including this one, so issue a fresh pair.
     # The alternative is logging someone out of the page they are standing on.
-    token, _row = service.issue_session(session, user, ip=client_ip(request),
-                                        user_agent=request.headers.get("user-agent", ""))
+    token, session_row = service.issue_session(
+        session, user, ip=client_ip(request),
+        user_agent=request.headers.get("user-agent", ""))
     csrf = service.issue_csrf_token()
     service.audit(session, "auth.password_change", principal=principal,
                   ip=client_ip(request))
     session.commit()
 
-    _set_session_cookies(response, token, csrf)
+    _set_session_cookies(response, token, csrf, session_row.expires_at)
     return {"ok": True, "csrf_token": csrf}
 
 
@@ -495,9 +528,175 @@ def _warnings(settings, stale_cost: int = 0) -> list[str]:
     return out
 
 
-def utcnow() -> datetime:
-    from datetime import UTC
+# --- judge pass ---------------------------------------------------------------
+#
+# Two public endpoints and two for administrators. The public pair is on
+# PUBLIC_PATHS and demands the shared code before it answers anything; the logic,
+# and every limit on what that code can do, lives in gemp/auth/judge_pass.py.
 
+
+class PassCheckRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
+
+
+class PassRedeemRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
+    email: str = Field(min_length=1, max_length=254)
+    lang: str = Field(default="en", max_length=8)
+
+
+class PassSwitchRequest(BaseModel):
+    enabled: bool
+
+
+def _refused(reason: str, status: int, message: str) -> JSONResponse:
+    """`reason` is a fixed word the pass page switches on; `detail` is the sentence
+    for anything that only prints."""
+    return JSONResponse({"detail": message, "reason": reason}, status_code=status)
+
+
+@router.post("/pass/check")
+def pass_check(body: PassCheckRequest, session: Session = Depends(get_session)) -> dict:
+    """What the pass page should show.
+
+    Without the right code the whole answer is "invalid": not whether passes
+    exist, not when they close, not who to ask.
+    """
+    settings = get_settings()
+    if not judge_pass.code_matches(settings, body.code):
+        return {"state": "invalid", "until": None, "contact": None}
+    return {
+        "state": judge_pass.state(session, settings),
+        "until": _iso_utc(settings.judge_pass_until),
+        "contact": settings.mail_reply_to or None,
+    }
+
+
+@router.post("/pass/redeem", response_model=None)
+def pass_redeem(
+    body: PassRedeemRequest,
+    request: Request,
+    response: Response,
+    background: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> dict | JSONResponse:
+    """Issue a pass and sign this browser in with it, in one step.
+
+    The judge is in before the email exists. It is sent after the response, so a
+    slow provider - or none at all - never stands between a judge at the booth and
+    the product. The email is for coming BACK, on this device or another.
+    """
+    settings = get_settings()
+    if not judge_pass.code_matches(settings, body.code):
+        return _refused("invalid", 404, "This pass link is not valid.")
+
+    email = judge_pass.normalise_email(body.email)
+    if email is None:
+        return _refused("email", 422,
+                        "Enter a complete email address of up to 64 characters.")
+    lang = body.lang if body.lang in judge_pass.LANGS else "en"
+
+    try:
+        issued = judge_pass.issue(session, settings, email=email, lang=lang)
+    except judge_pass.Refused as exc:
+        log.info("judge pass refused: %s", exc.reason)
+        return _refused(exc.reason, exc.status, exc.message)
+    except IntegrityError:
+        # Two confirmations for one address in the same instant; the first won.
+        session.rollback()
+        return _refused("exists", 409, judge_pass.EXISTS_MESSAGE)
+
+    ip = client_ip(request)
+    # Redeeming the pass IS the first sign-in, and the administration screen's
+    # "last sign-in" column should say so.
+    issued.user.last_login_at = datetime.now(UTC)
+    token, session_row = service.issue_session(
+        session, issued.user, ip=ip, user_agent=request.headers.get("user-agent", ""))
+    csrf = service.issue_csrf_token()
+    service.audit(session, "pass.redeem", username=issued.user.username, ip=ip,
+                  detail={"lang": lang, "mail": issued.row.mail_status})
+    session.commit()
+
+    _set_session_cookies(response, token, csrf, session_row.expires_at)
+
+    if issued.row.mail_status == "queued":
+        message = judge_pass.compose(
+            lang, email=email, password=issued.password,
+            until=settings.judge_pass_until, sign_in_url=judge_pass.sign_in_url(settings),
+        )
+        # The session provider the request itself used, honouring any override -
+        # which is how the test suite's database receives the outcome too.
+        provider = request.app.dependency_overrides.get(get_session, get_session)
+        background.add_task(judge_pass.deliver, provider, issued.row.id, email,
+                            message, settings)
+
+    return {
+        "user": _user_json(issued.user),
+        "must_change_password": False,
+        "csrf_token": csrf,
+        "pass": {"email": email, "until": _iso_utc(settings.judge_pass_until),
+                 "mail": issued.row.mail_status},
+    }
+
+
+def _judge_pass_overview(session: Session) -> dict:
+    settings = get_settings()
+    now = datetime.now(UTC)
+    problem = judge_pass.problem(settings)
+    holders = judge_pass.holders(session)
+    return {
+        "state": judge_pass.state(session, settings, now),
+        "problem": problem,
+        "enabled": judge_pass.enabled(session),
+        "until": _iso_utc(settings.judge_pass_until),
+        "daily_max": settings.judge_pass_daily_max,
+        "issued_24h": judge_pass.issued_in_window(session, now),
+        "total": len(holders),
+        "mail_configured": mail.configured(settings),
+        # What the QR on the cards must encode, so a printed card can be checked
+        # against it. The code is on every card anyway, and this is admin-only.
+        "link": None if problem else judge_pass.link(settings),
+        "passes": [
+            {
+                "email": row.email,
+                "created_at": _iso_utc(row.created_at),
+                "lang": row.lang,
+                "mail_status": row.mail_status,
+                "mail_detail": row.mail_detail,
+                "mail_at": _iso_utc(row.mail_at),
+                "last_login_at": _iso_utc(user.last_login_at),
+                "is_active": user.is_active,
+            }
+            for row, user in holders
+        ],
+    }
+
+
+@router.get("/admin/judge-pass")
+def judge_pass_status(
+    _admin: Principal = Depends(require(ADMIN)),
+    session: Session = Depends(get_session),
+) -> dict:
+    return _judge_pass_overview(session)
+
+
+@router.put("/admin/judge-pass")
+def judge_pass_switch(
+    body: PassSwitchRequest,
+    request: Request,
+    admin: Principal = Depends(require(ADMIN)),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Pause or resume issuing. Pausing stops new cards working; it signs nobody
+    out - a judge halfway through the product is not what it exists to stop."""
+    judge_pass.set_enabled(session, body.enabled, by=admin.username)
+    service.audit(session, "pass.switch", principal=admin, ip=client_ip(request),
+                  detail={"enabled": body.enabled})
+    session.commit()
+    return _judge_pass_overview(session)
+
+
+def utcnow() -> datetime:
     return datetime.now(UTC)
 
 

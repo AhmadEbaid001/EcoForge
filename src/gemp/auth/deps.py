@@ -33,11 +33,17 @@ from gemp.auth.service import (
 #   /health         - a readiness probe cannot hold a credential, and it reports
 #                     dependency status only, never data.
 #   /api/v1/auth/*  - logging in without being logged in is the point.
+#   /api/v1/pass/*  - the Judge Pass page, reached from a QR code by someone with no
+#                     account yet. Both demand the shared code before they answer
+#                     anything; without it a caller learns only "not a valid link".
+#                     The limits on what the code can do are in auth/judge_pass.py.
 PUBLIC_PATHS: frozenset[str] = frozenset({
     "/health",
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
     "/api/v1/auth/session",
+    "/api/v1/pass/check",
+    "/api/v1/pass/redeem",
 })
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})

@@ -438,8 +438,9 @@ function showLanding() {
 
       <section class="lp-close lp-rise">
         <h2>Sign in to open the platform.</h2>
-        <p>Accounts are issued by an administrator. There is no self-service
-        registration and no default account.</p>
+        <p>Accounts are issued by an administrator, or for a single day by a Judge
+        Pass handed over in person. There is no open registration and no default
+        account.</p>
         <button type="button" class="primary" data-signin>Sign in</button>
       </section>
 
@@ -866,6 +867,332 @@ function showPasswordChange() {
   });
 }
 
+/* -------------------------------------------------------------- judge pass */
+
+/* The page a Judge Pass opens.
+ *
+ * Every card carries the same QR code, `#/pass/<code>`. The code rides in the
+ * fragment, which a browser never sends to a server, and it is posted in a body
+ * rather than a query string for the same reason: it should appear in no log
+ * between a judge's phone and this application. The server answers nothing
+ * without it.
+ *
+ * One field, one confirmation, then the product. The confirmation is not
+ * ceremony. The email is how the judge gets back in on another device, so the
+ * address is shown large enough to proofread before anything is sent to it. */
+const PASS_SENT_KEY = 'gemp.passSentTo';
+const PASS_HIDE_KEY = 'gemp.passStripHidden';
+const PASS_EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+let passTick = null;
+let passEnd = null;
+
+function passCodeFromHash() {
+  const match = window.location.hash.match(/^#\/pass(?:\/([A-Za-z0-9_-]*))?$/);
+  return match ? (match[1] || '') : null;
+}
+
+/* 24-hour, like the card and the email: "23:59" printed on paper and "11:59 PM"
+   on the screen beside it read as two different closing times. */
+const passTime = (iso) => new Date(iso).toLocaleTimeString(
+  locale(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const passDate = (iso) =>
+  new Date(iso).toLocaleDateString(locale(), { day: 'numeric', month: 'long' });
+
+async function showPass(code) {
+  document.body.className = 'signed-out';
+  let check = null;
+  let step = 'loading';
+  let email = '';
+
+  const paint = () => {
+    const eyebrow = `<p class="pass-eyebrow">${icon('check')}${t('jp.eyebrow')}</p>`;
+    let body;
+
+    if (step === 'loading') {
+      body = `<div class="login pass-state" role="status">${eyebrow}
+        <p>${t('jp.checking')}</p></div>`;
+    } else if (step === 'email') {
+      body = `
+        <form class="login" id="pass-form" novalidate>
+          ${eyebrow}
+          <h2>${t('jp.title')}</h2>
+          <p class="lede">${t('jp.lede')}</p>
+          <label for="pass-email">${t('jp.email')}
+            <input id="pass-email" name="email" type="email" class="mono"
+                   inputmode="email" autocomplete="email" autocapitalize="none"
+                   spellcheck="false" maxlength="64" required autofocus
+                   value="${escapeHtml(email)}">
+            <span class="hint" id="pass-hint">${t('jp.emailHint')}</span>
+          </label>
+          <button type="submit" class="primary" id="pass-continue" disabled>
+            ${t('jp.needEmail')}</button>
+          ${check?.until ? `<p class="login-note">${t('jp.until', {
+            time: passTime(check.until), date: passDate(check.until) })}</p>` : ''}
+        </form>`;
+    } else if (step === 'confirm') {
+      body = `
+        <form class="login" id="pass-confirm">
+          ${eyebrow}
+          <h2>${t('jp.confirmTitle')}</h2>
+          <p class="pass-address mono">${escapeHtml(email)}</p>
+          <p class="lede">${t('jp.confirmBody')}</p>
+          <div id="pass-error"></div>
+          <button type="submit" class="primary" id="pass-go">${t('jp.confirm')}</button>
+          <button type="button" class="secondary pass-secondary" id="pass-edit">
+            ${t('jp.edit')}</button>
+        </form>`;
+    } else {
+      /* Every state that is a message rather than a form. Each says what
+         happened and what to do next, which at a booth is always a person. */
+      const copy = {
+        closed: [t('jp.closedTitle'), t('jp.closedBody')],
+        paused: [t('jp.pausedTitle'), t('jp.pausedBody')],
+        full: [t('jp.fullTitle'), t('jp.fullBody')],
+        error: [t('jp.errorTitle'), t('jp.errorBody')],
+        exists: [t('jp.title'), t('jp.existsBody')],
+      }[step] || [t('jp.invalidTitle'), t('jp.invalidBody')];
+      const contact = check?.contact && ['closed', 'paused', 'full'].includes(step)
+        ? `<p>${escapeHtml(t('jp.contact', { email: check.contact }))}</p>` : '';
+      body = `
+        <div class="login pass-state" role="status">
+          ${eyebrow}
+          <h2>${copy[0]}</h2>
+          <p>${copy[1]}</p>
+          ${contact}
+          <div class="pass-actions">
+            ${step === 'exists'
+              ? `<button type="button" class="primary" id="pass-signin">${t('jp.toSignIn')}</button>`
+              : ''}
+            <button type="button" class="secondary" id="pass-landing">${t('jp.toLanding')}</button>
+          </div>
+        </div>`;
+    }
+
+    $('root').innerHTML = `
+      <div class="login-wrap is-signin">
+        <header class="login-bar">
+          ${textScaleSwitch()}
+          ${appearanceSwitch()}
+          <button type="button" class="secondary" id="pass-lang"
+                  lang="${currentLang() === 'ar' ? 'en' : 'ar'}"
+                  >${currentLang() === 'ar' ? 'EN' : 'ع'}</button>
+        </header>
+        <div class="login-card">
+          <div class="login-col">
+            <div class="login-lockup">
+              <p class="wordmark brand-wordmark">${wordmark('GEMP')}</p>
+            </div>
+            ${body}
+            <footer class="login-foot"><span>${t('si.team')}</span></footer>
+          </div>
+          <aside class="login-scene" aria-labelledby="pass-lede">
+            <div class="login-scene-art">${signInArtwork()}</div>
+            <div class="login-scene-body">
+              <p class="lede" id="pass-lede">${t('jp.sceneLede')}</p>
+              <ul class="login-points">
+                <li>${icon('check')}<span>${t('jp.pointNow')}</span></li>
+                <li>${icon('account')}<span>${t('jp.pointLater')}</span></li>
+                <li>${icon('lock')}<span>${t('jp.pointView')}</span></li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </div>`;
+    wire();
+  };
+
+  const wire = () => {
+    wireAppearance($('root'));
+    wireTextScale($('root'));
+    applyScale(storedScale());
+
+    /* The one field survives a language switch, unlike the sign-in form's: here
+       the reader may well have typed their address before noticing the toggle. */
+    $('pass-lang')?.addEventListener('click', () => {
+      if ($('pass-email')) email = $('pass-email').value;
+      setLangCode(currentLang() === 'ar' ? 'en' : 'ar');
+      paint();
+    });
+    $('pass-landing')?.addEventListener('click', () => showLanding());
+    $('pass-signin')?.addEventListener('click', () => showLogin());
+    $('pass-edit')?.addEventListener('click', () => { step = 'email'; paint(); });
+
+    const field = $('pass-email');
+    if (field) {
+      const button = $('pass-continue');
+      const hint = $('pass-hint');
+      const ready = () => {
+        const value = field.value.trim();
+        const ok = PASS_EMAIL.test(value) && value.length <= 64;
+        button.disabled = !ok;
+        button.textContent = ok ? t('jp.continue') : t('jp.needEmail');
+        /* Said once there is an @ and a dot to judge, not while the reader is
+           still halfway through their own name. */
+        const wrong = !ok && value.includes('@') && value.includes('.');
+        hint.textContent = wrong ? t('jp.badEmail') : t('jp.emailHint');
+        hint.className = `hint${wrong ? ' warn' : ''}`;
+      };
+      field.addEventListener('input', ready);
+      ready();
+      $('pass-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (button.disabled) return;
+        email = field.value.trim();
+        step = 'confirm';
+        paint();
+      });
+    }
+
+    $('pass-confirm')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const go = $('pass-go');
+      go.disabled = true;
+      go.textContent = t('jp.opening');
+      try {
+        const result = await api.passRedeem(code, email, currentLang());
+        state.user = result.user;
+        /* The code has done its job. Off the address bar, so it is not in the
+           history, a screenshot, or the next person's autocomplete. */
+        window.history.replaceState(null, '', window.location.pathname);
+        try {
+          window.sessionStorage.setItem(PASS_SENT_KEY, result.pass?.mail === 'off' ? '' : email);
+          window.sessionStorage.removeItem(PASS_HIDE_KEY);
+        } catch { /* private mode; the strip simply does not name the address */ }
+        await showApp();
+      } catch (error) {
+        const reason = error?.body?.reason;
+        if (['closed', 'paused', 'full', 'invalid', 'exists'].includes(reason)) {
+          step = reason;
+          paint();
+          return;
+        }
+        $('pass-error').innerHTML = `<div class="error-box" role="alert">${escapeHtml(
+          reason === 'email' ? t('jp.badEmail') : t('jp.errorBody'))}</div>`;
+        go.disabled = false;
+        go.textContent = t('jp.confirm');
+      }
+    });
+  };
+
+  paint();
+  try {
+    check = await api.passCheck(code);
+  } catch {
+    check = { state: 'error' };
+  }
+  step = check.state === 'open' ? 'email' : check.state;
+  paint();
+}
+
+/* A Judge Pass account is the same shell with three additions: the rail calls
+ * the holder a judge rather than printing their email address, a strip under
+ * the header says how long the pass has left and where its email went, and the
+ * pass ends itself on screen at its closing minute rather than leaving the next
+ * request to discover it. */
+function startPass() {
+  const until = state.user.access_expires_at;
+  const ends = Date.parse(until);
+
+  let hidden = false;
+  let sentTo = '';
+  try {
+    hidden = window.sessionStorage.getItem(PASS_HIDE_KEY) === '1';
+    sentTo = window.sessionStorage.getItem(PASS_SENT_KEY) || '';
+  } catch { /* private mode: show the strip, without the address */ }
+
+  const left = () => {
+    const minutes = Math.max(0, Math.round((ends - Date.now()) / 60000));
+    const hours = Math.floor(minutes / 60);
+    return hours
+      ? t('jp.hoursLeft', { h: hours, m: minutes % 60 })
+      : t('jp.minutesLeft', { m: minutes });
+  };
+  const sentence = () => t('jp.welcome', { time: passTime(until), left: left() })
+    + (sentTo ? ` ${t('jp.sentTo', { email: sentTo })}` : '');
+
+  const paint = () => {
+    const who = document.querySelector('.rail-who');
+    if (who) { who.textContent = t('jp.railName'); who.title = state.user.username; }
+
+    $('pass-strip')?.remove();
+    const host = $('strips');
+    if (hidden || !host) return;
+    const strip = document.createElement('div');
+    strip.id = 'pass-strip';
+    strip.className = 'strip pass';
+    strip.setAttribute('role', 'status');
+    strip.innerHTML = `
+      ${icon('check')}
+      <span class="strip-text">${escapeHtml(sentence())}</span>
+      <span class="strip-act">
+        <span class="strip-stops" role="group" aria-label="${escapeHtml(t('jp.stops'))}">
+          ${['map', 'evidence', 'integrity'].map((key) => `
+            <button type="button" class="secondary small" data-stop="${key}">${
+              escapeHtml(t(`nav.${key}`))}</button>`).join('')}
+        </span>
+        <button type="button" class="secondary" data-pass-hide>${t('ui.dismiss')}</button>
+      </span>`;
+    strip.querySelectorAll('[data-stop]').forEach((button) => {
+      button.addEventListener('click', () => navigate(button.dataset.stop));
+    });
+    strip.querySelector('[data-pass-hide]').addEventListener('click', () => {
+      hidden = true;
+      try { window.sessionStorage.setItem(PASS_HIDE_KEY, '1'); } catch { /* ignore */ }
+      strip.remove();
+    });
+    host.prepend(strip);
+  };
+
+  paint();
+  window.addEventListener('gemp:lang', () => { if (state.user?.access_expires_at === until) paint(); });
+
+  /* The countdown moves once a minute and only its words change, so focus on a
+     button in the strip is never taken away by the tick. */
+  window.clearInterval(passTick);
+  passTick = window.setInterval(() => {
+    const text = $('pass-strip')?.querySelector('.strip-text');
+    if (text) text.textContent = sentence();
+  }, 60 * 1000);
+
+  /* setTimeout's ceiling is about 24.8 days; a pass is a day. */
+  window.clearTimeout(passEnd);
+  passEnd = window.setTimeout(() => {
+    if (state.user?.access_expires_at === until) showPassEnded(until);
+  }, Math.max(0, Math.min(ends - Date.now(), 2 ** 31 - 1)));
+}
+
+/* The pass did what it said: it opened the product for a day and closed at the
+   stated minute. That deserves an ending, not a sign-in form that would refuse
+   the same password with the same sentence it gives an intruder. */
+function showPassEnded(until) {
+  window.clearInterval(passTick);
+  window.clearTimeout(passEnd);
+  state.user = null;
+  api.logout().catch(() => {});
+  document.body.className = 'signed-out';
+  $('root').innerHTML = `
+    <div class="login-wrap is-signin">
+      <div class="login-card single">
+        <div class="login-col">
+          <div class="login-lockup">
+            <p class="wordmark brand-wordmark">${wordmark('GEMP')}</p>
+          </div>
+          <div class="login pass-state" role="status">
+            <p class="pass-eyebrow">${icon('check')}${t('jp.eyebrow')}</p>
+            <h2>${t('jp.endedTitle')}</h2>
+            <p>${t('jp.endedBody', { time: passTime(until) })}</p>
+            <div class="pass-actions">
+              <button type="button" class="secondary" id="pass-ended-landing">${t('jp.toLanding')}</button>
+            </div>
+          </div>
+          <footer class="login-foot"><span>${t('si.team')}</span></footer>
+        </div>
+      </div>
+    </div>`;
+  $('pass-ended-landing').addEventListener('click', () => showLanding());
+}
+
 /* --------------------------------------------------------------------- app */
 
 /* On a phone the rail is a bar across the foot of the screen and eight labelled
@@ -1069,6 +1396,8 @@ async function showApp() {
     navigate(state.view);
   });
 
+  if (state.user.access_expires_at) startPass();
+
   const opening = splitHash();
   await navigate(opening.key || 'overview', opening.key ? opening.search : '');
 }
@@ -1200,6 +1529,14 @@ setUnauthenticatedHandler(() => {
    * disabling the account, a revoked session. Whichever request finds out first sends
    * the user somewhere they can do something about it. */
   if (state.user) {
+    /* A Judge Pass reaching its closing minute is not a session that failed. It
+       gets the ending it was promised rather than a sign-in form that would refuse
+       the same password. */
+    const until = state.user.access_expires_at;
+    if (until && Date.parse(until) <= Date.now()) {
+      showPassEnded(until);
+      return;
+    }
     state.user = null;
     showLogin('Your session has ended. Please sign in again.');
   }
@@ -1221,8 +1558,24 @@ window.addEventListener('hashchange', () => {
 
 async function boot() {
   applyAppearance(storedAppearance());
+  /* Read before anything can rewrite the address: the landing page and the form
+     both clear the fragment, and a Judge Pass code lives in it. */
+  const passCode = passCodeFromHash();
   try {
     const session = await api.session();
+    /* A pass link opens the pass page - unless this browser already holds a pass,
+       in which case scanning the card again simply reopens the product. */
+    if (passCode !== null && !(session.authenticated && session.user.access_expires_at)) {
+      showPass(passCode);
+      return;
+    }
+    if (passCode !== null) window.history.replaceState(null, '', window.location.pathname);
+    /* The pass email's button lands on the form, not the landing page: whoever
+       follows it already knows what GEMP is. */
+    if (!session.authenticated && window.location.hash === '#/signin') {
+      showLogin();
+      return;
+    }
     if (!session.authenticated) {
       /* First contact is the landing page. A session that EXPIRED goes straight
        * to the form instead - see the unauthenticated handler - because somebody
