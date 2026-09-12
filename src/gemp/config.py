@@ -116,11 +116,30 @@ class Settings(BaseSettings):
     public_url: str = ""
 
     # --- outbound mail (the Judge Pass email, and nothing else) ---
-    # A provider's HTTPS API - Brevo if its key is set, otherwise Resend. Unset means
+    # Brevo's API if its key is set, otherwise Resend's, otherwise SMTP. Unset means
     # passes are still issued and the judge is still signed in on the spot; only the
     # email that brings them back later is skipped.
     brevo_api_key: SecretStr = SecretStr("")
     resend_api_key: SecretStr = SecretStr("")
+    # Plain SMTP over TLS - what a Gmail mailbox needs and nothing more:
+    # smtp.gmail.com, 587, the address, and an APP password (the account must have
+    # 2-Step Verification on; the account's own password is refused).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: SecretStr = SecretStr("")
+
+    @field_validator("smtp_port", mode="before")
+    @classmethod
+    def _port_or_default(cls, value):
+        """Blank or garbled means the submission port, not an outage - the same
+        reasoning as `_until_or_none` below: a refused value takes every request
+        down with it."""
+        try:
+            port = int(str(value).strip())
+        except (TypeError, ValueError):
+            return 587
+        return port if 0 < port < 65536 else 587
     mail_from: str = ""
     mail_reply_to: str = ""
 

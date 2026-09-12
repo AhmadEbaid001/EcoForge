@@ -49,8 +49,10 @@ def configure(monkeypatch, **overrides) -> None:
         "GEMP_JUDGE_PASS_DAILY_MAX": "90",
         "GEMP_PUBLIC_URL": "https://gemp.example.test",
         "GEMP_RESEND_API_KEY": "re_test",
-        # Blank, so a Brevo key in a developer's .env cannot change what these test.
+        # Blank, so a key or a mailbox in a developer's .env cannot change what
+        # these test.
         "GEMP_BREVO_API_KEY": "",
+        "GEMP_SMTP_HOST": "",
         "GEMP_MAIL_FROM": "GEMP <pass@example.test>",
         "GEMP_MAIL_REPLY_TO": "team@example.test",
     } | overrides
@@ -589,3 +591,100 @@ def test_no_key_sends_nothing_at_all(monkeypatch):
     outcome = mail.send(_settings(resend_api_key=""), to=JUDGE, subject="s", html="h",
                         text="h")
     assert outcome.status == "off"
+
+
+# --- a Gmail mailbox over SMTP ---------------------------------------------------------
+
+
+class _FakeSMTP:
+    """Records the conversation instead of having it."""
+
+    instances: list = []
+
+    def __init__(self, host, port, timeout=None, context=None):
+        self.host, self.port = host, port
+        self.calls: list = []
+        self.sent: list = []
+        _FakeSMTP.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.calls.append("quit")
+        return False
+
+    def starttls(self, context=None):
+        self.calls.append("starttls")
+
+    def login(self, user, password):
+        self.calls.append(("login", user, password))
+
+    def send_message(self, message):
+        self.sent.append(message)
+
+
+def _gmail(**overrides) -> Settings:
+    return _settings(**{
+        "resend_api_key": "", "brevo_api_key": "",
+        "smtp_host": "smtp.gmail.com", "smtp_port": 587,
+        "smtp_user": "gemp.pass@gmail.com", "smtp_password": "app-password-for-tests",
+        "mail_from": "GEMP - Team Ecoforge <gemp.pass@gmail.com>",
+    } | overrides)
+
+
+def test_a_gmail_mailbox_is_spoken_to_over_starttls(monkeypatch):
+    _FakeSMTP.instances.clear()
+    monkeypatch.setattr(mail.smtplib, "SMTP", _FakeSMTP)
+    outcome = mail.send(_gmail(), to=JUDGE, subject="بطاقة المحكّم", html="<p>h</p>",
+                        text="h")
+
+    assert outcome.status == "sent" and outcome.detail.startswith("<")
+    [client] = _FakeSMTP.instances
+    assert (client.host, client.port) == ("smtp.gmail.com", 587)
+    # TLS first, then the login: the password never crosses in plain text.
+    assert client.calls[:2] == ["starttls",
+                                ("login", "gemp.pass@gmail.com", "app-password-for-tests")]
+    [message] = client.sent
+    assert message["To"] == JUDGE
+    assert message["Reply-To"] == "team@example.test"
+    assert "gemp.pass@gmail.com" in message["From"]
+    assert str(message["Subject"]) == "بطاقة المحكّم"
+    assert [p.get_content_type() for p in message.iter_parts()] == ["text/plain", "text/html"]
+
+
+def test_port_465_is_tls_from_the_first_byte(monkeypatch):
+    _FakeSMTP.instances.clear()
+    monkeypatch.setattr(mail.smtplib, "SMTP_SSL", _FakeSMTP)
+    monkeypatch.setattr(mail.smtplib, "SMTP",
+                        lambda *a, **k: pytest.fail("plain SMTP opened on port 465"))
+    assert mail.send(_gmail(smtp_port=465), to=JUDGE, subject="s", html="h",
+                     text="h").status == "sent"
+    assert "starttls" not in _FakeSMTP.instances[0].calls
+
+
+def test_a_refused_gmail_login_says_why_without_the_password(monkeypatch):
+    """Gmail's sentence names the missed step - no app password, or a wrong one."""
+    class Refusing(_FakeSMTP):
+        def login(self, user, password):
+            raise mail.smtplib.SMTPAuthenticationError(
+                534, b"5.7.9 Application-specific password required.")
+
+    monkeypatch.setattr(mail.smtplib, "SMTP", Refusing)
+    outcome = mail.send(_gmail(), to=JUDGE, subject="s", html="h", text="h")
+    assert outcome.status == "failed"
+    assert "Application-specific password required" in outcome.detail
+    assert "app-password-for-tests" not in outcome.detail
+
+
+def test_smtp_is_the_fallback_and_the_mailbox_is_its_default_sender():
+    assert mail.provider(_gmail()) == "smtp"
+    assert mail.provider(_gmail(brevo_api_key="brevo-test-key")) == "brevo"
+    assert mail.configured(_gmail(mail_from=""))
+    assert mail.sender(_gmail(mail_from="")) == "gemp.pass@gmail.com"
+    assert not mail.configured(_gmail(smtp_password=""))
+
+
+def test_a_blank_smtp_port_is_the_submission_port_not_an_outage():
+    assert _settings(smtp_port="").smtp_port == 587
+    assert _settings(smtp_port="five-eight-seven").smtp_port == 587
