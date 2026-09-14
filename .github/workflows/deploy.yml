@@ -159,7 +159,7 @@ jobs:
       # does not exist. Skipped entirely if you are not using Tailscale.
       - name: Join the private network
         if: vars.GEMP_USE_TAILSCALE == 'true'
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
