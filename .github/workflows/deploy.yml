@@ -219,7 +219,7 @@ jobs:
       # party and no secret to configure.
       - name: Open an issue if the deploy failed
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const ref = '${{ steps.target.outputs.ref }}';
