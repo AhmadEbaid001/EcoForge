@@ -98,7 +98,7 @@ jobs:
         continue-on-error: true
         run: python -m gemp.domain.catalog --validate --strict
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: evaluation
@@ -268,7 +268,7 @@ jobs:
         # the exception register, and is the only step here allowed to fail the job.
         run: python scripts/security_gate.py reports --summary "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: security-reports
@@ -368,7 +368,7 @@ jobs:
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.cyclonedx.json
